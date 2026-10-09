@@ -45,10 +45,8 @@ from core.design.report import (
     render,
 )
 from core.design.gaps import (
-    carried_by_no_source,
     decided_for_you,
     entries,
-    measured_from_what_is_gone,
 )
 from core.loop.budgets import Budgets, revisions_ceiling
 from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, prompt
@@ -104,6 +102,7 @@ from tests.loop_helpers import (
     STILL_WRONG,
     _asked_of_design,
 )
+from tests.event_helpers import events_of, first_event
 
 
 def test_designs_own_first_pass_question_goes_back_to_the_sheet_before_a_person():
@@ -124,7 +123,7 @@ def test_designs_own_first_pass_question_goes_back_to_the_sheet_before_a_person(
     ], attachments=[RENDER_PNG], ask=lambda q: asked.append(q) or "should never be called")
 
     assert asked == [], "the sheet answered; a person was asked anyway"
-    assert events.of(ANSWER)[0].data["by"] == "drawing"
+    assert events_of(events, ANSWER)[0].data["by"] == "drawing"
 
     re_read = _asked_of_design(llm)[1]
     assert re_read["the_question"] == "Where are the Ø40 and Ø35 hole axes?"
@@ -142,7 +141,7 @@ def test_the_questions_nobody_answered_are_shown_beside_the_plan():
          suspect_reply(), verdict_reply("pass")],
         intent=GEAR, ask=lambda _: "")
 
-    assert events.first(PLAN).data["unanswered"] == ["What module?"]
+    assert first_event(events, PLAN).data["unanswered"] == ["What module?"]
 
 
 def test_a_replan_does_not_refill_the_re_read_ceiling():
@@ -165,7 +164,7 @@ def test_a_replan_does_not_refill_the_re_read_ceiling():
         ask=lambda q: asked.append(q) or "an answer")
 
     assert asked == []
-    assert [answer.data["by"] for answer in events.of(ANSWER)] == ["drawing", "nobody"], \
+    assert [answer.data["by"] for answer in events_of(events, ANSWER)] == ["drawing", "nobody"], \
         "the re-plan refilled the re-read ceiling"
 
 
@@ -223,7 +222,7 @@ def test_a_question_alongside_steps_is_still_a_plan():
 
     assert result.ok
     assert asked == []
-    assert events.first(QUESTION) is None
+    assert first_event(events, QUESTION) is None
 
 
 def test_a_replan_after_a_handback_may_ask_rather_than_planning_blind():
@@ -252,8 +251,8 @@ def test_a_replan_after_a_handback_may_ask_rather_than_planning_blind():
 
     assert asked == [], "the re-plan put its question to a person: %s" % asked
     assert result.ok, result.reason
-    assert events.first(PLAN_REVISED).data["steps"] == ["Possible, assumed module 2"]
-    assert events.first(PLAN_REVISED).data["unanswered"] == [MISSING]
+    assert first_event(events, PLAN_REVISED).data["steps"] == ["Possible, assumed module 2"]
+    assert first_event(events, PLAN_REVISED).data["unanswered"] == [MISSING]
 
 
 def test_a_replan_after_a_rejected_verdict_may_ask_too():
@@ -271,7 +270,7 @@ def test_a_replan_after_a_rejected_verdict_may_ask_too():
 
     assert asked == []
     assert result.ok, result.reason
-    assert events.first(PLAN_REVISED).data["unanswered"] == [MISSING]
+    assert first_event(events, PLAN_REVISED).data["unanswered"] == [MISSING]
 
 
 def test_no_plan_without_steps_ever_reaches_execute(monkeypatch):
@@ -333,7 +332,7 @@ def test_the_assertion_phase_runs_after_the_last_step_and_between_the_two_review
 
     kinds = [e.kind for e in events]
     assert kinds.index(REVIEW_SUSPECTED) < kinds.index(ASSERTION) < kinds.index(REVIEW_VERDICT)
-    assert events.first(ASSERTION).data["ok"] is True
+    assert first_event(events, ASSERTION).data["ok"] is True
 
 
 def test_review_suspecting_nothing_still_lets_assertion_gate_the_verdict():
@@ -378,11 +377,11 @@ def test_a_suspicion_never_gates_but_reaches_assertions_acceptance_list():
         suspect_reply(raised), assertion_reply(), verdict_reply("pass"))
 
     assert result.ok
-    assert events.first(REVIEW_SUSPECTED).data["suspected"] == [raised + " (suspected)"]
+    assert first_event(events, REVIEW_SUSPECTED).data["suspected"] == [raised + " (suspected)"]
 
     all_events = list(events)
-    between = all_events[all_events.index(events.first(REVIEW_SUSPECTED)) + 1:
-                         all_events.index(events.first(ASSERTION))]
+    between = all_events[all_events.index(first_event(events, REVIEW_SUSPECTED)) + 1:
+                         all_events.index(first_event(events, ASSERTION))]
     assert QUESTION not in [e.kind for e in between], (
         "a suspicion asked the user before Assertion had a chance to measure it")
     assert PLAN_REVISED not in [e.kind for e in between], (
@@ -416,10 +415,10 @@ def test_a_refuted_suspicion_fails_assertion_and_replans_then_passes():
 
     assert result.ok
     assert result.verdict == "pass"
-    assert events.first(REVIEW_SUSPECTED).data["suspected"] == [raised + " (suspected)"]
-    assert events.first(ASSERTION).data["ok"] is False
-    assert events.first(PLAN_REVISED).data["because"] == "the acceptance checks failed"
-    assert events.first(REVIEW_VERDICT).data["verdict"] == "pass"
+    assert first_event(events, REVIEW_SUSPECTED).data["suspected"] == [raised + " (suspected)"]
+    assert first_event(events, ASSERTION).data["ok"] is False
+    assert first_event(events, PLAN_REVISED).data["because"] == "the acceptance checks failed"
+    assert first_event(events, REVIEW_VERDICT).data["verdict"] == "pass"
 
     first_assertion_request = json.loads(llm.calls[5][-1]["content"])
     assert raised + " (suspected)" in [a["text"] for a in first_assertion_request["acceptance"]]
@@ -441,7 +440,7 @@ def test_an_empty_acceptance_list_costs_no_llm_call():
     assert result.ok
     assert result.unmet == [], "a clean Document must not gate the verdict"
     assert len(llm.calls) == 6, "an extra provider call on a Plan with nothing to check"
-    assert events.first(ASSERTION) is None
+    assert first_event(events, ASSERTION) is None
     ran = [args["code"] for name, args in tools.calls if name == "check_assertions"]
     assert len(ran) == 1 and "BOPAlgo_SelfIntersect" in ran[0], \
         "the self-intersection check must still run deterministically"
@@ -466,7 +465,7 @@ def test_a_self_intersecting_document_is_caught_even_with_no_acceptance_list():
 
     ran = [args["code"] for name, args in tools.calls if name == "check_assertions"]
     assert ran and "BOPAlgo_SelfIntersect" in ran[0]
-    assert events.first(ASSERTION).data["unmet"] == \
+    assert first_event(events, ASSERTION).data["unmet"] == \
         ["Twist self-intersects (BOPAlgo_SelfIntersect)"]
     assert result.unmet == ["Twist self-intersects (BOPAlgo_SelfIntersect)"], \
         "the failure must reach the caller, not be swallowed as None"
@@ -501,9 +500,9 @@ def test_failed_assertions_return_to_plan_and_never_to_execute():
     assert "across the flats" in to_plan
     assert "did not hold" in to_plan
     assert "AssertionError" not in to_execute, "the failed check reached Execute"
-    assert events.first(PLAN_REVISED).data["steps"][0].startswith(
+    assert first_event(events, PLAN_REVISED).data["steps"][0].startswith(
         "Make it 13 mm across the flats")
-    assert events.first(ASSERTION).data["ok"] is False
+    assert first_event(events, ASSERTION).data["ok"] is False
 
 
 def test_a_feature_that_moved_without_a_retry_touching_it_fails_a_later_assertion_pass():
@@ -542,7 +541,7 @@ def test_a_feature_that_moved_without_a_retry_touching_it_fails_a_later_assertio
         ])
 
     assert result.blocked
-    second_pass = events.of(ASSERTION)[-1].data
+    second_pass = events_of(events, ASSERTION)[-1].data
     assert second_pass["ok"] is False
     assert "Fillet" in second_pass["traceback"]
     assert "Fillet" in second_pass["unmet"]
@@ -585,7 +584,7 @@ def test_a_feature_named_in_what_a_retry_touched_does_not_fail_a_later_assertion
 
     touched = _turns_of(llm, "assertion")[1]["entries_a_retry_touched"]
     assert "ring-split" in " ".join(touched)
-    assert events.of(ASSERTION)[-1].data["ok"] is True, \
+    assert events_of(events, ASSERTION)[-1].data["ok"] is True, \
         "a feature the retry already named should not fail the geometry check"
 
 
@@ -624,7 +623,7 @@ def test_review_is_told_the_facts_the_checks_confirmed():
 
     assert ACCEPTANCE[0] in review_request["facts_the_checks_confirmed"]
     assert review_request["what_the_checks_could_not_cover"] == [ACCEPTANCE[1]]
-    assert events.first(ASSERTION).data["uncovered"] == [ACCEPTANCE[1]]
+    assert first_event(events, ASSERTION).data["uncovered"] == [ACCEPTANCE[1]]
 
 
 def test_review_is_told_not_to_fail_on_a_suspicion_the_checks_never_confirmed():
@@ -672,7 +671,7 @@ def test_a_broken_check_is_rewritten_and_never_reaches_plan_as_geometry():
         checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": CHECK_IS_BROKEN}, None])
 
     assert result.ok
-    assert events.first(PLAN_REVISED) is None, "a broken check sent Plan to rebuild"
+    assert first_event(events, PLAN_REVISED) is None, "a broken check sent Plan to rebuild"
     assert len([c for c in tools.calls if c[0] == "check_assertions"]) == 3
     assert "AttributeError" in json.dumps(llm.calls[6])
 
@@ -695,9 +694,9 @@ def test_a_check_that_cannot_be_written_lets_review_judge_alone():
         checks=[SELF_INTERSECTION_HELD] + [{"ok": False, "traceback": CHECK_IS_BROKEN}] * 3)
 
     assert result.ok
-    assert events.first(PLAN_REVISED) is None
-    assert events.first(ASSERTION).data["ok"] is None, "an unwritable check is not a verdict"
-    assert events.first(ASSERTION).data["confirmed"] == ["no solid self-intersects", "the topology"], \
+    assert first_event(events, PLAN_REVISED) is None
+    assert first_event(events, ASSERTION).data["ok"] is None, "an unwritable check is not a verdict"
+    assert first_event(events, ASSERTION).data["confirmed"] == ["no solid self-intersects", "the topology"], \
         "the check the model never wrote measured nothing, but the fixed checks that " \
         "already ran and held must still be reported confirmed"
 
@@ -757,7 +756,7 @@ def test_the_acceptance_is_the_descriptions_own_entries_and_not_plans_paraphrase
         suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
-    shown = events.first(PLAN).data["acceptance"]
+    shown = first_event(events, PLAN).data["acceptance"]
     assert shown == ["envelope → depth front to rear: 100 mm (read)",
                      "features → central-opening → position → the front face: 20 mm (read)"]
     assert [a["text"] for a in _turns_of(llm, "assertion")[0]["acceptance"]] == shown[1:]
@@ -776,7 +775,7 @@ def test_a_value_the_user_assumed_is_still_marked_assumed_in_the_acceptance():
         suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
-    assert events.first(PLAN).data["acceptance"] == ["envelope → length: 150 mm (assumed)"]
+    assert first_event(events, PLAN).data["acceptance"] == ["envelope → length: 150 mm (assumed)"]
 
 
 def test_a_step_says_at_the_gate_which_part_of_the_part_it_is_for():
@@ -795,7 +794,7 @@ def test_a_step_says_at_the_gate_which_part_of_the_part_it_is_for():
         suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
-    assert events.first(PLAN).data["steps"] == [
+    assert first_event(events, PLAN).data["steps"] == [
         "Pad the blank 100 mm front to rear (satisfies: envelope → depth front to rear)",
         "Cut the central opening, both faces (satisfies: features → central-opening → "
         "position → the front face)",
@@ -817,7 +816,7 @@ def test_a_plan_that_leaves_a_read_entry_unconsumed_is_planned_again():
     ], attachments=[RENDER_PNG])
 
     assert result.ok
-    revised = events.first(PLAN_REVISED)
+    revised = first_event(events, PLAN_REVISED)
     assert revised is not None, "a Plan that dropped the depth reached the user as final"
     assert CAVITY_DEPTH in revised.data["reason"]
 
@@ -835,7 +834,7 @@ def test_a_plan_that_leaves_nothing_unconsumed_is_never_replanned():
         code_reply("build()"), suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
-    assert events.first(PLAN_REVISED) is None
+    assert first_event(events, PLAN_REVISED) is None
 
 
 def test_a_plan_citing_the_whole_line_it_was_handed_has_cited_the_entry():
@@ -853,7 +852,7 @@ def test_a_plan_citing_the_whole_line_it_was_handed_has_cited_the_entry():
         code_reply("build()"), suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
-    assert events.first(PLAN_REVISED) is None
+    assert first_event(events, PLAN_REVISED) is None
 
 
 def test_a_step_carries_the_address_it_cites_and_not_the_paragraph_behind_it():
@@ -875,7 +874,7 @@ def test_a_step_carries_the_address_it_cites_and_not_the_paragraph_behind_it():
         code_reply("build()"), suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
-    step = events.first(PLAN).data["steps"][0]
+    step = first_event(events, PLAN).data["steps"][0]
 
     assert step == ("Pad the blank and cut the opening (satisfies: %s (read), %s (read))"
                     % (CAVITY_DEPTH, CAVITY_POCKET))
@@ -908,7 +907,7 @@ def test_one_entry_may_feed_several_steps():
         suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
-    assert events.first(PLAN_REVISED) is None
+    assert first_event(events, PLAN_REVISED) is None
 
 
 def test_no_step_has_to_build_a_feature_the_later_page_replaced():
@@ -937,8 +936,8 @@ def test_no_step_has_to_build_a_feature_the_later_page_replaced():
     ], attachments=[RENDER_PNG])
 
     assert result.ok
-    assert events.first(PLAN_REVISED) is None
-    assert events.first(PLAN).data["acceptance"] == [
+    assert first_event(events, PLAN_REVISED) is None
+    assert first_event(events, PLAN).data["acceptance"] == [
         "features → angled-arm → position → the ring axis: 73 mm (read)"]
 
 
@@ -956,7 +955,7 @@ def test_an_assumed_entry_is_not_something_a_plan_can_be_refused_over():
     ], attachments=[RENDER_PNG])
 
     assert result.ok
-    assert events.first(PLAN_REVISED) is None
+    assert first_event(events, PLAN_REVISED) is None
 
 
 
@@ -979,7 +978,7 @@ def test_a_revision_that_plans_only_the_unbuilt_steps_passes_the_coverage_check(
     assert result.ok
     assert len(_turns_of(llm, "plan")) == 2, "the revision was replanned for coverage"
     assert tools.applied_codes() == ["part1()", "part2()", "part3()", "part4()", "bore()"]
-    reasons = [str(event.data.get("reason")) for event in events.of(PLAN_REVISED)]
+    reasons = [str(event.data.get("reason")) for event in events_of(events, PLAN_REVISED)]
     assert len(reasons) == 1 and "the bore misses the web as planned" in reasons[0]
 
 
@@ -1022,7 +1021,7 @@ def test_an_entry_no_step_ever_landed_for_is_still_unplanned():
     ], attachments=[RENDER_PNG], budgets=Budgets(revisions=5))
 
     assert result.ok
-    reasons = [event.data.get("reason") for event in events.of(PLAN_REVISED)]
+    reasons = [event.data.get("reason") for event in events_of(events, PLAN_REVISED)]
     assert any(BUILT[3] in str(reason) for reason in reasons), \
         "an entry nothing in the Document builds passed the coverage check"
 
@@ -1043,11 +1042,11 @@ def test_a_step_naming_a_value_its_kernel_never_computed_never_reaches_the_gate(
     ])
 
     assert result.ok
-    revised = events.first(PLAN_REVISED)
+    revised = first_event(events, PLAN_REVISED)
     assert revised is not None
     assert "arm_station" in revised.data["reason"]
     assert revised.data["because"] == "a Step named a value the Plan never computed"
-    assert len(events.of(GATE)) == 2, "the undefined value was put to the user"
+    assert len(events_of(events, GATE)) == 2, "the undefined value was put to the user"
     assert tools.applied_codes() == ["arm()"]
 
 
@@ -1092,7 +1091,7 @@ def test_a_step_naming_a_reserved_word_is_refused_before_it_reaches_the_gate():
     )
 
     assert result.blocked
-    revised = events.first(PLAN_REVISED)
+    revised = first_event(events, PLAN_REVISED)
     assert revised is not None
     assert "reserved name" in revised.data["reason"]
     assert tools.applied_codes() == []
@@ -1114,7 +1113,7 @@ def test_a_run_with_no_attachment_still_plans_and_still_shows_an_acceptance():
         attachments=[RENDER_PNG], ask=lambda _: "150 mm long")
 
     assert result.ok
-    assert events.first(PLAN).data["acceptance"] == ["envelope → length: 150 mm (assumed)"]
+    assert first_event(events, PLAN).data["acceptance"] == ["envelope → length: 150 mm (assumed)"]
     assert any(name == "check_assertions" for name, _ in tools.calls)
 
 
@@ -1186,7 +1185,7 @@ def test_the_assertion_event_names_the_entries_and_not_only_the_traceback():
         decide=lambda failure: "accept",
     )
 
-    assert events.first(ASSERTION).data["unmet"] == [
+    assert first_event(events, ASSERTION).data["unmet"] == [
         "envelope \u2192 across the flats: 13.0 mm (read)",
         "envelope \u2192 thickness: 6.5 mm (read)"]
 
@@ -1208,7 +1207,7 @@ def test_a_mixed_result_reports_both_what_held_and_what_did_not():
         decide=lambda failure: "accept",
     )
 
-    data = events.first(ASSERTION).data
+    data = first_event(events, ASSERTION).data
     assert data["confirmed"] == [ACCEPTANCE[0]]
     assert data["unmet"] == [ACCEPTANCE[1]]
     assert sorted(data["confirmed"] + data["unmet"] + data["uncovered"]) == sorted(ACCEPTANCE)
@@ -1226,7 +1225,7 @@ def test_a_passing_runs_confirmed_is_measured_not_inferred():
         checks=[SELF_INTERSECTION_HELD, {"ok": True, "held": [0]}],
     )
 
-    data = events.first(ASSERTION).data
+    data = first_event(events, ASSERTION).data
     assert ACCEPTANCE[0] in data["confirmed"]
     assert ACCEPTANCE[1] not in data["confirmed"]
     assert ACCEPTANCE[1] not in (data.get("unmet") or [])
@@ -1257,8 +1256,8 @@ def test_what_the_user_decided_about_a_failed_result_is_on_the_stream():
     )
 
     assert decided, "the user was never asked"
-    question = events.of(QUESTION)[-1]
-    answer = events.of(ANSWER)[-1]
+    question = events_of(events, QUESTION)[-1]
+    answer = events_of(events, ANSWER)[-1]
     assert "what to do about it is yours to say" in question.data["text"]
     assert "did not hold" in question.data["text"]
     assert answer.data["text"] == "You took the result as it is."
@@ -1275,7 +1274,7 @@ def test_starting_over_is_recorded_as_the_licence_it_is():
         decide=lambda failure: START_OVER,
     )
 
-    assert "delete what was built" in events.of(ANSWER)[-1].data["text"]
+    assert "delete what was built" in events_of(events, ANSWER)[-1].data["text"]
 
 
 def test_nothing_is_asked_when_the_run_applied_nothing_to_lose():
@@ -1301,7 +1300,7 @@ def test_a_run_that_inherits_a_failure_says_so_before_it_reads_the_drawing():
         planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(), verdict_reply("pass"),
         outstanding=STILL_WRONG)
 
-    assert events.first(OUTSTANDING).data["entries"] == STILL_WRONG
+    assert first_event(events, OUTSTANDING).data["entries"] == STILL_WRONG
     assert [event.kind for event in events][:2] == [INTENT, OUTSTANDING], \
         "what is already wrong turned up after the run had started planning"
 
@@ -1359,7 +1358,7 @@ def test_a_run_that_inherits_nothing_says_nothing_about_it():
     _, events, llm, _ = a_run_over_the_nut(
         planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(), verdict_reply("pass"))
 
-    assert events.first(OUTSTANDING) is None
+    assert first_event(events, OUTSTANDING) is None
     assert "acceptance checks did not pass" not in json.dumps(llm.calls[1])
 
 
@@ -1390,7 +1389,7 @@ def test_design_settles_plans_questions_a_bounded_number_of_times_then_plan_deci
     result, events, _, _ = drive(replies, intent=GEAR, budgets=budgets)
 
     assert result.ok, result.reason
-    assert [event.data["by"] for event in events.of(ANSWER)][-1] == "nobody"
+    assert [event.data["by"] for event in events_of(events, ANSWER)][-1] == "nobody"
 
 
 def test_a_revision_may_recompute_a_value_no_landed_step_used():

@@ -139,13 +139,3 @@ def grouped_conflicts(model) -> dict:
 def _is_machine_written(conflict):
     """Whether *conflict* was appended by a validator, read off `machine_written`."""
     return bool(isinstance(conflict, dict) and conflict.get("machine_written"))
-
-
-def _worth_a_notice(model) -> bool:
-    """Whether *model*'s conflicts hold at least one entry the model itself wrote.
-
-    Recorded corpora put it near one model-written entry per description
-    (1 of 29; 1 of 33) — not the rare case a naive reading would suggest.
-    """
-    return any(not _is_machine_written(conflict)
-              for conflict in (model or {}).get("conflicts") or ())

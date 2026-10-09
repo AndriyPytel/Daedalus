@@ -12,6 +12,7 @@ from core.events import ANSWER, PLAN_REVISED, TURN_BUDGET_EXHAUSTED
 from core.loop.budgets import Budgets
 from tests.loop_helpers import (_MultiTurn, code_reply, design_reply, drive, failed,
                                 plan_reply, question_reply, suspect_reply, verdict_reply)
+from tests.event_helpers import events_of, first_event
 
 
 def test_a_step_that_spends_its_share_is_exhausted_while_the_run_still_has_turns():
@@ -80,8 +81,8 @@ def test_one_step_retried_past_its_share_is_handed_back_not_the_end_of_the_run()
 
     assert result.ok, result.reason
     assert tools.applied_codes()[-len(CODES):] == CODES
-    assert [event.data["scope"] for event in events.of(TURN_BUDGET_EXHAUSTED)] == ["step"]
-    assert events.first(PLAN_REVISED) is not None
+    assert [event.data["scope"] for event in events_of(events, TURN_BUDGET_EXHAUSTED)] == ["step"]
+    assert first_event(events, PLAN_REVISED) is not None
 
 
 def _asks(count):
@@ -96,7 +97,7 @@ def test_the_question_after_the_third_unanswered_one_is_told_to_decide_and_write
     )
 
     assert result.ok, result.reason
-    answers = [event.data["text"] for event in events.of(ANSWER) if event.data["by"] == "nobody"]
+    answers = [event.data["text"] for event in events_of(events, ANSWER) if event.data["by"] == "nobody"]
     assert len(answers) == 4
     assert "assumed" not in answers[2]
     assert "assumed" in answers[3]
@@ -106,5 +107,5 @@ def test_a_plan_that_keeps_asking_after_it_was_told_to_decide_stops_the_run():
     result, events, llm, _ = drive(_asks(12), budgets=Budgets(settles=0))
 
     assert not result.ok
-    assert len([event for event in events.of(ANSWER) if event.data["by"] == "nobody"]) == 4
+    assert len([event for event in events_of(events, ANSWER) if event.data["by"] == "nobody"]) == 4
     assert len(llm.calls) <= 6

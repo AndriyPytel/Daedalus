@@ -2,7 +2,7 @@
 Level 2 -- Preflight refuses a Step that leaves a Body's Shape invalid or
 inverted.
 
-The `_bodies_in_pieces` check is the only shape check Preflight runs today,
+The pieces check is the only shape check Preflight runs today,
 and it only counts solids per `PartDesign::Body`: it says nothing about
 whether the solid it counted is itself valid, or whether it came out
 inverted. Both defects recompute clean -- FreeCAD reports the feature

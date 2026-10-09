@@ -24,7 +24,7 @@ except ImportError:  # pragma: no cover - the addon installs PyYAML
 
 from core.design.core import SECTIONS
 from core.design.report import grouped_conflicts
-from core.logs_root import LOGS
+from core.prompts import LOGS
 
 
 class MissingPyYAML(RuntimeError):

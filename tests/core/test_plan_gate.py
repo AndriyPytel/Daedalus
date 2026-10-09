@@ -25,6 +25,7 @@ from tests.loop_helpers import (
     obsolete_reply, plan_reply, question_reply, scripted, suspect_reply, verdict_reply,
     StubKernel,
 )
+from tests.event_helpers import events_of, first_event
 
 
 def drive(turns, gate, budgets=None, ask=None):
@@ -76,7 +77,7 @@ def test_a_rejected_plan_applies_nothing():
     assert tools.applied_codes() == []
     assert result.blocked
     assert "rejected the Plan" in result.reason
-    assert events.first(BLOCKED) is not None
+    assert first_event(events, BLOCKED) is not None
 
 
 def test_the_gate_sees_the_plan_it_is_approving():
@@ -118,7 +119,7 @@ def test_a_review_driven_revision_goes_back_to_the_gate():
     ], gate)
 
     assert gate.shown == [["Make it"], ["Fix the length"]]
-    assert events.first(PLAN_REVISED).data["reason"] == "20mm, not 10mm"
+    assert first_event(events, PLAN_REVISED).data["reason"] == "20mm, not 10mm"
     assert tools.applied_codes() == ["make()", "fix()"]
 
 
@@ -132,7 +133,7 @@ def test_an_obsolete_driven_revision_goes_back_to_the_gate():
     ], gate)
 
     assert gate.shown == [["Delete the old pad"], ["Add the new one"]]
-    assert "no pad here" in events.first(PLAN_REVISED).data["reason"]
+    assert "no pad here" in first_event(events, PLAN_REVISED).data["reason"]
 
 
 def test_a_revised_plan_is_shown_before_it_changes_anything():
@@ -245,7 +246,7 @@ def test_an_amendment_is_surfaced_as_a_revised_plan():
         suspect_reply(), verdict_reply("pass"),
     ], gate)
 
-    revised = events.first(PLAN_REVISED)
+    revised = first_event(events, PLAN_REVISED)
     assert revised.data["steps"] == ["Just A"]
     assert "Simpler please" in revised.data["reason"]
 
@@ -408,7 +409,7 @@ def test_ok_finishes_the_run_without_a_revision():
 
     assert result.ok
     assert result.steps_applied == 1
-    assert events.first(PLAN_REVISED) is None
+    assert first_event(events, PLAN_REVISED) is None
     assert tools.applied_codes() == ["make()"]
     assert len(decide.shown) == 1
 
@@ -428,7 +429,7 @@ def test_taking_a_failed_result_carries_the_failed_checks_on_the_answer():
 
     assert result.ok
     assert result.unmet
-    assert result.unmet == events.first(ASSERTION).data["unmet"]
+    assert result.unmet == first_event(events, ASSERTION).data["unmet"]
 
 
 def test_accepting_does_not_spend_a_review_on_a_result_already_judged():
@@ -487,7 +488,7 @@ def test_revise_replans_and_the_revision_goes_through_the_gate():
     assert result.ok
     assert gate.shown == [["Make it"], ["Make it 13 mm"]]
     assert tools.applied_codes() == ["make()", "fix()"]
-    assert "start again" not in events.first(PLAN_REVISED).data["reason"].lower()
+    assert "start again" not in first_event(events, PLAN_REVISED).data["reason"].lower()
 
 
 def test_start_over_replans_with_an_explicit_permission_and_still_hits_the_gate():
@@ -508,7 +509,7 @@ def test_start_over_replans_with_an_explicit_permission_and_still_hits_the_gate(
                 SELF_INTERSECTION_HELD, {"ok": True}])
 
     assert gate.shown == [["Make it"], ["Start from nothing"]]
-    assert "delete what was built" in events.first(PLAN_REVISED).data["reason"]
+    assert "delete what was built" in first_event(events, PLAN_REVISED).data["reason"]
 
 
 def test_the_decision_is_not_raised_when_nothing_was_applied():
@@ -552,7 +553,7 @@ def test_a_review_rejection_raises_the_same_decision():
     ], decide)
 
     assert result.ok
-    assert events.first(PLAN_REVISED) is None
+    assert first_event(events, PLAN_REVISED) is None
     assert "20mm, not 10mm" in decide.shown[0]["why"]
     assert decide.shown[0]["applied"] == 1
 
@@ -567,7 +568,7 @@ def test_an_unrecognised_answer_is_the_default_and_not_a_crash():
     ], decide)
 
     assert result.ok
-    assert events.first(PLAN_REVISED) is not None
+    assert first_event(events, PLAN_REVISED) is not None
 
 
 def test_a_headless_run_revises_by_default_and_never_wipes_the_model():
@@ -625,7 +626,7 @@ def test_amending_over_a_decision_replans_without_asking_it_again():
 
     assert result.ok, result.reason
     assert asked == [], "the amendment sent the decision back to the user: %s" % asked
-    revised = events.first(PLAN_REVISED)
+    revised = first_event(events, PLAN_REVISED)
     assert "R30" in revised.data["reason"]
     assert "half the 50 mm height" in json.dumps(revised.data["decided"])
 
@@ -644,7 +645,7 @@ def test_approving_with_edited_steps_builds_the_edited_plan_not_the_generated_on
 
     assert gate.shown == [["Create a 10mm box"]]
     assert tools.applied_codes() == ["box()", "fillet()"]
-    assert events.first(STEP_STARTED).data["total"] == 2
+    assert first_event(events, STEP_STARTED).data["total"] == 2
 
 
 def test_approving_with_no_edited_steps_builds_the_plan_as_generated():
@@ -669,7 +670,7 @@ def test_the_gate_event_carries_the_plan_that_was_actually_approved():
         [plan_reply("Create a 10mm box", "Fillet it"), code_reply("box()"),
          suspect_reply(), verdict_reply("pass")], gate)
 
-    _, decided = events.of(GATE)
+    _, decided = events_of(events, GATE)
     assert decided.data["steps"] == ["Only this one"]
 
 
@@ -687,7 +688,7 @@ def test_auto_mode_off_by_default_still_asks(clean_auto_approve):
         [plan_reply("Create a 10mm box"), code_reply("box()"), suspect_reply(), verdict_reply("pass")], gate)
 
     assert gate.shown == [["Create a 10mm box"]]
-    asked_event, decided_event = events.of(GATE)
+    asked_event, decided_event = events_of(events, GATE)
     assert asked_event.data["asked"] is True
     assert decided_event.data.get("auto") is None
 
@@ -702,7 +703,7 @@ def test_auto_mode_skips_the_gate_entirely_on_the_first_plan(monkeypatch):
     assert gate.shown == [], "auto mode called the gate nobody is meant to answer"
     assert result.ok
     assert tools.applied_codes() == ["box()"]
-    asked_event, decided_event = events.of(GATE)
+    asked_event, decided_event = events_of(events, GATE)
     assert asked_event.data["asked"] is False
     assert decided_event.data["decision"] == APPROVE
     assert decided_event.data["standing"] is True
@@ -724,7 +725,7 @@ def test_auto_mode_auto_approves_an_unread_assumption_too(monkeypatch):
 
     assert gate.shown == []
     assert result.ok
-    decided_event = events.of(GATE)[-1]
+    decided_event = events_of(events, GATE)[-1]
     assert decided_event.data["auto"] is True
     assert decided_event.data["assumed"] == ["Cut an assumed rectangular pocket 30 wide"]
 
@@ -743,7 +744,7 @@ def test_auto_mode_off_leaves_manual_gate_events_unchanged(monkeypatch):
         plan_reply("Create a 10mm box"), code_reply("box()"), suspect_reply(), verdict_reply("pass"),
     ], gate)
 
-    gates = events.of(GATE)
+    gates = events_of(events, GATE)
     assert [g.data.get("decision") for g in gates] == [None, "approve"]
     assert gates[0].data["asked"] is True
     assert gates[1].data["standing"] is True
@@ -773,7 +774,7 @@ def test_auto_mode_revises_a_failed_assertion_without_asking_anybody(monkeypatch
 
     assert result.ok
     assert tools.applied_codes() == ["make()", "fix()"]
-    assert events.first(PLAN_REVISED) is not None
+    assert first_event(events, PLAN_REVISED) is not None
 
 
 def test_auto_mode_marks_the_revision_answer_as_automatic_with_the_failed_checks(
@@ -789,8 +790,8 @@ def test_auto_mode_marks_the_revision_answer_as_automatic_with_the_failed_checks
         checks=[SELF_INTERSECTION_HELD, {"ok": True, "held": [], "failed": [0], "defects": []},
                 SELF_INTERSECTION_HELD, {"ok": True}])
 
-    question = events.first(QUESTION)
-    answer = events.first(ANSWER)
+    question = first_event(events, QUESTION)
+    answer = first_event(events, ANSWER)
     assert question.data["auto"] is True
     assert answer.data["auto"] is True
     assert answer.data["by"] == "auto"
@@ -815,8 +816,8 @@ def test_auto_mode_off_leaves_the_decision_events_unchanged(monkeypatch):
         checks=[SELF_INTERSECTION_HELD, {"ok": True, "held": [], "failed": [0], "defects": []},
                 SELF_INTERSECTION_HELD, {"ok": True}])
 
-    question = events.first(QUESTION)
-    answer = events.first(ANSWER)
+    question = first_event(events, QUESTION)
+    answer = first_event(events, ANSWER)
     assert "auto" not in question.data
     assert answer.data["by"] == "user"
     assert "auto" not in answer.data
@@ -847,7 +848,7 @@ def test_auto_mode_composes_with_the_revision_budget_running_out(monkeypatch):
 
     assert result.blocked
     assert not result.ok
-    answers = events.of(ANSWER)
+    answers = events_of(events, ANSWER)
     auto_answers = [a for a in answers if a.data.get("auto")]
     assert len(auto_answers) == 4
     assert all(a.data["by"] == "auto" for a in auto_answers)

@@ -10,6 +10,7 @@ from core.prompts import ROOT, read_prompt
 
 from tests.loop_helpers import (RENDER_PNG, _grown, assertion_reply, code_reply, design_reply, drive, plan_reply,
                                 read, suspect_reply, verdict_reply)
+from tests.event_helpers import events_of
 
 with open(os.path.join(os.path.dirname(__file__), "plan_125_steps.json"), encoding="utf-8") as recorded:
     PLAN_125 = json.load(recorded)
@@ -80,7 +81,7 @@ def test_the_complaint_is_a_free_patch_that_names_the_offending_step():
                                                "Hole d10", "Fillet R5 the top edge", satisfies=[ADDRESS]))
 
     assert result.ok, result.reason
-    revised = events.of(PLAN_REVISED)
+    revised = events_of(events, PLAN_REVISED)
     assert len(revised) == 1 and revised[0].data["revision"] == 0
     told = json.loads(llm.calls[2][-1]["content"])["what_went_wrong_last_time"]
     assert "Fillet R5 the top edge" in told and "Pad Base" not in told
@@ -92,7 +93,7 @@ def test_the_same_complaint_twice_ends_as_unmet_and_the_run_builds():
     result, events, _, tools = _drive(never, never, never, never)
 
     assert result.ok, result.reason
-    assert len(events.of(PLAN_REVISED)) == 1
+    assert len(events_of(events, PLAN_REVISED)) == 1
     assert any("Fillet R5 the top edge" in entry for entry in result.unmet)
     assert tools.applied_codes()
 

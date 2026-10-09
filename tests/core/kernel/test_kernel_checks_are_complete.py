@@ -26,10 +26,10 @@ from core.kernel import kernel_worker
 OLD_CHECKS = {
     "a recompute left an object Invalid": "_objects_left_in_error",
     "a feature moved no material": "_features_that_moved_no_material",
-    "a Body left in more than one piece": "_bodies_in_pieces",
-    "a Body with an invalid Shape": "_bodies_with_invalid_shape",
-    "a Body with an inverted solid": "_bodies_with_inverted_solid",
-    "a Body whose mesh is not manifold": "_bodies_with_non_manifold_mesh",
+    "a Body left in more than one piece": "_in_pieces",
+    "a Body with an invalid Shape": "_invalid",
+    "a Body with an inverted solid": "_inverted",
+    "a Body whose mesh is not manifold": "_pinched",
 }
 
 
@@ -48,5 +48,6 @@ def test_every_old_preflight_check_still_runs_after_a_step():
         called |= reached
         pending += [name for name in reached if getattr(getattr(kernel_worker, name, None), "__module__", None)
                     == kernel_worker.__name__]
+    called |= {defect.__name__ for defect, _, _ in kernel_worker._BODY_CHECKS}
     dropped = {label: name for label, name in OLD_CHECKS.items() if name not in called}
     assert not dropped, "check(s) no longer reached from _run_step_body: %s" % dropped

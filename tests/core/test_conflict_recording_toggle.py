@@ -7,6 +7,7 @@ from core.events import DESIGN
 from core.loop.budgets import Budgets
 
 from tests.loop_helpers import MODEL_MANIA, design_reply, drive
+from tests.event_helpers import events_of
 
 
 def _read(value):
@@ -21,7 +22,7 @@ def _two_disagreeing_reads():
 
 
 def _the_part(events):
-    return events.of(DESIGN)[-1].data["model"]
+    return events_of(events, DESIGN)[-1].data["model"]
 
 
 def test_two_disagreeing_reads_are_recorded_by_default():

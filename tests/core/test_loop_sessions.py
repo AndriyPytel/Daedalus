@@ -45,10 +45,8 @@ from core.design.report import (
     render,
 )
 from core.design.gaps import (
-    carried_by_no_source,
     decided_for_you,
     entries,
-    measured_from_what_is_gone,
 )
 from core.loop.budgets import Budgets, revisions_ceiling
 from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, prompt
@@ -59,7 +57,6 @@ from tests import modelmania_harness
 from tests.loop_helpers import (
     RENDER_PNG,
     DESCRIPTION,
-    read,
     settled,
     A_CUBE,
     A_CUBE_WITH_A_WALL,
@@ -98,6 +95,7 @@ from tests.loop_helpers import (
     NAMED_WHAT_ENDED_THE_RUN,
     THE_CLAMP_READ_OFF_ONE_VIEW,
 )
+from tests.event_helpers import events_of, first_event
 
 
 def test_a_trailing_gaps_free_continuation_does_not_count_against_attempts_per_step():
@@ -112,7 +110,7 @@ def test_a_trailing_gaps_free_continuation_does_not_count_against_attempts_per_s
     )
 
     assert not result.ok
-    blocked = events.first(BUDGET_EXHAUSTED)
+    blocked = first_event(events, BUDGET_EXHAUSTED)
     assert blocked is not None
     assert len(blocked.data["tried"]) == 2
 
@@ -135,7 +133,7 @@ def test_an_out_of_order_step_is_refused_before_it_can_land():
     )
 
     assert result.ok
-    refusals = [e for e in events.of(TOOL_RESULT)
+    refusals = [e for e in events_of(events, TOOL_RESULT)
                if e.data.get("result", {}).get("status") == "refused"
                and e.data["result"].get("step") == 3]
     assert refusals, "Step 3 must be refused while Step 2 is still missing"
@@ -213,7 +211,7 @@ def test_a_plan_that_needs_no_look_costs_no_look():
         suspect_reply(), verdict_reply("pass"),
     ])
 
-    looked = [e.data["name"] for e in events.of(TOOL_CALL)]
+    looked = [e.data["name"] for e in events_of(events, TOOL_CALL)]
     assert set(looked) == {"apply_step", "check_assertions", "execute"}
     assert not [name for name, _ in tools.calls if name in ("supported_types", "describe_type")]
 
@@ -230,9 +228,9 @@ def test_each_step_still_gets_its_own_started_event():
         suspect_reply(), verdict_reply("pass"),
     ])
 
-    started = events.of(STEP_STARTED)
+    started = events_of(events, STEP_STARTED)
     assert [(e.data["index"], e.data["total"]) for e in started] == [(1, 2), (2, 2)]
-    assert [e.data["step"] for e in events.of(APPLIED)] == [1, 2]
+    assert [e.data["step"] for e in events_of(events, APPLIED)] == [1, 2]
 
 
 def test_a_refused_step_is_rewritten_in_place_and_not_regenerated():
@@ -307,7 +305,7 @@ def test_a_step_the_reply_left_out_fails_that_step_and_not_the_run():
     )
 
     assert result.ok
-    failure = events.first(PREFLIGHT_FAILED)
+    failure = first_event(events, PREFLIGHT_FAILED)
     assert failure.data["step"] == 2
     assert "no code for Step 2" in failure.data["traceback"]
     assert failure.data["gate"] == "no_code"
@@ -329,7 +327,7 @@ def test_a_trailing_gap_says_it_ran_out_of_room_and_steers_shorter():
     )
 
     assert result.ok
-    failure = events.first(PREFLIGHT_FAILED)
+    failure = first_event(events, PREFLIGHT_FAILED)
     assert failure.data["step"] == 2
     assert "ran out of room before finishing this reply" in failure.data["traceback"]
     assert "nothing after it either" in failure.data["traceback"]
@@ -354,7 +352,7 @@ def test_a_step_left_out_with_no_reason_records_what_the_reply_carried():
     )
 
     assert result.ok
-    failure = events.first(PREFLIGHT_FAILED)
+    failure = first_event(events, PREFLIGHT_FAILED)
     assert "keys: steps" in failure.data["traceback"]
     assert "steps carried: [1], with code: [1]" in failure.data["traceback"]
 
@@ -375,7 +373,7 @@ def test_a_reply_with_nothing_usable_says_so_in_the_traceback():
     )
 
     assert result.ok
-    failure = events.first(PREFLIGHT_FAILED)
+    failure = first_event(events, PREFLIGHT_FAILED)
     assert failure.data["attempt"] == 1
     assert "no code for Step 1" in failure.data["traceback"]
     assert "keys: note" in failure.data["traceback"]
@@ -401,7 +399,7 @@ def test_what_reaches_plan_is_capped_whatever_shape_the_reply_took():
     )
 
     assert result.ok
-    failure = events.first(PREFLIGHT_FAILED)
+    failure = first_event(events, PREFLIGHT_FAILED)
     assert failure.data["step"] == 1
     assert "299" not in failure.data["traceback"], \
         "the tail of a 299-Step claim reached the traceback uncapped"
@@ -424,7 +422,7 @@ def test_a_step_that_lands_is_unaffected_by_what_the_reply_said():
     )
 
     assert result.ok
-    assert events.first(PREFLIGHT_FAILED) is None
+    assert first_event(events, PREFLIGHT_FAILED) is None
 
 
 def test_the_reason_a_recompute_failed_reaches_the_next_attempts_request():
@@ -455,8 +453,8 @@ def test_a_failed_attempt_is_surfaced_before_the_retry():
 
     kinds = [e.kind for e in events]
     assert kinds.index(PREFLIGHT_FAILED) < kinds.index(APPLIED)
-    assert events.first(PREFLIGHT_FAILED).data["traceback"] == "ValueError: nope"
-    assert events.first(PREFLIGHT_FAILED).data["attempt"] == 1
+    assert first_event(events, PREFLIGHT_FAILED).data["traceback"] == "ValueError: nope"
+    assert first_event(events, PREFLIGHT_FAILED).data["attempt"] == 1
 
 
 def test_execute_can_declare_a_step_obsolete_and_plan_revises():
@@ -469,7 +467,7 @@ def test_execute_can_declare_a_step_obsolete_and_plan_revises():
     ])
 
     assert result.ok
-    revised = events.first(PLAN_REVISED)
+    revised = first_event(events, PLAN_REVISED)
     assert revised is not None, "the revision was not surfaced"
     assert revised.data["steps"] == ["Add the new one"]
     assert "no pad in this Document" in revised.data["reason"]
@@ -505,7 +503,7 @@ def test_a_revised_plan_does_not_reapply_steps_that_already_landed():
         "Steps 1 and 2 were applied again on the second pass"
 
     revised_at = [e.kind for e in events].index(PLAN_REVISED)
-    after = events[revised_at + 1:]
+    after = list(events)[revised_at + 1:]
     assert [e.data["index"] for e in after if e.kind == STEP_STARTED] == [3, 4], \
         "a carried Step was started again"
     carried = [e.data["step"] for e in after if e.kind == APPLIED and e.data["step"] in (1, 2)]
@@ -532,7 +530,7 @@ def test_a_revised_plan_says_which_revision_it_is_and_what_caused_it():
         suspect_reply(), verdict_reply("pass"),
     ], budgets=Budgets(revisions=3))
 
-    revised = events.first(PLAN_REVISED).data
+    revised = first_event(events, PLAN_REVISED).data
     assert (revised["revision"], revised["of"]) == (1, 3)
     assert revised["because"] == "Execute found the Plan out of date"
 
@@ -549,7 +547,7 @@ def test_the_plan_gate_leaves_both_ends_of_its_wait_on_the_stream():
         suspect_reply(), verdict_reply("pass"),
     ])
 
-    opened, decided = events.of(GATE)
+    opened, decided = events_of(events, GATE)
     assert opened.data == {"steps": 1, "asked": True}
     assert decided.data == {"decision": "approve", "standing": False, "steps": ["Add a box"]}
     kinds = [e.kind for e in events]
@@ -578,7 +576,7 @@ def test_obsolete_beside_code_does_not_throw_that_code_away():
 
     assert result.ok
     assert tools.applied_codes() == ["pad()", "fillet()"]
-    revised = events.first(PLAN_REVISED)
+    revised = first_event(events, PLAN_REVISED)
     assert "which edges are marked" in revised.data["reason"]
     assert revised.data["because"] == "Execute could not build a Step"
 
@@ -604,8 +602,8 @@ def test_a_step_left_out_with_a_reason_hands_back_without_spending_attempts():
     assert result.ok
     assert tools.applied_codes() == ["pad()", "hex()"]
     assert len(_execute_attempts(llm)) == 2, "the left-out Step was written again"
-    assert events.first(PREFLIGHT_FAILED) is None
-    revised = events.first(PLAN_REVISED)
+    assert first_event(events, PREFLIGHT_FAILED) is None
+    revised = first_event(events, PLAN_REVISED)
     assert "moves no material" in revised.data["reason"]
     assert revised.data["because"] == "Execute could not build a Step"
 
@@ -640,8 +638,8 @@ def test_an_unbuildable_reply_on_a_retry_hands_back_instead_of_being_asked_again
         "handed back after the second reply, not asked a third time within the same Plan"
     retried = [turn for turn in _turns_of(llm, "execute") if "traceback" in turn][0]
     assert "Fillet (Part::Fillet): FilletId is not part of the shape" in retried["traceback"]
-    assert len(events.of(PREFLIGHT_FAILED)) == 1, "the real failure was the only attempt spent"
-    revised = events.first(PLAN_REVISED)
+    assert len(events_of(events, PREFLIGHT_FAILED)) == 1, "the real failure was the only attempt spent"
+    revised = first_event(events, PLAN_REVISED)
     assert "nothing left to round" in revised.data["reason"]
     assert revised.data["because"] == "Execute could not build a Step"
 
@@ -761,7 +759,7 @@ def test_the_part_design_read_is_written_to_a_file_the_run_names():
 
     written = events.last(PART).data["path"]
     assert os.path.isfile(written)
-    assert part_file.read(written) == events.first(DESIGN).data["model"]
+    assert part_file.read(written) == first_event(events, DESIGN).data["model"]
 
 
 def test_a_missing_pyyaml_ends_the_run_as_a_sentence_and_not_a_crash_report(monkeypatch):
@@ -825,7 +823,7 @@ def test_a_run_given_a_prior_part_skips_the_design_phase():
         suspect_reply(), verdict_reply("pass"),
     ], the_part_path=written)
 
-    assert not events.of(DESIGN)
+    assert not events_of(events, DESIGN)
     assert not _turns_of(llm, "design")
     assert _turns_of(llm, "plan")[0]["what_the_part_is"] == render(part_file.read(written))
     assert result.the_part_path == written
@@ -840,7 +838,7 @@ def test_a_run_with_no_prior_part_still_runs_design():
         suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
-    assert events.of(DESIGN)
+    assert events_of(events, DESIGN)
     assert llm.calls, "Design never asked the provider anything"
     written = events.last(PART).data["path"]
     assert result.the_part_path == written
@@ -866,7 +864,7 @@ def test_an_attachment_on_a_resumed_run_overrides_the_prior_part():
         suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], the_part_path=written)
 
-    assert events.of(DESIGN)
+    assert events_of(events, DESIGN)
     assert llm.calls, "Design never asked the provider anything"
     assert result.the_part_path != written
     assert result.the_part_path == events.last(PART).data["path"]
@@ -896,24 +894,6 @@ def test_plan_is_handed_the_document_and_not_everything_design_read():
     assert len(handed) < 9_000, "Plan is being handed the evidence again"
 
 
-
-
-
-
-def test_no_number_in_the_document_came_from_the_distiller():
-    """
-    The boundary the distiller is held to, over the run that named it: every
-    number the document states is in the evidence log beside it or in the
-    Intent it was read under. The half that decides identity and catches what
-    does not follow is a model reading prose, and a model free to decide those
-    is free to write a value no source carried — which is the one thing this
-    phase exists to prevent. The added 77 mm is what that looks like.
-    """
-    document, logged, intent = _the_clamp_as_it_was_read()
-    invented = dict(document, envelope=dict(document["envelope"], height=read("77 mm")))
-
-    assert carried_by_no_source(document, logged, intent) == []
-    assert carried_by_no_source(invented, logged, intent) == [77.0]
 
 
 
@@ -1067,22 +1047,6 @@ def test_two_entries_that_cannot_both_be_true_still_reach_the_gate():
 
 
 
-def test_nothing_the_document_states_is_measured_from_a_face_the_sheet_deleted():
-    """
-    The recorded run of the 2023 pipe clamp measures seven of its criteria from
-    two faces the second page deletes: the 108 mm overall and the lengthwise
-    position of the outer profile, the bore and the outer ring from the left
-    lug's tangent plane, and the slot from the axis of the hole it replaces.
-    Every one of them is a criterion the finished part is checked against and
-    none of them is on it.
-    """
-    document, logged, _ = _the_clamp_as_it_was_read()
-
-    assert [found["about"] for found in measured_from_what_is_gone(logged, logged)] == \
-        MEASURED_FROM_A_DELETED_FACE
-    assert measured_from_what_is_gone(document, logged) == []
-
-
 def test_each_of_the_seven_is_re_measured_from_a_datum_that_survives():
     """
     Re-measured and not dropped: what the sheet gave stays a criterion, keyed by
@@ -1127,7 +1091,6 @@ def test_a_run_asked_for_the_earlier_revision_re_measures_nothing():
     phase_1 = _asked_for_phase_1(merge({}, THE_2023_CLAMP))
     document = distilled(phase_1)
 
-    assert measured_from_what_is_gone(document, phase_1) == []
     assert [entry["about"] for entry in entries(document)] == \
         [entry["about"] for entry in entries(phase_1)]
     assert entry_at(document, MEASURED_FROM_A_DELETED_FACE[0])["value"] == "108 mm"

@@ -328,16 +328,6 @@ is.
             self._fit_open_height()
         self._paint_head()
 
-    def phase_state(self, phase):
-        return self._states[phase]
-
-    def step_state(self, index):
-        """1-based, matching the Step numbering in the event stream."""
-        return self._step_states[index - 1]
-
-    def step_count(self):
-        return len(self._step_states)
-
     def _timed(self, at, closing=None, opening=None):
         """One phase's clock, stamped by the same call that moves its mark.
         Every verb below changes state and, given `at`, records when that
@@ -747,8 +737,3 @@ deltas.
         self._step_labels[position].setText(label_text)
         _paint(self._step_icons[position], self._step_labels[position],
               self._step_states[position], ICON_DENSE)
-
-    def _repaint_steps(self):
-        """Repaint all step rows with current times."""
-        for position in range(len(self._step_states)):
-            self._repaint_step(position)

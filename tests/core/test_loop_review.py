@@ -15,13 +15,12 @@ import re
 import tempfile
 import time
 from dataclasses import replace
-from unittest.mock import Mock
 
 import pytest
 
 from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, BUDGET_EXHAUSTED, CALL_STARTED, COMPLETED,
-    CONSULT_DESIGN, CONSULT_DESIGN_ANSWERED, COST, ERROR, GATE, INTENT, PART, PLAN, PLAN_REVISED,
+    COST, ERROR, GATE, INTENT, PART, PLAN, PLAN_REVISED,
     DESIGN, PREFLIGHT_FAILED, QUESTION,
     REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_DECLARED, STEP_STARTED, STOPPED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
@@ -47,16 +46,15 @@ from core.design.report import (
     render,
 )
 from core.design.gaps import (
-    carried_by_no_source,
     decided_for_you,
     entries,
-    measured_from_what_is_gone,
 )
 from core.loop.budgets import Budgets, revisions_ceiling
-from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, _streamed, prompt
+from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, prompt
 from core.lint import lint
 from core.loop.run import run
-import core.loop.prompt as loop_prompt_module
+from core.agent import agent
+from core.llm.session import Session
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from tests.loop_helpers import (
@@ -99,6 +97,7 @@ from tests.loop_helpers import (
     THROUGH_OR_NOT,
     OFF_THE_SECTION,
 )
+from tests.event_helpers import events_of, first_event, log_of
 
 
 def test_review_is_no_longer_told_the_bounding_box():
@@ -265,7 +264,7 @@ def test_a_step_that_cannot_be_built_returns_to_plan():
     )
 
     assert result.ok
-    revised = events.first(PLAN_REVISED)
+    revised = first_event(events, PLAN_REVISED)
     assert revised is not None
     assert revised.data["steps"] == ["Possible"]
     assert "could not be built" in revised.data["reason"]
@@ -334,7 +333,7 @@ def test_a_step_handed_back_twice_with_nothing_applied_stops_the_run():
         "the Step never reached the kernel, so the hand-back's own account "
         "is the only word on it and the advice must stand")
     assert tools.applied_codes() == []
-    assert len(events.of(PLAN_REVISED)) == 1, "the loop kept rewriting a Step going nowhere"
+    assert len(events_of(events, PLAN_REVISED)) == 1, "the loop kept rewriting a Step going nowhere"
 
 
 def test_a_step_handed_back_after_another_one_landed_is_still_replanned():
@@ -430,8 +429,8 @@ def test_two_review_cycles_per_plan_then_blocked():
 
     assert not result.ok
     assert result.verdict == "fail"
-    assert len(events.of(REVIEW_VERDICT)) == 3
-    blocked = events.first(BLOCKED)
+    assert len(events_of(events, REVIEW_VERDICT)) == 3
+    blocked = first_event(events, BLOCKED)
     assert "review" in blocked.data["reason"].lower()
     assert "no better" in json.dumps(blocked.data["tried"])
 
@@ -445,7 +444,7 @@ def test_repeated_obsolete_declarations_cannot_loop_forever():
     ])
 
     assert not result.ok
-    assert events.first(BUDGET_EXHAUSTED) is not None
+    assert first_event(events, BUDGET_EXHAUSTED) is not None
 
 
 def test_budgets_are_configurable():
@@ -469,7 +468,7 @@ def test_blocked_waits_for_the_user_rather_than_failing_silently():
     assert result.blocked
     assert not result.ok
     assert result.awaiting_user
-    assert events[-1].kind == BUDGET_EXHAUSTED
+    assert list(events)[-1].kind == BUDGET_EXHAUSTED
 
 
 
@@ -482,8 +481,8 @@ def test_a_refused_execute_ends_blocked_with_the_provider_s_reason():
     assert result.blocked and result.awaiting_user
     assert "quota" in result.reason and "26s" in result.reason
     assert result.verdict is None
-    assert events[-1].kind == BLOCKED
-    assert events.of(ERROR) == [], "a refusal was reported as a crash"
+    assert list(events)[-1].kind == BLOCKED
+    assert events_of(events, ERROR) == [], "a refusal was reported as a crash"
 
 
 def test_the_steps_already_applied_are_still_counted_when_the_provider_refuses():
@@ -500,8 +499,8 @@ def test_the_provider_s_verbatim_words_reach_the_session_log():
         plan_reply("Only"), a_refusal(),
     ])
 
-    assert "RESOURCE_EXHAUSTED" in events.first(BLOCKED).data["provider_said"]
-    assert "RESOURCE_EXHAUSTED" in events.as_log()
+    assert "RESOURCE_EXHAUSTED" in first_event(events, BLOCKED).data["provider_said"]
+    assert "RESOURCE_EXHAUSTED" in log_of(events)
 
 
 def test_half_a_step_is_never_applied_when_the_stream_dies_partway():
@@ -528,7 +527,7 @@ def test_a_refusal_during_plan_ends_the_same_way_as_one_during_execute():
 
     assert result.blocked
     assert "quota" in result.reason
-    assert events[-1].kind == BLOCKED
+    assert list(events)[-1].kind == BLOCKED
 
 
 def test_a_genuinely_malformed_reply_still_says_it_was_malformed():
@@ -540,7 +539,7 @@ def test_a_genuinely_malformed_reply_still_says_it_was_malformed():
     assert not result.blocked
     assert not result.ok
     assert "did not reply with JSON" in result.reason
-    assert events.first(ERROR) is not None
+    assert first_event(events, ERROR) is not None
 
 
 def test_a_reply_that_is_all_reasoning_and_no_answer_is_not_called_malformed():
@@ -555,7 +554,7 @@ def test_a_reply_that_is_all_reasoning_and_no_answer_is_not_called_malformed():
     assert "could not parse a JSON reply" not in result.reason
     assert "reasoning" in result.reason
     assert "output tokens" not in result.reason, "a cap it never reached is the wrong advice"
-    assert events.first(ERROR) is not None
+    assert first_event(events, ERROR) is not None
 
 
 
@@ -587,10 +586,9 @@ def test_a_cut_off_stream_backs_off_before_the_retry(monkeypatch):
     """
     sleeps = []
     monkeypatch.setattr(time, "sleep", lambda seconds: sleeps.append(seconds))
-    monkeypatch.setattr(loop_prompt_module, "_one_call", Mock(side_effect=[
-        StreamCutOff("cut once"), StreamCutOff("cut twice"), ("body text", "", "")]))
+    llm = ScriptedLLMClient([StreamCutOff("cut once"), StreamCutOff("cut twice"), "body text"])
 
-    body, thought, reasoning = _streamed(None, EventStream(), "Plan", "system", "user")
+    body = agent._say(Session(), llm, "user")
 
     assert body == "body text"
     assert sleeps == [1, 2], "a growing pause between the two failed attempts"
@@ -660,7 +658,6 @@ def test_the_event_stream_of_a_clean_run_with_acceptance():
         STEP_STARTED,
         CALL_STARTED, WRITING, COST, REVIEW_SUSPECTED,
         TOOL_CALL, TOOL_RESULT,
-        CONSULT_DESIGN, CONSULT_DESIGN_ANSWERED,
         CALL_STARTED, WRITING, COST, TOOL_CALL, TOOL_RESULT, ASSERTION,
         CALL_STARTED, WRITING, COST, REVIEW_VERDICT,
         COMPLETED,
@@ -729,8 +726,8 @@ def test_tool_calls_and_their_results_are_both_visible():
         plan_reply("Only"), code_reply("box()", label="Add the box"), suspect_reply(), verdict_reply("pass"),
     ])
 
-    call = next(e for e in events.of(TOOL_CALL) if e.data["name"] == "apply_step")
-    result = next(e for e in events.of(TOOL_RESULT) if e.data["name"] == "apply_step")
+    call = next(e for e in events_of(events, TOOL_CALL) if e.data["name"] == "apply_step")
+    result = next(e for e in events_of(events, TOOL_RESULT) if e.data["name"] == "apply_step")
     assert call.data == {"name": "apply_step", "arguments": {
         "code": "box()", "label": "Add the box",
         "kernel_result": {"created": [], "deleted": [], "modified": [], "objects": [],
@@ -750,7 +747,7 @@ def test_no_step_puts_a_picture_in_the_stream():
     ])
 
     assert [e for e in events if e.kind == "render"] == []
-    assert "render" not in events.first(TOOL_RESULT).data["result"]
+    assert "render" not in first_event(events, TOOL_RESULT).data["result"]
 
 
 def test_reasoning_is_streamed_tagged_with_the_phase_it_came_from():
@@ -760,7 +757,7 @@ def test_reasoning_is_streamed_tagged_with_the_phase_it_came_from():
         suspect_reply(), verdict_reply("pass", thinking="judging out loud"),
     ])
 
-    assert [(e.data["phase"], e.data["text"]) for e in events.of(THOUGHT)] == [
+    assert [(e.data["phase"], e.data["text"]) for e in events_of(events, THOUGHT)] == [
         ("plan", "planning out loud"),
         ("execute", "coding out loud"),
         ("review", "judging out loud"),
@@ -783,11 +780,11 @@ def test_the_words_a_phase_writes_reach_the_stream_as_it_writes_them():
         suspect_reply(), verdict_reply("pass"),
     ])
 
-    written = "".join(e.data["text"] for e in events.of(WRITING)
+    written = "".join(e.data["text"] for e in events_of(events, WRITING)
                       if e.data["phase"] == "plan")
 
     assert json.loads(written)["declare"]["steps"] == ["Only"]
-    assert {e.data["phase"] for e in events.of(WRITING)} == {
+    assert {e.data["phase"] for e in events_of(events, WRITING)} == {
         "design", "plan", "execute", "review_suspect", "review"}
 
 
@@ -844,7 +841,7 @@ def test_a_phase_that_answers_without_thinking_leaves_the_accordion_empty():
     """
     _, events = a_clean_run(on_a_subscription(CLEAN))
 
-    assert events.of(THOUGHT) == []
+    assert events_of(events, THOUGHT) == []
 
 
 def test_a_run_on_a_provider_that_only_ever_sends_text_still_finishes():
@@ -868,7 +865,7 @@ def test_every_call_writes_what_it_would_have_cost():
 
     _, events = a_clean_run(llm)
 
-    spent = events.of(COST)
+    spent = events_of(events, COST)
     assert len(spent) == len(llm.calls)
     assert spent[0].data["phase"] == "design"
     assert spent[0].data["usd"] == 0.0049
@@ -883,7 +880,7 @@ def test_what_a_call_cost_lands_in_the_session_log():
 
     _, events = a_clean_run(llm)
 
-    written = [line for line in events.as_log().splitlines() if '"kind": "cost"' in line]
+    written = [line for line in log_of(events).splitlines() if '"kind": "cost"' in line]
     assert len(written) == len(llm.calls)
 
 
@@ -896,7 +893,7 @@ def test_a_provider_that_says_nothing_about_what_it_spent_writes_cost_with_only_
     """
     _, events, _, _ = drive(CLEAN)
 
-    cost_events = events.of(COST)
+    cost_events = events_of(events, COST)
     assert len(cost_events) == 6
     for cost in cost_events:
         assert "seconds" in cost.data
@@ -904,42 +901,6 @@ def test_a_provider_that_says_nothing_about_what_it_spent_writes_cost_with_only_
         assert "usd" not in cost.data
         assert "phase" in cost.data
         assert "model" in cost.data
-
-
-def test_a_keyed_provider_that_prices_writes_a_cost_event_through_the_unchanged_seam():
-    """
-    The proof the header stops reading $0.00 for a keyed call: `_streamed` is
-    the one seam every phase's stream is consumed through and this change does
-    not touch it — only `LiteLLMClient` gains a `last_cost`. Reuses the
-    recording `tests/test_llm.py::test_a_priced_streaming_call_sets_last_cost`
-    prices, the one in the suite whose usage survives through to a
-    `ModelResponse` LiteLLM can price.
-    """
-    from litellm.llms.anthropic.chat.handler import ModelResponseIterator
-
-    from tests import modelmania_harness
-    from core.llm import LiteLLMClient
-    from core.loop.prompt import _streamed
-
-    recorded_path = modelmania_harness.RECORDED_DIR / "anthropic_thinking_stream.json"
-    with open(recorded_path, encoding="utf-8") as f:
-        recorded = json.load(f)
-    it = ModelResponseIterator(streaming_response=None, sync_stream=True)
-    chunks = [it.chunk_parser(event) for event in recorded]
-
-    llm = LiteLLMClient(model="claude-3-7-sonnet-20250219", api_key="k",
-                        completion=lambda **kwargs: iter(chunks))
-    events = EventStream()
-
-    _streamed(llm, events, "design", "system", "user")
-
-    cost_events = [e.data for e in events.of(COST)]
-    assert len(cost_events) == 1
-    assert cost_events[0]["phase"] == "design"
-    assert cost_events[0]["usd"] == 0.004521
-    assert cost_events[0]["model"] == "claude-3-7-sonnet-20250219"
-    assert "seconds" in cost_events[0]
-    assert isinstance(cost_events[0]["seconds"], float)
 
 
 def test_the_stream_can_be_watched_live():
@@ -960,7 +921,7 @@ def test_a_reply_that_is_not_json_is_an_error_the_user_is_told_about():
     result, events, _, _ = drive(prose, budgets=Budgets(revisions=2))
 
     assert not result.ok
-    error = events.first(ERROR)
+    error = first_event(events, ERROR)
     assert error is not None
     assert "json" in error.data["message"].lower()
 
@@ -969,7 +930,7 @@ def test_a_plan_with_no_steps_is_an_error_not_a_silent_success():
     result, events, _, _ = drive([plan_reply()])
 
     assert not result.ok
-    assert events.first(ERROR) is not None
+    assert first_event(events, ERROR) is not None
 
 
 def test_a_provider_failure_is_surfaced_rather_than_swallowed():
@@ -981,7 +942,7 @@ def test_a_provider_failure_is_surfaced_rather_than_swallowed():
     result = run("Make a box", llm=Exploding(), tools=FakeTools().registry, events=events)
 
     assert not result.ok
-    assert "429 rate limited" in events.first(ERROR).data["message"]
+    assert "429 rate limited" in first_event(events, ERROR).data["message"]
 
 
 def test_the_user_can_stop_between_steps():
@@ -1017,7 +978,7 @@ def test_stopping_says_what_is_already_in_the_document():
     run("Make a box", llm=scripted([plan_reply("First")]),
         tools=FakeTools().registry, events=events, cancelled=lambda: stop["now"])
 
-    stopped = events.first(STOPPED)
+    stopped = first_event(events, STOPPED)
     assert "still in the Document" in stopped.data["reason"]
 
 
@@ -1082,7 +1043,7 @@ def test_plan_can_ask_instead_of_planning():
          verdict_reply("pass")],
         intent=GEAR)
 
-    question = events.first(QUESTION)
+    question = first_event(events, QUESTION)
     assert question is not None and question.data["text"] == MISSING
     kinds = [e.kind for e in events]
     assert kinds.index(QUESTION) < kinds.index(PLAN)
@@ -1132,8 +1093,8 @@ def test_a_run_nobody_is_watching_gets_a_plan_settled_for_them():
         intent=GEAR)
 
     assert result.ok
-    assert events.first(ANSWER).data["by"] == "design"
-    assert events.first(ANSWER).data["text"]
+    assert first_event(events, ANSWER).data["by"] == "design"
+    assert first_event(events, ANSWER).data["text"]
     to_plan = json.loads(llm.calls[3][-1]["content"])
     assert "module" in json.dumps(to_plan["what_the_part_is"])
 
@@ -1150,7 +1111,7 @@ def test_with_nobody_to_ask_and_nothing_design_can_settle_the_run_does_not_stall
         intent=GEAR)
 
     assert result.ok
-    assert events.first(ANSWER).data["by"] == "nobody"
+    assert first_event(events, ANSWER).data["by"] == "nobody"
     assert "not_defined" in json.dumps(llm.calls[2])
 
 
@@ -1175,8 +1136,8 @@ def test_a_settle_attempt_that_changes_nothing_falls_through_and_asks_no_more():
     assert result.ok, result.reason
     design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompts_of("design"))]
     assert len(design_turns) == 2, "a settle attempt that changed nothing was tried again"
-    assert [answer.data["by"] for answer in events.of(ANSWER)] == ["nobody"]
-    assert events.first(PLAN).data["unanswered"] == [MISSING]
+    assert [answer.data["by"] for answer in events_of(events, ANSWER)] == ["nobody"]
+    assert first_event(events, PLAN).data["unanswered"] == [MISSING]
 
 
 
@@ -1211,7 +1172,7 @@ def test_the_plan_gate_lists_a_design_settled_value_as_an_assumption():
 
     assert lint(code).ok, lint(code).report()
 
-    decided = events.first(PLAN).data["decided"]
+    decided = first_event(events, PLAN).data["decided"]
     assert any("envelope \u2192 length" in line and "40 mm" in line for line in decided), \
         "the value the model settled did not reach the Gate as an assumption"
 
@@ -1238,9 +1199,9 @@ def test_a_run_nobody_answered_at_all_reaches_the_gate_rather_than_a_block():
 
     assert result.ok, result.reason
     assert asked == [], "the user was asked for a value: %s" % asked
-    assert events.of(GATE), "the run never reached the Plan Gate"
-    assert events.first(PLAN).data["unanswered"] == ["q1", "q2", "q3"]
-    assert "half the 50 mm height" in json.dumps(events.first(PLAN).data["decided"]), \
+    assert events_of(events, GATE), "the run never reached the Plan Gate"
+    assert first_event(events, PLAN).data["unanswered"] == ["q1", "q2", "q3"]
+    assert "half the 50 mm height" in json.dumps(first_event(events, PLAN).data["decided"]), \
         "the value the model settled reached the Gate without its evidence"
     assert tools.applied_codes() == ["pad()"]
 
@@ -1270,7 +1231,7 @@ def test_a_question_about_a_material_card_is_answered_from_the_tools():
     assert len(design_turns) == 1, "the sheet was asked what no drawing prints"
     assert "b9b3a6ff-1c8e" in json.dumps(_turns_of(llm, "plan")[-1]), \
         "what the Tool said never reached Plan"
-    assert events.first(PLAN).data["unanswered"] == [], \
+    assert first_event(events, PLAN).data["unanswered"] == [], \
         "an answered question reached the Gate as unanswered"
     assert tools.applied_codes() == ["pad()"]
 
@@ -1294,7 +1255,7 @@ def test_rereads_are_spent_only_on_questions_put_to_the_drawing():
     design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompts_of("design"))]
     assert len(design_turns) == 2, \
         "the question about the part was charged for the question about the build"
-    assert events.first(PLAN).data["unanswered"] == []
+    assert first_event(events, PLAN).data["unanswered"] == []
     assert tools.applied_codes() == ["pad()"]
 
 
@@ -1315,7 +1276,7 @@ def test_rereads_counts_re_reads_of_the_drawing_and_nothing_else():
     assert result.ok, result.reason
     design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompts_of("design"))]
     assert len(design_turns) == 5, "the sheet was read past its ceiling"
-    assert events.first(PLAN).data["unanswered"] == ["q1", "q2", "q3"]
+    assert first_event(events, PLAN).data["unanswered"] == ["q1", "q2", "q3"]
 
 
 
@@ -1341,7 +1302,7 @@ def test_a_question_about_the_drawing_goes_to_the_sheet_before_the_user():
 
     assert result.ok
     assert asked == [], "the user was asked what the drawing answers"
-    answered = events.first(ANSWER)
+    answered = first_event(events, ANSWER)
     assert answered.data["by"] == "drawing"
     assert "20 mm deep (read)" in answered.data["text"]
 
@@ -1412,7 +1373,7 @@ def test_a_question_the_sheet_does_not_answer_is_settled_by_the_model():
 
     assert result.ok, result.reason
     assert asked == [], "the user was asked for a value: %s" % asked
-    assert [answer.data["by"] for answer in events.of(ANSWER)] == ["drawing", "design"]
+    assert [answer.data["by"] for answer in events_of(events, ANSWER)] == ["drawing", "design"]
     assert events.last(DESIGN).data["model"]["tolerances"]["general"]["flag"] == "assumed"
 
 
@@ -1433,8 +1394,8 @@ def test_a_drawing_that_keeps_answering_is_never_a_question_for_anybody():
 
     assert result.ok, result.reason
     assert asked == [], "the user was asked what the drawing answered: %s" % asked
-    assert [answer.data["by"] for answer in events.of(ANSWER)] == ["drawing", "drawing"]
-    assert events.first(PLAN).data["unanswered"] == []
+    assert [answer.data["by"] for answer in events_of(events, ANSWER)] == ["drawing", "drawing"]
+    assert first_event(events, PLAN).data["unanswered"] == []
 
 
 def test_the_re_reads_have_a_ceiling_of_their_own():
@@ -1456,7 +1417,7 @@ def test_the_re_reads_have_a_ceiling_of_their_own():
 
     assert result.ok, result.reason
     assert asked == []
-    assert [answer.data["by"] for answer in events.of(ANSWER)] == ["drawing", "nobody"], \
+    assert [answer.data["by"] for answer in events_of(events, ANSWER)] == ["drawing", "nobody"], \
         "the second question was put to the sheet past the ceiling"
 
 
@@ -1482,7 +1443,7 @@ def test_a_question_raised_after_being_told_to_choose_still_reaches_the_sheet():
 
     assert result.ok, "the second question killed the run: %s" % result.reason
     assert asked == []
-    assert [answer.data["by"] for answer in events.of(ANSWER)] \
+    assert [answer.data["by"] for answer in events_of(events, ANSWER)] \
         == ["drawing", "nobody", "drawing"]
     re_read = llm.calls[5][-1]["content"]
     assert json.loads(re_read[-1]["text"])["the_question"] == "q2"
@@ -1504,8 +1465,8 @@ def test_the_same_question_twice_is_listed_once_and_does_not_end_the_run():
     ], attachments=[RENDER_PNG], ask=lambda _: "")
 
     assert result.ok, result.reason
-    assert events.of(ERROR) == []
-    assert events.first(PLAN).data["unanswered"] == ["q1"]
+    assert events_of(events, ERROR) == []
+    assert first_event(events, PLAN).data["unanswered"] == ["q1"]
     assert tools.applied_codes() == ["a()"]
 
 
@@ -1556,7 +1517,7 @@ def test_one_wedged_step_no_longer_starves_the_step_after_it():
 
     assert result.ok, result.reason
     assert tools.applied_codes() == ["first()", "second()"]
-    assert len(events.of(PLAN_REVISED)) == 4
+    assert len(events_of(events, PLAN_REVISED)) == 4
 
 
 def test_a_budget_exhausted_run_names_the_steps_that_landed_and_the_ones_never_attempted():

@@ -4,16 +4,16 @@ from pathlib import Path
 
 import pytest
 
-from core import logs_root
+from core import prompts
 from core.design import part_file
 from core.loop import execute
 
 
-ROOT = Path(logs_root.__file__).resolve().parents[2]
+ROOT = Path(prompts.__file__).resolve().parents[2]
 
 
-def test_logs_root_is_the_repo_root_not_wherever_the_process_started():
-    assert logs_root.LOGS == str(ROOT / "logs")
+def test_logs_is_the_repo_root_not_wherever_the_process_started():
+    assert prompts.LOGS == str(ROOT / "logs")
 
 
 @pytest.mark.parametrize("module", [part_file, execute])

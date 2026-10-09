@@ -3,11 +3,11 @@ import json
 import os
 from dataclasses import dataclass, field
 
-from core.events import ASSERTION, CONSULT_DESIGN, CONSULT_DESIGN_ANSWERED, TOOL_CALL, TOOL_RESULT
+from core.events import ASSERTION, TOOL_CALL, TOOL_RESULT
 
 import tempfile
 
-from core.agent.agent import run_phase
+from core.agent.agent import run_declaring
 from core.agent import phase_contract as pc
 from core.agent.subagent import SessionTreeSupervisor
 from core.kernel import Kernel
@@ -175,23 +175,6 @@ class _LazyKernel:
             self._real.kill()
 
 
-def _consulted_design(description, events):
-    """
-    The one bounded read Assertion gets of Design's own prose: `description`
-    is already `core.design.report.distilled`'s output, the merged `the_part`
-    dict Plan reads too, with the sheets, the evidence and every re-read
-    Design ran to arrive at it already stripped -- never a live turn with
-    Design, and never a second question. Costs no call of its own: it only
-    logs, once, what this run is about to hand the phase kernel as its
-    read-only `design` artifact (`core/agent/phase_contract.py`).
-    """
-    if not description:
-        return description
-    events.emit(CONSULT_DESIGN)
-    events.emit(CONSULT_DESIGN_ANSWERED, description=description)
-    return description
-
-
 def fixed_checks(acceptance, description, base):
     """The (script, name) pairs every finished Document is put through; a script is empty where it does not apply, and an edit of a *base* part skips the self-intersection scan."""
     return [(the_envelope_measured(acceptance, description), "the envelope"),
@@ -250,7 +233,6 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
                     uncovered=[], traceback="")
         return Checked(confirmed=covered, geometry=geometry)
 
-    design_source = _consulted_design(description, events)
     held, failed, uncovered, defects = set(), set(), set(), {}
     asked = list(range(len(remaining)))
     expressions = {}
@@ -269,16 +251,13 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
                 supervisor = supervisor or SessionTreeSupervisor()
                 task = json.dumps(request, indent=2, default=str)
 
-                with tempfile.TemporaryDirectory() as working_dir:
-                    run_kwargs = {"kernel": working_kernel, "supervisor": supervisor,
-                                 "stream": events, "system": prompt(ASSERTION_PHASE)}
-                    if attempt == 0:
-                        run_kwargs["document"] = document
-                    if design_source:
-                        run_kwargs["design"] = design_source
-                    sources = {}
-                    declared, session, declarations = run_phase(
-                        pc.ASSERTION, working_dir, sources, llm, task, **run_kwargs)
+                run_kwargs = {"kernel": working_kernel, "supervisor": supervisor,
+                              "stream": events, "system": prompt(ASSERTION_PHASE)}
+                if attempt == 0:
+                    run_kwargs["document"] = document
+                if description:
+                    run_kwargs["design"] = description
+                declared, _ = run_declaring(pc.ASSERTION, {}, llm, task, **run_kwargs)
 
                 answered, left_out, unanswered = answers_in(declared, asked)
                 uncovered.update(left_out)

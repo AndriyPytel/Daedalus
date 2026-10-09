@@ -46,10 +46,8 @@ from core.design.report import (
     render,
 )
 from core.design.gaps import (
-    carried_by_no_source,
     decided_for_you,
     entries,
-    measured_from_what_is_gone,
 )
 from core.loop.budgets import Budgets, revisions_ceiling
 from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, prompt
@@ -110,6 +108,7 @@ from tests.loop_helpers import (
     THE_SAME_PICTURE_LOOKED_AT_AGAIN,
     CLOSED_OPS,
 )
+from tests.event_helpers import events_of, first_event
 
 
 def test_a_sheet_that_agrees_with_itself_adds_nothing(tmp_path, monkeypatch):
@@ -332,7 +331,7 @@ def test_a_worker_that_could_not_start_names_why_on_the_transcript(monkeypatch):
     events = EventStream()
 
     assert _a_freecad_of_our_own(events) is None
-    errors = events.of(ERROR)
+    errors = events_of(events, ERROR)
     assert len(errors) == 1
     assert "RuntimeError" in errors[0].data["message"]
     assert "no headless binary" in errors[0].data["message"]
@@ -516,7 +515,7 @@ def test_a_direction_the_sheet_settles_is_corrected_rather_than_stopping_the_run
 
     assert result.ok, result.reason
     assert tools.applied_codes() == ["bore()"]
-    assert events.first(BLOCKED) is None
+    assert first_event(events, BLOCKED) is None
 
 
 def test_the_direction_it_displaced_is_beside_it_in_the_reading(monkeypatch):
@@ -543,7 +542,7 @@ def test_what_was_decided_for_the_user_stands_above_the_steps(monkeypatch):
 
     _, events, _, _ = drive(_THE_BORE_PUT_RIGHT, attachments=[RENDER_PNG])
 
-    decided = events.first(PLAN).data["decided"]
+    decided = first_event(events, PLAN).data["decided"]
     assert any("the upper plan" in line and "the depth" in line for line in decided), \
         "the Gate was not told what was decided, or not what it was decided against"
 
@@ -581,7 +580,7 @@ def test_a_plan_that_asks_for_a_value_is_told_to_choose_and_never_the_user():
     assert result.ok, result.reason
     assert asked == [], "the user was asked for a value: %s" % asked
     assert tools.applied_codes() == ["a()"]
-    assert events.first(PLAN).data["unanswered"] == [MISSING]
+    assert first_event(events, PLAN).data["unanswered"] == [MISSING]
 
 
 
@@ -684,8 +683,8 @@ def test_a_run_whose_only_unbuilt_step_changes_no_geometry_reaches_review():
 
     assert not result.blocked, result.reason
     assert result.ok, result.reason
-    assert events.first(REVIEW_VERDICT).data["verdict"] == "pass"
-    assert events.first(PLAN_REVISED) is None, \
+    assert first_event(events, REVIEW_VERDICT).data["verdict"] == "pass"
+    assert first_event(events, PLAN_REVISED) is None, \
         "the Plan was rewritten over a Step no geometry depends on"
     assert tools.applied_codes() == ["pad()"]
 
@@ -699,7 +698,7 @@ def test_the_entry_the_unbuilt_step_satisfied_comes_back_unmet_with_the_reason()
     result, events, llm, _ = a_run_that_cannot_assign_the_material()
 
     assert result.unmet == [THE_MATERIAL]
-    said = events.first(UNBUILT).data
+    said = first_event(events, UNBUILT).data
     assert said["entries"] == [THE_MATERIAL]
     assert said["why"] == NO_CARD
     assert said["description"].startswith("Assign plain carbon steel to the Body")
@@ -731,7 +730,7 @@ def test_a_rejected_review_carries_the_unbuilt_step_s_entry_on_the_auto_answer(c
     ], attachments=[RENDER_PNG], budgets=Budgets(review_cycles=0))
 
     assert result.blocked
-    answer = events.first(ANSWER).data
+    answer = first_event(events, ANSWER).data
     assert answer["by"] == "auto"
     assert answer["unmet"] == [THE_MATERIAL]
 
@@ -758,8 +757,8 @@ def test_a_step_that_changes_the_shape_is_still_handed_back_to_plan():
     ], attachments=[RENDER_PNG])
 
     assert result.ok, result.reason
-    assert events.first(UNBUILT) is None
-    assert events.first(PLAN_REVISED).data["because"] == "Execute could not build a Step"
+    assert first_event(events, UNBUILT) is None
+    assert first_event(events, PLAN_REVISED).data["because"] == "Execute could not build a Step"
     assert result.unmet == []
     assert tools.applied_codes() == ["pad()", "recess()"], \
         "Step 1 reads the same in both Plans and had already applied, so the revision " \
@@ -842,7 +841,7 @@ def test_mechanical_revisions_do_not_consume_execution_budget():
        applies=[failed("the sketch is overconstrained")])
 
     assert result.ok, "mechanical revisions left room for one execution handback"
-    revised = events.of(PLAN_REVISED)
+    revised = events_of(events, PLAN_REVISED)
     assert len(revised) == 2, f"Expected 2 revisions, got {len(revised)}"
     assert revised[0].data["because"] == "the Plan left part of the description unplanned"
     assert revised[1].data["because"] == "Execute could not build a Step"
@@ -860,7 +859,7 @@ def test_block_reason_names_mechanical_ceiling_when_hit():
     ], attachments=[RENDER_PNG], budgets=Budgets(revisions=5, mechanical_revisions=2))
 
     assert result.blocked
-    blocked = events.first(BUDGET_EXHAUSTED)
+    blocked = first_event(events, BUDGET_EXHAUSTED)
     reason = blocked.data["reason"]
     assert "mechanical ceiling" in reason,         "block_reason distinguishes mechanical ceiling from execution ceiling"
 
@@ -993,7 +992,7 @@ def test_disk_cached_type_is_reported_as_already_known(tmp_path):
     _look(tools.registry, {"tool": "describe_type", "arguments": {"type_id": "PartDesign::Pad"}}, 
           events, second_looks)
 
-    results = [e for e in events.of(TOOL_RESULT) if e.data["name"] == "describe_type"]
+    results = [e for e in events_of(events, TOOL_RESULT) if e.data["name"] == "describe_type"]
     assert len(results) == 1
     assert results[0].data["already_known"] is True, \
         "disk cache hit is reported as already_known in TOOL_RESULT"
@@ -1199,7 +1198,7 @@ def test_an_off_list_op_sends_plan_back_naming_the_verb_and_the_36_allowed():
         suspect_reply(), verdict_reply("pass"),
     ])
 
-    revised = events.first(PLAN_REVISED)
+    revised = first_event(events, PLAN_REVISED)
     assert revised.data["because"] == "a Step named an operation off the closed list"
     assert "lattice-mill" in revised.data["reason"]
     retry = json.dumps(llm.calls[2])
@@ -1249,7 +1248,7 @@ def test_a_closed_marked_steps_op_reaches_the_apply_step_tool_call():
 
     assert ("apply_step", {"code": "doc.addObject('Part::Box', 'Box')",
                            "label": "Add the box", "op": "pad"}) in tools.calls
-    call = next(e for e in events.of(TOOL_CALL) if e.data["name"] == "apply_step")
+    call = next(e for e in events_of(events, TOOL_CALL) if e.data["name"] == "apply_step")
     assert call.data["arguments"]["op"] == "pad"
 
 

@@ -7,6 +7,7 @@ from core.loop.plan import _unconsumed
 
 from tests.loop_helpers import (RENDER_PNG, _grown, assertion_reply, code_reply, design_reply, drive, plan_reply,
                                 read, suspect_reply, verdict_reply)
+from tests.event_helpers import events_of
 
 A_FILLET = {
     "envelope": {"length": read("80 mm")},
@@ -52,7 +53,7 @@ def test_an_uncovered_address_is_patched_without_spending_a_mechanical_revision(
     ], attachments=[_png()], budgets=Budgets(mechanical_revisions=0))
 
     assert result.ok, result.reason
-    patched = events.of(PLAN_REVISED)
+    patched = events_of(events, PLAN_REVISED)
     assert len(patched) == 1
     assert patched[0].data["revision"] == 0
 
@@ -83,7 +84,7 @@ def test_an_address_still_uncovered_after_its_patch_ends_as_unmet_and_the_run_bu
     ], attachments=[_png()], budgets=Budgets(mechanical_revisions=0))
 
     assert result.ok, result.reason
-    assert len(events.of(PLAN_REVISED)) == 1
+    assert len(events_of(events, PLAN_REVISED)) == 1
     assert result.unmet == [RADIUS]
     assert tools.applied_codes() == ["a()"]
 
@@ -106,7 +107,7 @@ def test_a_rollback_deeper_than_the_undo_stack_is_a_patch_that_spends_no_revisio
     ], applies=applies, undo_capacity=2, budgets=Budgets(revisions=1, mechanical_revisions=0))
 
     assert result.ok, result.reason
-    revised = events.of(PLAN_REVISED)
+    revised = events_of(events, PLAN_REVISED)
     assert [e.data["revision"] for e in revised] == [1, 1]
 
 

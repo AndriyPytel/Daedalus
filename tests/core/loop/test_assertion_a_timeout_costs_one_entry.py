@@ -1,11 +1,11 @@
 """One expression that outlives the kernel timeout is that entry's defect alone; the entries before it keep their result and the ones after it are evaluated in a new call."""
 import json
 
+from core.agent import agent as agent_module
 from core.events import EventStream
 from core.kernel.kernel import TIMED_OUT
 from core.kernel.kernel_worker import check_each
 from core.llm import ScriptedLLMClient
-from core.loop import assertion as assertion_module
 from core.loop.assertion import assertion
 from core.tools import ToolRegistry
 
@@ -53,7 +53,7 @@ def _model(monkeypatch, *replies):
         asked.append(json.loads(task))
         return remaining.pop(0), None, []
 
-    monkeypatch.setattr(assertion_module, "run_phase", fake_run_phase)
+    monkeypatch.setattr(agent_module, "run_phase", fake_run_phase)
     return asked
 
 

@@ -6,6 +6,7 @@ that route receives the user's message exactly as typed.
 from core.events import ROUTED, EventStream
 from core.llm import ScriptedLLMClient
 from core.orchestrator import CONTROL, DESIGN, RUN_QUESTION, classify, route
+from tests.event_helpers import events_of
 
 
 def test_classifies_a_design_request():
@@ -65,7 +66,7 @@ def test_routing_decision_is_its_own_event_separate_from_the_message():
                 CONTROL: lambda message, decision: message}
     route("build a bracket", llm=llm, events=events, handlers=handlers)
 
-    routed_events = events.of(ROUTED)
+    routed_events = events_of(events, ROUTED)
     assert len(routed_events) == 1
     assert routed_events[0].data == {"route": DESIGN}
     assert "build a bracket" not in [event.data.get("route") for event in routed_events]

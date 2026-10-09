@@ -45,10 +45,8 @@ from core.design.report import (
     render,
 )
 from core.design.gaps import (
-    carried_by_no_source,
     decided_for_you,
     entries,
-    measured_from_what_is_gone,
 )
 from core.loop.budgets import Budgets, revisions_ceiling
 from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, prompt
@@ -107,6 +105,7 @@ from tests.loop_helpers import (
     A_BOX_FROM_WORDS,
     _a_run_with_no_drawing,
 )
+from tests.event_helpers import events_of, first_event
 
 
 def test_a_second_design_pass_over_the_recorded_reading_adds_no_entry():
@@ -468,9 +467,9 @@ def test_a_self_intersecting_document_is_caught_before_a_provider_writes_checks(
 
     ran = [args["code"] for name, args in tools.calls if name == "check_assertions"]
     assert "BOPAlgo_SelfIntersect" in ran[0], "self-intersection was not measured first"
-    assert events.first(ASSERTION).data["unmet"] == \
+    assert first_event(events, ASSERTION).data["unmet"] == \
         ["Twist self-intersects (BOPAlgo_SelfIntersect)"]
-    assert events.first(ASSERTION).data["confirmed"] == [], \
+    assert first_event(events, ASSERTION).data["confirmed"] == [], \
         "the self-intersection check measures nothing to confirm"
     assert not any(call[0]["content"].startswith(prompt("assertion")) for call in llm.calls), \
         "a provider was asked to write checks for a Document already known to self-intersect"
@@ -489,7 +488,7 @@ def test_a_failed_size_check_records_the_entries_and_not_the_source_line_echoed_
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG], checks=[{"ok": False, "traceback": traceback}], decide=lambda why: "accept")
 
-    assert events.first(ASSERTION).data["unmet"] == entries
+    assert first_event(events, ASSERTION).data["unmet"] == entries
 
 
 def test_the_envelope_check_runs_against_the_document_and_can_fail_it():
@@ -512,8 +511,8 @@ def test_the_envelope_check_runs_against_the_document_and_can_fail_it():
 
     ran = [args["code"] for name, args in tools.calls if name == "check_assertions"]
     assert "measure.box" in ran[0], "the envelope was not measured first"
-    assert events.first(ASSERTION).data["unmet"], "nothing was reported unmet"
-    assert events.first(ASSERTION).data["confirmed"] == [], \
+    assert first_event(events, ASSERTION).data["unmet"], "nothing was reported unmet"
+    assert first_event(events, ASSERTION).data["confirmed"] == [], \
         "the envelope check measures nothing to confirm"
     assert not any(call[0]["content"].startswith(prompt("assertion")) for call in llm.calls), \
         "a provider was asked to write checks for a part already known to be wrong"
@@ -680,7 +679,7 @@ def test_two_holes_that_disagree_and_nothing_to_settle_them_reach_the_gate():
 
     assert result.ok, result.reason
     assert tools.applied_codes() == ["pad()"]
-    assert events.first(BLOCKED) is None
+    assert first_event(events, BLOCKED) is None
     conflicts = json.dumps(events.last(DESIGN).data["model"]["conflicts"])
     assert "the two axes cross" in conflicts
 
@@ -707,7 +706,7 @@ def test_a_run_with_nothing_to_read_writes_no_reading():
     _, events, _, _ = drive([plan_reply("Only"), code_reply("box()"),
                              suspect_reply(), verdict_reply("pass")])
 
-    assert not events.of(PART)
+    assert not events_of(events, PART)
 
 
 
@@ -1068,7 +1067,7 @@ def test_a_run_that_had_an_attachment_says_so_on_the_stream():
                              code_reply("box()"), suspect_reply(), verdict_reply("pass")],
                             attachments=[RENDER_PNG])
 
-    attached = events.first(ATTACHED)
+    attached = first_event(events, ATTACHED)
     assert attached.data["files"] == [{"name": os.path.basename(RENDER_PNG),
                                        "path": RENDER_PNG}]
     assert [event.kind for event in events][:2] == [INTENT, ATTACHED]
@@ -1083,7 +1082,7 @@ def test_the_attachment_is_recorded_even_where_the_file_has_gone():
                              code_reply("box()"), suspect_reply(), verdict_reply("pass")],
                             attachments=["/nowhere/gone.png", RENDER_PNG])
 
-    assert [f["name"] for f in events.first(ATTACHED).data["files"]] == \
+    assert [f["name"] for f in first_event(events, ATTACHED).data["files"]] == \
         ["gone.png", os.path.basename(RENDER_PNG)]
 
 
@@ -1091,7 +1090,7 @@ def test_an_intent_with_no_attachment_adds_no_event():
     _, events, _, _ = drive([plan_reply("Only"), code_reply("box()"),
                              suspect_reply(), verdict_reply("pass")])
 
-    assert events.first(ATTACHED) is None
+    assert first_event(events, ATTACHED) is None
 
 
 def test_the_description_is_an_event_of_its_own_standing_before_the_plan():
@@ -1107,9 +1106,9 @@ def test_the_description_is_an_event_of_its_own_standing_before_the_plan():
                             attachments=[RENDER_PNG])
 
     kinds = [event.kind for event in events]
-    assert events.first(DESIGN).data["model"] == A_PART
+    assert first_event(events, DESIGN).data["model"] == A_PART
     assert kinds.index(DESIGN) < kinds.index(PLAN)
-    assert "reading" not in events.first(PLAN).data
+    assert "reading" not in first_event(events, PLAN).data
 
 
 
@@ -1124,8 +1123,8 @@ def test_with_nothing_attached_the_part_is_described_from_the_words_alone():
     """
     _, events, llm, _ = _a_run_with_no_drawing()
 
-    described = events.first(DESIGN).data["model"]
-    acceptance = events.first(PLAN).data["acceptance"]
+    described = first_event(events, DESIGN).data["model"]
+    acceptance = first_event(events, PLAN).data["acceptance"]
     assert described == A_BOX_FROM_WORDS
     assert acceptance == acceptance_of(A_BOX_FROM_WORDS)
     assert len(acceptance) == len(entries(described))
@@ -1143,10 +1142,10 @@ def test_a_reading_with_no_sheet_to_name_it_after_is_still_written_down():
     _, events, _, _ = _a_run_with_no_drawing()
 
     written = events.last(PART).data["path"]
-    assert len(events.of(PART)) == 1
+    assert len(events_of(events, PART)) == 1
     assert os.path.dirname(written) == part_file.WHERE
     assert os.path.basename(written).startswith(part_file.WITHOUT_A_SHEET)
-    assert part_file.read(written) == distilled(events.first(DESIGN).data["model"])
+    assert part_file.read(written) == distilled(first_event(events, DESIGN).data["model"])
     assert "sheet" not in part_file.provenance(written)
 
 
@@ -1164,7 +1163,7 @@ def test_a_question_nobody_answered_is_settled_by_design_and_shown_at_the_gate()
          code_reply("box()"), suspect_reply(), assertion_reply(), verdict_reply("pass")],
         ask=lambda question: asked.append(question) or None)
 
-    described = events.first(DESIGN).data["model"]
+    described = first_event(events, DESIGN).data["model"]
     settled_by_design = entries(described)
     decided = decided_for_you(described)
     assert asked == ["How long, how wide and how tall is the box?"]
@@ -1174,7 +1173,7 @@ def test_a_question_nobody_answered_is_settled_by_design_and_shown_at_the_gate()
                for entry in settled_by_design)
     assert [entry["about"] for entry in settled_by_design] == \
         [line.split(":")[0] for line in decided]
-    assert events.first(PLAN).data["decided"] == decided
+    assert first_event(events, PLAN).data["decided"] == decided
 
 
 def test_the_checks_measure_a_part_described_from_words_alone():
@@ -1186,8 +1185,8 @@ def test_the_checks_measure_a_part_described_from_words_alone():
     result, events, _, tools = _a_run_with_no_drawing()
 
     assert result.ok
-    assert events.first(ASSERTION).data["confirmed"] == acceptance_of(A_BOX_FROM_WORDS)
-    assert len(events.first(ASSERTION).data["confirmed"]) == len(entries(A_BOX_FROM_WORDS))
+    assert first_event(events, ASSERTION).data["confirmed"] == acceptance_of(A_BOX_FROM_WORDS)
+    assert len(first_event(events, ASSERTION).data["confirmed"]) == len(entries(A_BOX_FROM_WORDS))
     assert any(name == "check_assertions" for name, _ in tools.calls)
 
 
@@ -1271,7 +1270,7 @@ def test_a_revision_plans_from_the_same_description_and_does_not_read_again():
         suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
-    assert len(events.of(DESIGN)) == 1
+    assert len(events_of(events, DESIGN)) == 1
     replan = json.loads(llm.calls[7][-1]["content"])
     assert replan["what_the_part_is"] == render(distilled(A_PART))
     assert replan["what_went_wrong_last_time"] == "not right"
@@ -1348,7 +1347,7 @@ def test_a_failed_verdict_returns_to_plan_and_never_to_execute():
 
     assert "The box is 20mm, not 10mm." in to_plan
     assert "The box is 20mm, not 10mm." not in to_execute, "the verdict reached Execute"
-    assert events.first(PLAN_REVISED).data["steps"] == ["Set Length to 10"]
+    assert first_event(events, PLAN_REVISED).data["steps"] == ["Set Length to 10"]
 
 
 def test_the_verdict_is_surfaced_either_way():
@@ -1358,7 +1357,7 @@ def test_the_verdict_is_surfaced_either_way():
         suspect_reply(), verdict_reply("pass", "That is a 10mm box."),
     ])
 
-    verdict = events.first(REVIEW_VERDICT)
+    verdict = first_event(events, REVIEW_VERDICT)
     assert verdict.data["verdict"] == "pass"
     assert verdict.data["reason"] == "That is a 10mm box."
 
@@ -1379,7 +1378,7 @@ def test_four_attempts_per_step_then_blocked_with_what_was_tried():
 
     assert not result.ok
     assert tools.applied_codes() == ["try1()", "try2()", "try3()", "try4()"]
-    blocked = events.first(BUDGET_EXHAUSTED)
+    blocked = first_event(events, BUDGET_EXHAUSTED)
     assert blocked is not None
     assert len(blocked.data["tried"]) == 4
     assert [t["traceback"] for t in blocked.data["tried"]] == ["one", "two", "three", "four"]
@@ -1399,7 +1398,7 @@ def test_the_acceptance_list_rides_with_the_plan_it_belongs_to():
         suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
-    plan = events.first(PLAN)
+    plan = first_event(events, PLAN)
     assert plan.data["steps"][1] == "Pad it 10 mm"
     assert plan.data["acceptance"] == acceptance_of(A_PART)
 
@@ -1419,7 +1418,7 @@ def test_a_run_with_nothing_described_still_plans_and_shows_an_empty_acceptance(
     ])
 
     assert result.ok
-    assert events.first(PLAN).data["acceptance"] == []
+    assert first_event(events, PLAN).data["acceptance"] == []
 
 
 def test_no_step_carries_named_parameters_any_more():
@@ -1436,8 +1435,8 @@ def test_no_step_carries_named_parameters_any_more():
         suspect_reply(), verdict_reply("pass"),
     ])
 
-    assert events.first(PLAN).data["steps"] == ["Pad the base"]
-    assert "parameters" not in events.first(PLAN).data
+    assert first_event(events, PLAN).data["steps"] == ["Pad the base"]
+    assert "parameters" not in first_event(events, PLAN).data
     assert "the_operation_this_step_names" not in llm.calls[1][1]["content"]
     assert all("parameters" not in args
                for name, args in tools.calls if name == "apply_step")
@@ -1475,7 +1474,7 @@ def test_a_description_that_succeeded_survives_a_reconcile_that_raises(monkeypat
 
     assert not truncated
     assert kinds.index(INTENT) < kinds.index(DESIGN) < kinds.index(ERROR)
-    assert events.first(DESIGN).data["model"] == A_PART
+    assert first_event(events, DESIGN).data["model"] == A_PART
 
 
 def test_a_description_that_itself_failed_writes_no_design(monkeypatch, tmp_path):
@@ -1499,7 +1498,7 @@ def test_a_description_that_itself_failed_writes_no_design(monkeypatch, tmp_path
                  events=events, attachments=[RENDER_PNG])
 
     assert not result.ok
-    assert events.first(DESIGN) is None
+    assert first_event(events, DESIGN) is None
 
     replayed, truncated = replay(path)
     assert DESIGN not in [event.kind for event in replayed]

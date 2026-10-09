@@ -1,12 +1,13 @@
 """Assertion asks the model for one expression per entry, evaluates each alone, and retries only the entries whose expression raised."""
 import json
 
+from core.agent import agent as agent_module
 from core.events import ASSERTION, EventStream
 from core.kernel.kernel_worker import check_each
 from core.llm import ScriptedLLMClient
-from core.loop import assertion as assertion_module
 from core.loop.assertion import assertion
 from core.tools import ToolRegistry
+from tests.event_helpers import first_event
 
 _ENTRIES = ["features \u2192 hole-a \u2192 position \u2192 the left end face: 20 mm",
             "features \u2192 hole-a \u2192 position \u2192 the front face: 15 mm",
@@ -44,7 +45,7 @@ def _model(monkeypatch, *replies):
         asked.append(json.loads(task))
         return remaining.pop(0), None, []
 
-    monkeypatch.setattr(assertion_module, "run_phase", fake_run_phase)
+    monkeypatch.setattr(agent_module, "run_phase", fake_run_phase)
     return asked
 
 
@@ -80,7 +81,7 @@ def test_an_expression_that_is_false_fails_its_entry_and_no_other(monkeypatch, t
 
     assert checked.failed and checked.unmet == [_ENTRIES[1]]
     assert _confirmed(checked) == [_ENTRIES[0], _ENTRIES[2], _ENTRIES[3]]
-    assert events.first(ASSERTION).data["ok"] is False
+    assert first_event(events, ASSERTION).data["ok"] is False
 
 
 def test_an_expression_that_raises_is_a_defect_of_that_entry_and_the_others_keep_their_result(monkeypatch, tmp_path):

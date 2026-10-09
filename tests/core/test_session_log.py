@@ -12,6 +12,7 @@ import pytest
 from core.events import (
     APPLIED, ATTACHED, BLOCKED, KINDS, PLAN, THOUGHT, Event, EventStream, replay,
 )
+from tests.event_helpers import events_of, first_event
 
 
 def test_every_specced_event_kind_exists():
@@ -22,7 +23,7 @@ def test_every_specced_event_kind_exists():
         "review_suspected", "review_verdict", "blocked", "stopped", "call_started", "cost",
         "error", "change_set", "routed", "completed", "aborted", "budget_exhausted", "failed",
         "sub_agent_spawned", "sub_agent_answered", "sub_agent_refused",
-        "consult_design", "consult_design_answered", "turn_budget_exhausted", "invoke_markup",
+        "turn_budget_exhausted", "invoke_markup",
     }
 
 
@@ -198,7 +199,7 @@ def test_the_stream_can_be_queried_by_kind():
     events.emit(PLAN, steps=["a"])
     events.emit(THOUGHT, phase="review", text="two")
 
-    assert [e.data["text"] for e in events.of(THOUGHT)] == ["one", "two"]
-    assert events.first(THOUGHT).data["text"] == "one"
+    assert [e.data["text"] for e in events_of(events, THOUGHT)] == ["one", "two"]
+    assert first_event(events, THOUGHT).data["text"] == "one"
     assert events.last(THOUGHT).data["text"] == "two"
-    assert events.first(BLOCKED) is None
+    assert first_event(events, BLOCKED) is None

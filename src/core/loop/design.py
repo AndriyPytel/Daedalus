@@ -15,17 +15,14 @@ from core.loop.budgets import PhaseError
 from core.loop.prompt import (
     DESIGN_PHASE,
     _CHARS_PER_TOKEN,
-    _ask,
     _pieces_of,
     _the_evidence,
     prompt,
 )
 from core.loop.results import Stopped
 
-import tempfile
-from core.agent.agent import run_phase
+from core.agent.agent import run_declaring
 from core.agent import phase_contract as pc
-from core.agent.subagent import SessionTreeSupervisor
 
 
 def design(body, llm, events, attachments=(), views=None, phase=DESIGN_PHASE,
@@ -44,20 +41,10 @@ def design(body, llm, events, attachments=(), views=None, phase=DESIGN_PHASE,
 
     task = evidence + [{"type": "text", "text": json.dumps(body, indent=2, default=str)}]
 
-    supervisor = supervisor or SessionTreeSupervisor()
-
-    with tempfile.TemporaryDirectory() as working_dir:
-        intent_data = body.get("intent", body)
-
-        declared, session, declarations = run_phase(
-            pc.DESIGN, working_dir,
-            {"intent": intent_data},
-            llm, task,
-            kernel=kernel, supervisor=supervisor, stream=events,
-            system=prompt(DESIGN_PHASE)
-        )
-
-    reply = declared if isinstance(declared, dict) else {}
+    intent_data = body.get("intent", body)
+    reply, _ = run_declaring(
+        pc.DESIGN, {"intent": intent_data}, llm, task, kernel=kernel,
+        supervisor=supervisor, stream=events, system=prompt(DESIGN_PHASE))
     the_part = reply.get("design")
     return (the_part if isinstance(the_part, dict) else {},
             str(reply.get("question") or "").strip())

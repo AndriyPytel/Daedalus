@@ -10,7 +10,6 @@ user needs to spot the miss. An `assumed` value with no `because` is what
 
 
 import re
-from core.sheets.sheet_reader import numbers_in
 from core.design.core import (
     A_CONFLICT,
     KINDS,
@@ -101,25 +100,6 @@ def _in_the_same_words(said):
     """One phrase with the difference between two ways of writing it gone."""
     return " ".join(word for word in _ONE_WORD_FROM_THE_NEXT.split(str(said).lower())
                     if word)
-
-
-def measured_from_what_is_gone(document, evidence) -> list:
-    """
-    The values *document* measures from a datum that went with its feature.
-
-    The invariant a discarded feature leaves behind: once a feature is
-    discarded, it cannot be what another value is measured from. Left
-    standing, the datum is a face the drawing deleted and every value
-    keyed by it is a criterion the finished part cannot meet.
-    """
-    taken_over = _which_datum_takes_over(evidence)
-    found = []
-    for at, entry in _each_value(document, ""):
-        gone = _the_datum_that_is_gone("%s: %s" % (at, entry.get("value")), taken_over)
-        if gone:
-            found.append({"about": at, "stands": str(entry.get("value")),
-                          "instead": taken_over[gone]})
-    return found
 
 
 def _which_datum_takes_over(model):
@@ -239,18 +219,6 @@ _TO_BE_READ_AGAIN = "to be read again off the later page"
 
 _WENT_WITH_THE_FEATURE = "%s went with the feature the later page deleted, " \
                          "and %s takes its place"
-
-
-def carried_by_no_source(document, evidence, intent) -> list:
-    """
-    The numbers the document states that neither the log nor the Intent
-    does. The distiller's boundary: its mechanical half states no number
-    the model didn't give it; its prose half could invent one, which this
-    phase exists to prevent. Checked against four sources only: printed on
-    the sheet, measured off it, worked out from something that was, or said
-    in the Intent.
-    """
-    return sorted(numbers_in(document) - numbers_in(evidence) - numbers_in(intent))
 
 
 def entries(model) -> list:

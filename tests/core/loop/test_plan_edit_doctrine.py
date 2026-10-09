@@ -5,6 +5,7 @@ op_mismatch gate reads, and a run nobody answers is told so and not offered `que
 import json
 import os
 
+from core.agent import agent as agent_module
 from core.events import EventStream
 from core.lint import OP_TYPEIDS
 from core.llm import ScriptedLLMClient
@@ -23,7 +24,7 @@ def _system_of_the_first_plan(monkeypatch, base=BASE):
         seen.append(kwargs["system"])
         return {"question": "which?"}, None, []
 
-    monkeypatch.setattr(plan_module, "run_phase", fake_run_phase)
+    monkeypatch.setattr(agent_module, "run_phase", fake_run_phase)
     plan_module.plan("edit", {}, ScriptedLLMClient([]), EventStream(), base=base)
     return seen[0]
 

@@ -45,8 +45,6 @@ LEGIBLE_PX = 50
 
 _LOG = logging.getLogger(__name__)
 
-INK_OF_THE_BOX = 0.55
-
 MAX_EDGE = 1400
 
 A_PATCH = 28
@@ -2474,17 +2472,6 @@ def _a_corner_mark(box, width, height):
     at_a_side = box[0] < CORNER_MARK * width or box[2] > (1 - CORNER_MARK) * width
     at_an_end = box[1] < CORNER_MARK * height or box[3] > (1 - CORNER_MARK) * height
     return small and at_a_side and at_an_end
-
-
-def _box_covers(outer, inner):
-    x0 = max(outer[0], inner[0])
-    y0 = max(outer[1], inner[1])
-    x1 = min(outer[2], inner[2])
-    y1 = min(outer[3], inner[3])
-    if x1 <= x0 or y1 <= y0:
-        return False
-    area = (inner[2] - inner[0]) * (inner[3] - inner[1])
-    return bool(area) and ((x1 - x0) * (y1 - y0)) / area > 0.8
 
 
 def _raster_where(box, width, height):

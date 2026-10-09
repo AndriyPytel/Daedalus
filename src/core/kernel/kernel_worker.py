@@ -586,84 +586,78 @@ def _features_not_wired_to_a_body(doc):
             if obj.isDerivedFrom("PartDesign::Feature") and obj.Name not in wired]
 
 
-def _bodies_in_pieces(doc):
+def _bodies_with(doc, defect):
     """
-    Every PartDesign Body whose result is more than one solid.
+    The lines *defect* reports, one per PartDesign Body whose Shape it rejects.
 
-    A sketch of disjoint profiles pads into separate lumps, and nothing
-    raises. Only Bodies — a Part::Compound is many solids on purpose.
+    Only Bodies -- a Part::Compound is many solids on purpose.
     """
-    scattered = []
+    found = []
     for obj in doc.Objects:
         if obj.TypeId != "PartDesign::Body":
             continue
         shape = getattr(obj, "Shape", None)
         if shape is None or shape.isNull():
             continue
-        solids = shape.Solids
-        if len(solids) > 1:
-            scattered.append("%s: %d separate solids" % (obj.Name, len(solids)))
-    return scattered
+        said = defect(shape)
+        if said:
+            found.append("%s: %s" % (obj.Name, said))
+    return found
 
 
-def _bodies_with_invalid_shape(doc):
-    """
-    Every PartDesign Body whose Shape fails OCC's own `isValid()`.
-
-    A self-touching wire pads into a solid that recomputes Up-to-date, and
-    nothing about that state says the geometry is broken.
-    """
-    invalid = []
-    for obj in doc.Objects:
-        if obj.TypeId != "PartDesign::Body":
-            continue
-        shape = getattr(obj, "Shape", None)
-        if shape is None or shape.isNull():
-            continue
-        if not shape.isValid():
-            invalid.append("%s: invalid shape" % obj.Name)
-    return invalid
+def _in_pieces(shape):
+    if len(shape.Solids) > 1:
+        return "%d separate solids" % len(shape.Solids)
 
 
-def _bodies_with_inverted_solid(doc):
-    """
-    Every PartDesign Body whose Shape carries a negative signed volume.
-
-    A boss cut instead of added, a profile wound the wrong way. The Body
-    recomputes Up-to-date; only the sign says it came out inside-out.
-    """
-    inverted = []
-    for obj in doc.Objects:
-        if obj.TypeId != "PartDesign::Body":
-            continue
-        shape = getattr(obj, "Shape", None)
-        if shape is None or shape.isNull():
-            continue
-        if shape.Volume < 0:
-            inverted.append("%s: inverted solid (volume %s)" % (obj.Name, shape.Volume))
-    return inverted
+def _invalid(shape):
+    if not shape.isValid():
+        return "invalid shape"
 
 
-def _bodies_with_non_manifold_mesh(doc):
-    """
-    Every PartDesign Body whose Shape the official mesh gate rejects, with the faces that touch.
+def _inverted(shape):
+    if shape.Volume < 0:
+        return "inverted solid (volume %s)" % shape.Volume
 
-    A cylinder exactly tangent to another face leaves a wall of zero thickness: OCC calls the
-    solid valid, and the STEP still fails every consumer that welds its mesh by BRep vertex.
-    """
+
+def _pinched(shape):
     from core.manifold import check_fc
 
-    pinched = []
-    for obj in doc.Objects:
-        if obj.TypeId != "PartDesign::Body":
-            continue
-        shape = getattr(obj, "Shape", None)
-        if shape is None or shape.isNull():
-            continue
-        found = check_fc(shape)
+    return check_fc(shape)
+
+
+_BODY_CHECKS = (
+    (_in_pieces, "this Step left a Body in more than one piece:",
+     "A PartDesign Body is one solid. Disjoint profiles in one sketch pad into "
+     "separate lumps rather than one part -- the profiles that make up the outline "
+     "have to meet, and anything that is genuinely a second part belongs in a "
+     "second Body."),
+    (_invalid, "this Step left a Body with an invalid Shape:",
+     "OCC's own isValid() says the geometry is broken -- a self-touching wire or "
+     "a face that folds back on itself, not a Body it will let through unnoticed."),
+    (_inverted, "this Step left a Body with an inverted solid:",
+     "A negative signed volume is a solid that came out inside-out -- a boss cut "
+     "instead of added, a profile wound the wrong way."),
+    (_pinched, "this Step left a Body that is not manifold:",
+     "A cylinder face exactly tangent to another face leaves a wall of zero "
+     "thickness there. OCC calls it valid, but the exported STEP fails the mesh check "
+     "every consumer runs -- move the cylinder or change its radius so the faces "
+     "overlap or leave a gap."),
+)
+
+
+def _body_defects(doc):
+    """
+    The refusal for the first of `_BODY_CHECKS` some Body fails, or None; later checks are not run.
+
+    Each check catches what recomputes Up-to-date and is still wrong: disjoint lumps, a
+    self-touching wire, a solid inside-out, a wall of zero thickness OCC calls valid.
+    """
+    for defect, heading, advice in _BODY_CHECKS:
+        found = _bodies_with(doc, defect)
         if found:
-            pinched.append("%s: %s" % (obj.Name, found))
-    return pinched
+            return "%s\n%s\n%s" % (heading, "\n".join(found), advice)
+    return None
 
 
 _TANGENT_COS = 0.999
@@ -1338,37 +1332,9 @@ def _raise_if_broken(doc, touched):
               "feature is wired in with body.addObject(feature) and body.Tip = feature, "
               "the same way the Body's other features were added.")
 
-    scattered = _bodies_in_pieces(doc)
-    if scattered:
-        raise RuntimeError(
-            "this Step left a Body in more than one piece:\n" + "\n".join(scattered)
-            + "\nA PartDesign Body is one solid. Disjoint profiles in one sketch pad into "
-              "separate lumps rather than one part -- the profiles that make up the outline "
-              "have to meet, and anything that is genuinely a second part belongs in a "
-              "second Body.")
-
-    invalid = _bodies_with_invalid_shape(doc)
-    if invalid:
-        raise RuntimeError(
-            "this Step left a Body with an invalid Shape:\n" + "\n".join(invalid)
-            + "\nOCC's own isValid() says the geometry is broken -- a self-touching wire or "
-              "a face that folds back on itself, not a Body it will let through unnoticed.")
-
-    inverted = _bodies_with_inverted_solid(doc)
-    if inverted:
-        raise RuntimeError(
-            "this Step left a Body with an inverted solid:\n" + "\n".join(inverted)
-            + "\nA negative signed volume is a solid that came out inside-out -- a boss cut "
-              "instead of added, a profile wound the wrong way.")
-
-    pinched = _bodies_with_non_manifold_mesh(doc)
-    if pinched:
-        raise RuntimeError(
-            "this Step left a Body that is not manifold:\n" + "\n".join(pinched)
-            + "\nA cylinder face exactly tangent to another face leaves a wall of zero "
-              "thickness there. OCC calls it valid, but the exported STEP fails the mesh check "
-              "every consumer runs -- move the cylinder or change its radius so the faces "
-              "overlap or leave a gap.")
+    refusal = _body_defects(doc)
+    if refusal:
+        raise RuntimeError(refusal)
 
 
 def _run_step_body(doc, namespace, touched, request):

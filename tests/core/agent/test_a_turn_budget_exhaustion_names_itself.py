@@ -12,6 +12,7 @@ from core.agent.subagent import SessionTreeSupervisor
 from core.events import EventStream, TURN_BUDGET_EXHAUSTED
 from core.kernel import KernelResult
 from core.llm import ScriptedLLMClient
+from tests.event_helpers import events_of
 
 
 class OneKernel:
@@ -35,7 +36,7 @@ def test_a_turn_budget_exhaustion_names_itself_with_the_count_it_reached(tmp_pat
               kernel=OneKernel(KernelResult(ok=True)), stream=stream,
               supervisor=supervisor)
 
-    fired = stream.of(TURN_BUDGET_EXHAUSTED)
+    fired = events_of(stream, TURN_BUDGET_EXHAUSTED)
     assert len(fired) == 1
     assert fired[0].data == {"phase": pc.EXECUTE, "turns": 2, "budget": 1, "scope": "run"}
 
@@ -57,7 +58,7 @@ def test_a_second_continuation_on_the_same_exhausted_supervisor_fires_no_second_
     run_phase(pc.EXECUTE, str(tmp_path / "execute1"), {}, first_llm, "pad a box",
               kernel=OneKernel(KernelResult(ok=True)), stream=stream,
               supervisor=supervisor)
-    assert len(stream.of(TURN_BUDGET_EXHAUSTED)) == 1
+    assert len(events_of(stream, TURN_BUDGET_EXHAUSTED)) == 1
 
     second_llm = ScriptedLLMClient([
         json.dumps({"code": "doc.addObject('Part::Box', 'Box3')"}),
@@ -67,6 +68,6 @@ def test_a_second_continuation_on_the_same_exhausted_supervisor_fires_no_second_
               kernel=OneKernel(KernelResult(ok=True)), stream=stream,
               supervisor=supervisor)
 
-    assert len(stream.of(TURN_BUDGET_EXHAUSTED)) == 1, (
+    assert len(events_of(stream, TURN_BUDGET_EXHAUSTED)) == 1, (
         "the recorded smoke's two exhaustions must replay as one once the "
         "continuations share a supervisor")

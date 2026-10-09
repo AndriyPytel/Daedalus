@@ -12,6 +12,7 @@ from core.loop.execute import _classified_failures
 from tests.loop_helpers import (
     _turns_of, drifted, drive, plan_reply, retried_code_reply, suspect_reply, verdict_reply,
 )
+from tests.event_helpers import events_of
 
 SIGNATURE_MISMATCH = (
     "The replayed Step's signature did not match what the kernel verified -- "
@@ -44,7 +45,7 @@ def test_a_drifted_attempt_emits_preflight_failed():
         suspect_reply(), verdict_reply("pass"),
     ], applies=[drifted(SIGNATURE_MISMATCH), None])
 
-    failures = events.of(PREFLIGHT_FAILED)
+    failures = events_of(events, PREFLIGHT_FAILED)
     assert failures, "a drifted attempt emitted no PREFLIGHT_FAILED event"
     assert failures[0].data["step"] == 1
 

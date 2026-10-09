@@ -16,6 +16,7 @@ from tests.loop_helpers import (
     FakeTools, code_reply, design_reply, drive, everything, plan_reply, suspect_reply,
     verdict_reply,
 )
+from tests.event_helpers import events_of, first_event
 
 _A_POSITION = "features \u2192 hole-a \u2192 position \u2192 the left end face: 20 mm"
 
@@ -57,7 +58,7 @@ def test_an_envelope_the_fixed_check_already_held_is_confirmed_even_when_the_mod
         "the fixed envelope check already held and must not be discarded"
     assert checked.uncovered == [_A_POSITION]
     assert set(_THE_RECORDED_ACCEPTANCE[:3]) <= set(checked.confirmed)
-    reported = events.first(ASSERTION).data
+    reported = first_event(events, ASSERTION).data
     assert "the envelope" in reported["confirmed"]
 
 
@@ -105,7 +106,7 @@ def test_the_recorded_shape_end_to_end_fixed_checks_pass_the_model_gives_up_stil
     ] + _the_model_gives_up_after_probing() + [verdict_reply("pass")],
         budgets=Budgets(attempts_per_step=1))
 
-    give_up_events = [event for event in events.of(ASSERTION) if event.data.get("ok") is None]
+    give_up_events = [event for event in events_of(events, ASSERTION) if event.data.get("ok") is None]
     assert give_up_events, "the give-up fallback must have run"
     assert give_up_events[-1].data["confirmed"], "the fixed checks held and must be reported"
     assert result.ok

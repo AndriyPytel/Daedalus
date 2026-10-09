@@ -2639,22 +2639,6 @@ def test_grouped_conflicts_now_orders_by_authorship_not_by_kind():
     assert grouped[0] == THE_PART["conflicts"][0]
 
 
-def test_the_notice_condition_is_stated_but_not_wired():
-    """
-    The condition "the evidence file holds at least one entry the model
-    itself wrote" is now decidable, stated here as a one-line predicate over
-    the signed field. Not called from `core/loop.py` or `ui/`: whether the
-    notice ships is still an open question, reopened on this measured count
-    rather than settled by this code.
-    """
-    fires = dict(THE_PART)
-    quiet = dict(THE_PART, conflicts=[dict(THE_PART["conflicts"][0], machine_written=True)])
-
-    assert report._worth_a_notice(fires) is True
-    assert report._worth_a_notice(quiet) is False
-    assert report._worth_a_notice({}) is False
-
-
 def test_the_machine_and_model_counts_read_off_the_field_disagree_with_38():
     """
     Measured rather than assumed to agree -- 387:38 was never a ratio in the

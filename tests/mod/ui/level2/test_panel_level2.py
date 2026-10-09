@@ -1404,7 +1404,7 @@ def test_a_blocked_question_pages_freecads_notification_area(
     assert snippet in calls[0]
 
 
-def test_the_panel_docks_on_the_main_window_once(sessions_are_the_tests_own):
+def test_the_panel_docks_on_the_main_window_once(sessions_are_the_tests_own, monkeypatch):
     """
     Like the Tasks panel: it is a fixture of the window, so it is there on
     whatever workbench the user is working in. Installing twice — two
@@ -1414,7 +1414,7 @@ def test_the_panel_docks_on_the_main_window_once(sessions_are_the_tests_own):
     from ui import daedalus_dock
 
     window = QtWidgets.QMainWindow()
-    daedalus_dock.forget()
+    monkeypatch.setattr(daedalus_dock, "_panel", None)
     try:
         panel = daedalus_dock.install(window)
         again = daedalus_dock.install(window)
@@ -1424,7 +1424,6 @@ def test_the_panel_docks_on_the_main_window_once(sessions_are_the_tests_own):
         assert window.findChildren(type(panel)) == [panel]
     finally:
         panel._cleanup_thread()
-        daedalus_dock.forget()
         window.deleteLater()
 
 
@@ -1919,9 +1918,9 @@ def test_a_session_comes_back_with_its_queue_at_every_phase_done(panel, tmp_path
     queue = panel._queue_widget
     assert queue is not None
     for phase in (DESIGN, PLAN, EXECUTE, ASSERTION, REVIEW):
-        assert queue.phase_state(phase) == DONE, phase
-    assert queue.step_count() == 1
-    assert queue.step_state(1) == DONE
+        assert queue._states[phase] == DONE, phase
+    assert len(queue._step_states) == 1
+    assert queue._step_states[0] == DONE
 
 
 def test_a_new_intent_opens_a_fresh_queue_running_design(panel, tmp_path):
@@ -1940,7 +1939,7 @@ def test_a_new_intent_opens_a_fresh_queue_running_design(panel, tmp_path):
 
     queue = panel._queue_widget
     assert queue is not None
-    assert queue.phase_state(DESIGN) == RUNNING
+    assert queue._states[DESIGN] == RUNNING
 
 
 def test_a_run_blocked_in_plan_marks_the_queue_plan_failed(panel, tmp_path):
@@ -1961,8 +1960,8 @@ def test_a_run_blocked_in_plan_marks_the_queue_plan_failed(panel, tmp_path):
 
     queue = panel._queue_widget
     assert queue is not None
-    assert queue.phase_state(QUEUE_PLAN) == FAILED
-    assert queue.phase_state(EXECUTE) == QUEUED
+    assert queue._states[QUEUE_PLAN] == FAILED
+    assert queue._states[EXECUTE] == QUEUED
 
 
 def _a_cost_transcript(path):
@@ -3789,8 +3788,8 @@ def test_the_part_event_closes_design_on_the_queue_before_any_plan(panel, tmp_pa
     panel.switch_session(index)
 
     queue = panel._queue_widget
-    assert queue.phase_state(DESIGN) == DONE
-    assert queue.phase_state(QUEUE_PLAN) == RUNNING
+    assert queue._states[DESIGN] == DONE
+    assert queue._states[QUEUE_PLAN] == RUNNING
 
 
 

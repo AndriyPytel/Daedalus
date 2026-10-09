@@ -39,9 +39,3 @@ def install(main_window):
 def panel():
     """The installed panel, or None. Nothing here builds one."""
     return _panel
-
-
-def forget():
-    """Drop the reference, for a test that wants a window of its own."""
-    global _panel
-    _panel = None

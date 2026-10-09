@@ -2,12 +2,14 @@
 Read prompt files from config/prompts/, grouped by reader in subdirectories:
 `system/` (the phase and agent system prompts), `lint/` (lint refusals) and
 `messages/` (everything else). Callers ask for a bare filename; this is the
-one place that knows which subdirectory holds it.
+one place that knows which subdirectory holds it. `LOGS` is the checkout's
+log directory, resolved from this file and never from the working directory.
 """
 import os
 
-ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                     "config", "prompts")
+CHECKOUT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT = os.path.join(CHECKOUT, "config", "prompts")
+LOGS = os.path.join(CHECKOUT, "logs")
 
 
 def _paths():

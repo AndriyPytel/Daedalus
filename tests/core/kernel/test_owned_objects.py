@@ -20,6 +20,7 @@ import pytest
 
 from core.freecad_apply import ApplyPipeline, refuse_without_asking
 from tests.core.kernel.test_apply_pipeline import FakeDocument, FakeObject, FakeWorker
+from tests.event_helpers import first_event
 
 
 class Asked:
@@ -218,9 +219,9 @@ def test_asking_to_delete_the_users_own_work_is_on_the_stream():
     assert built.apply("delete()", kernel_result=touching(deleted=["UserBox"])).ok
 
     assert [event.kind for event in events] == [QUESTION, ANSWER]
-    assert "UserBox" in events.first(QUESTION).data["text"]
-    assert events.first(ANSWER).data["text"] == "You allowed it to delete UserBox."
-    assert events.first(ANSWER).data["by"] == "user", \
+    assert "UserBox" in first_event(events, QUESTION).data["text"]
+    assert first_event(events, ANSWER).data["text"] == "You allowed it to delete UserBox."
+    assert first_event(events, ANSWER).data["by"] == "user", \
         "a person answered it, so a replay must not read it as an assumption"
 
 
@@ -231,7 +232,7 @@ def test_refusing_is_recorded_just_as_plainly():
     built = pipeline(confirm=Asked(False), events=events)
 
     assert not built.apply("delete()", kernel_result=touching(deleted=["UserBox"])).ok
-    assert events.first(ANSWER).data["text"] == "You refused to let it delete UserBox."
+    assert first_event(events, ANSWER).data["text"] == "You refused to let it delete UserBox."
 
 
 def test_a_step_that_deletes_nothing_of_theirs_asks_nothing_and_says_nothing():
@@ -396,8 +397,8 @@ def test_the_rebuild_question_is_on_the_stream_like_every_other():
     assert built.apply("wipe()", kernel_result=touching(deleted=EVERYTHING)).ok
 
     assert [event.kind for event in events] == [QUESTION, ANSWER]
-    assert "4 features of the existing model" in events.first(QUESTION).data["text"]
-    assert events.first(ANSWER).data["by"] == "user"
+    assert "4 features of the existing model" in first_event(events, QUESTION).data["text"]
+    assert first_event(events, ANSWER).data["by"] == "user"
 
 
 def test_a_rebuild_with_nobody_to_ask_is_refused():

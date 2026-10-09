@@ -32,6 +32,7 @@ from loop_helpers import design_reply, everything, plan_reply
 from core.loop.gate import APPROVE, Approval
 from core.loop.run import run
 from core.kernel import Kernel, find_freecadcmd
+from tests.event_helpers import events_of, first_event
 
 pytestmark = pytest.mark.freecad
 
@@ -380,12 +381,12 @@ def test_the_panel_had_everything_it_needed_to_show_the_run(slice_run):
              if e.kind not in (CALL_STARTED, COST, THOUGHT, WRITING)]
 
     assert kinds[:4] == [INTENT, DESIGN, PART, PLAN]
-    assert len(events.of(STEP_STARTED)) == 5
-    assert len(events.of(TOOL_CALL)) == 13
-    assert len(events.of(TOOL_RESULT)) == 13
-    assert len(events.of(APPLIED)) == 5
+    assert len(events_of(events, STEP_STARTED)) == 5
+    assert len(events_of(events, TOOL_CALL)) == 13
+    assert len(events_of(events, TOOL_RESULT)) == 13
+    assert len(events_of(events, APPLIED)) == 5
     assert events.last(REVIEW_VERDICT).data["verdict"] == "pass"
-    assert events.first(BLOCKED) is None
+    assert first_event(events, BLOCKED) is None
 
 
 def test_no_step_rendered_and_review_still_got_a_picture(slice_run):
@@ -396,10 +397,10 @@ def test_no_step_rendered_and_review_still_got_a_picture(slice_run):
     """
     assert [e for e in slice_run["events"] if e.kind == "render"] == []
     assert all("render" not in e.data["result"]
-               for e in slice_run["events"].of(TOOL_RESULT)
+               for e in events_of(slice_run["events"], TOOL_RESULT)
                if e.data["name"] == "apply_step")
 
-    views = [e for e in slice_run["events"].of(TOOL_RESULT)
+    views = [e for e in events_of(slice_run["events"], TOOL_RESULT)
              if e.data["name"] == "review_views"]
     assert len(views) == 1, "the loop did not ask for Review's picture"
     assert len(views[0].data["result"]["views"]) == 1, "headless is one isometry"
@@ -412,7 +413,7 @@ def test_the_description_review_judged_by_is_in_the_session_log(slice_run):
     length in mm, and the hole read off the Shape with a diameter and an axis
     that no Acceptance list had to ask for.
     """
-    applied = [e for e in slice_run["events"].of(TOOL_RESULT)
+    applied = [e for e in events_of(slice_run["events"], TOOL_RESULT)
                if e.data["name"] == "apply_step"]
     described = applied[-1].data["result"]["description"]
     features = {f["name"]: f for f in described["features"]}
@@ -430,7 +431,7 @@ def test_the_description_review_judged_by_is_in_the_session_log(slice_run):
 
 
 def test_each_step_is_narrated_in_order(slice_run):
-    started = slice_run["events"].of(STEP_STARTED)
+    started = events_of(slice_run["events"], STEP_STARTED)
 
     assert [e.data["index"] for e in started] == [1, 2, 3, 4, 5]
     assert all(e.data["total"] == 5 for e in started)

@@ -8,16 +8,16 @@ import os
 
 import pytest
 
+from core.agent import agent as agent_module
 from core.agent import phase_contract as pc
 from core.agent import run_phase
 from core.events import TOOL_RESULT, EventStream
 from core.kernel import Kernel, KernelResult, copy_of, find_freecadcmd
 from core.llm import ScriptedLLMClient
-from core.loop import assertion as assertion_module
-from core.loop import execute as execute_module
 from core.loop.assertion import assertion
 from core.loop.execute import execute
 from core.tools import ToolRegistry
+from tests.event_helpers import events_of
 
 
 def test_execute_opens_the_document_the_snapshot_describes(monkeypatch, tmp_path):
@@ -40,7 +40,7 @@ def test_execute_opens_the_document_the_snapshot_describes(monkeypatch, tmp_path
         seen.update(kwargs)
         return {"steps": [{"step": 1, "code": "pass", "label": "one"}]}, None, []
 
-    monkeypatch.setattr(execute_module, "run_phase", fake_run_phase)
+    monkeypatch.setattr(agent_module, "run_phase", fake_run_phase)
 
     execute(["pad a box"], registry, ScriptedLLMClient([]), None)
 
@@ -65,7 +65,7 @@ def test_the_working_directory_is_gone_once_execute_returns(monkeypatch, tmp_pat
         return ({"steps": [{"step": 1, "label": "one"}]}, None,
                 [{"step": 1, "code": "pass", "label": "one", "checkpoint": ""}])
 
-    monkeypatch.setattr(execute_module, "run_phase", fake_run_phase)
+    monkeypatch.setattr(agent_module, "run_phase", fake_run_phase)
 
     execute(["pad a box"], registry, ScriptedLLMClient([]), None)
 
@@ -84,7 +84,7 @@ def test_the_working_directory_is_gone_even_when_execute_raises(monkeypatch, tmp
         seen["working_dir"] = working_dir
         raise RuntimeError("the phase died")
 
-    monkeypatch.setattr(execute_module, "run_phase", fake_run_phase)
+    monkeypatch.setattr(agent_module, "run_phase", fake_run_phase)
 
     with pytest.raises(RuntimeError):
         execute(["pad a box"], registry, ScriptedLLMClient([]), None)
@@ -158,7 +158,7 @@ def test_a_code_turn_puts_the_kernel_answer_on_the_stream(tmp_path):
     run_phase(pc.EXECUTE, str(tmp_path / "execute"), {}, llm, "pad a box",
               kernel=OneFailingKernel(), stream=stream)
 
-    answered = stream.of(TOOL_RESULT)
+    answered = events_of(stream, TOOL_RESULT)
     assert [event.data["result"]["status"] for event in answered] == ["failed"]
     assert "no such property" in answered[0].data["result"]["traceback"]
 
@@ -200,7 +200,7 @@ def test_assertion_measures_against_a_copy_of_the_document(monkeypatch, tmp_path
         seen.update(kwargs)
         return {"code": "assert True"}, None, []
 
-    monkeypatch.setattr(assertion_module, "run_phase", fake_run_phase)
+    monkeypatch.setattr(agent_module, "run_phase", fake_run_phase)
 
     assertion(["a bracket 10 mm thick"], {}, registry, ScriptedLLMClient([]), EventStream())
 

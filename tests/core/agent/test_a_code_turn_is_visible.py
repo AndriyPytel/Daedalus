@@ -10,6 +10,7 @@ from core.events import Event, EventStream, TOOL_CALL, TOOL_RESULT
 from core.kernel import KernelResult
 from core.llm import ScriptedLLMClient
 from core.narrate import narrate
+from tests.event_helpers import events_of
 
 
 class OneKernel:
@@ -35,10 +36,10 @@ def test_the_code_a_turn_runs_is_announced_before_it_runs(tmp_path):
     run_phase(pc.EXECUTE, str(tmp_path / "execute"), {}, llm, "pad a box",
               kernel=OneKernel(KernelResult(ok=True)), stream=stream)
 
-    called = stream.of(TOOL_CALL)
+    called = events_of(stream, TOOL_CALL)
     assert [event.data["arguments"]["code"] for event in called] == [
         "doc.addObject('Part::Box', 'Box')"]
-    assert list(stream).index(called[0]) < list(stream).index(stream.of(TOOL_RESULT)[0])
+    assert list(stream).index(called[0]) < list(stream).index(events_of(stream, TOOL_RESULT)[0])
 
 
 def _result(**payload):

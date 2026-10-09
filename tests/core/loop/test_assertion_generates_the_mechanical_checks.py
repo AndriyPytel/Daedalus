@@ -1,11 +1,12 @@
 """Assertion runs the generated checks first and asks the model only for the entries code could not settle."""
 import json
 
+from core.agent import agent as agent_module
 from core.events import ASSERTION, EventStream
 from core.llm import ScriptedLLMClient
-from core.loop import assertion as assertion_module
 from core.loop.assertion import assertion
 from core.tools import ToolRegistry
+from tests.event_helpers import first_event
 
 _SIZE = "features \u2192 hole-a \u2192 diameter: \u00d86"
 _COUNT = "features \u2192 hole-a \u2192 count: 1"
@@ -39,7 +40,7 @@ def _spy_on_the_model(monkeypatch):
         asked.append(json.loads(task))
         return {"checks": [{"entry": 0, "expr": "True"}]}, None, []
 
-    monkeypatch.setattr(assertion_module, "run_phase", fake_run_phase)
+    monkeypatch.setattr(agent_module, "run_phase", fake_run_phase)
     return asked
 
 
@@ -66,7 +67,7 @@ def test_when_the_generated_checks_cover_everything_no_model_is_called(monkeypat
     assert len(calls) == 1
     assert not checked.failed and checked.uncovered == []
     assert set(checked.confirmed) >= {_SIZE, _COUNT}
-    assert events.first(ASSERTION).data["ok"] is True
+    assert first_event(events, ASSERTION).data["ok"] is True
 
 
 def test_a_generated_check_that_fails_names_the_entry_and_stops_before_any_model_is_called(monkeypatch, tmp_path):

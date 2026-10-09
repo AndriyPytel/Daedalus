@@ -81,10 +81,8 @@ from core.design.report import (
     render,
 )
 from core.design.gaps import (
-    carried_by_no_source,
     decided_for_you,
     entries,
-    measured_from_what_is_gone,
 )
 from core.loop.budgets import Budgets, revisions_ceiling
 from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, nobody_answering, prompt
@@ -853,7 +851,7 @@ def _user_blocks(llm, at=0):
     """
     Every content block a call's user turns carried, in order — one turn on a
     first pass, two (the original evidence, then the short nudge) on a retry
-    that went out as `_asked_again`'s second turn of the conversation.
+    that went out as a second turn of the conversation.
     """
     blocks = []
     for message in llm.calls[at]:

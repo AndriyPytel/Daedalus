@@ -52,8 +52,6 @@ FAILED = "failed"
 SUB_AGENT_SPAWNED = "sub_agent_spawned"
 SUB_AGENT_ANSWERED = "sub_agent_answered"
 SUB_AGENT_REFUSED = "sub_agent_refused"
-CONSULT_DESIGN = "consult_design"
-CONSULT_DESIGN_ANSWERED = "consult_design_answered"
 TURN_BUDGET_EXHAUSTED = "turn_budget_exhausted"
 INVOKE_MARKUP = "invoke_markup"
 
@@ -63,7 +61,7 @@ KINDS = (
     ASSERTION, OUTSTANDING, UNBUILT, REVIEW_VERDICT, REVIEW_SUSPECTED, BLOCKED, STOPPED,
     CALL_STARTED, COST, ERROR, CHANGE_SET, ROUTED, COMPLETED, ABORTED, BUDGET_EXHAUSTED, FAILED,
     SUB_AGENT_SPAWNED, SUB_AGENT_ANSWERED, SUB_AGENT_REFUSED,
-    CONSULT_DESIGN, CONSULT_DESIGN_ANSWERED, TURN_BUDGET_EXHAUSTED, INVOKE_MARKUP,
+    TURN_BUDGET_EXHAUSTED, INVOKE_MARKUP,
 )
 
 
@@ -118,27 +116,11 @@ class EventStream:
     def __len__(self):
         return len(self._events)
 
-    def __getitem__(self, index):
-        return self._events[index]
-
-    def of(self, kind: str) -> List[Event]:
-        return [event for event in self._events if event.kind == kind]
-
-    def first(self, kind: str):
-        for event in self._events:
-            if event.kind == kind:
-                return event
-        return None
-
     def last(self, kind: str):
         for event in reversed(self._events):
             if event.kind == kind:
                 return event
         return None
-
-    def as_log(self) -> str:
-        """One JSON object per line — the session log."""
-        return "\n".join(event.as_json() for event in self._events)
 
     def log_to(self, path: str):
         """

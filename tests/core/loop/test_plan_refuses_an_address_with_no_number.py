@@ -7,6 +7,7 @@ from core.loop.plan import _cited_without_a_number
 
 from tests.loop_helpers import (RENDER_PNG, _grown, assertion_reply, code_reply, design_reply, drive, plan_reply,
                                 read, suspect_reply, verdict_reply)
+from tests.event_helpers import events_of
 
 LOST = {"value": "to be read again off the later page", "flag": "assumed",
         "because": "the face went with the feature the later page deleted"}
@@ -44,4 +45,4 @@ def test_a_step_citing_a_numberless_address_gets_a_patch_naming_it_and_no_except
     told = json.loads(llm.calls[2][-1]["content"])["what_went_wrong_last_time"]
     assert result.ok, result.reason
     assert DEPTH in told and "no number" in told
-    assert events.of(PLAN_REVISED)[0].data["revision"] == 0
+    assert events_of(events, PLAN_REVISED)[0].data["revision"] == 0

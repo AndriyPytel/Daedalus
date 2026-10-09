@@ -12,7 +12,7 @@ from core.tools import ToolError
 
 import tempfile
 
-from core.agent.agent import _FORCED_BY_BUDGET, run_phase
+from core.agent.agent import _FORCED_BY_BUDGET, run_declaring
 from core.agent import phase_contract as pc
 from core.agent.subagent import SessionTreeSupervisor
 from core.loop.budgets import Budgets
@@ -21,7 +21,7 @@ from core.lint import OP_TYPEIDS
 from core.loop.prompt import EXECUTE_PHASE, prompt
 from core.prompts import read_prompt
 from core.loop.looks import Looks
-from core.logs_root import LOGS
+from core.prompts import LOGS
 
 
 
@@ -266,10 +266,9 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
     working_dir = tempfile.mkdtemp()
     try:
         with copied(tools) as document:
-            declared, session, declarations = run_phase(
-                pc.EXECUTE, working_dir,
-                {"plan": steps},
-                llm, task, document=document, design=design,
+            reply, declarations = run_declaring(
+                pc.EXECUTE, {"plan": steps}, llm, task, working_dir=working_dir,
+                document=document, design=design,
                 kernel=kernel, supervisor=supervisor, stream=events,
                 system=prompt(EXECUTE_PHASE),
                 ledger=ledger.render() if ledger else "",
@@ -279,7 +278,6 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
                 plan_values=plan_values,
             )
 
-        reply = declared if isinstance(declared, dict) else {}
         forced = bool(reply.pop(_FORCED_BY_BUDGET, False)) and bool(supervisor.run_outcome or supervisor.reserved())
         rehearsals = {number: len(attempts) for number, attempts in tried.items()
                       if isinstance(number, int)}

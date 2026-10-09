@@ -8,7 +8,7 @@ and these tests are its regression proof.
 """
 import re
 
-from core.design.core import PLACE, canonical_place
+from core.design.core import PLACE
 from core.design.merge import merge
 from core.prompts import read_prompt
 
@@ -17,9 +17,9 @@ def _language_md():
     return read_prompt("language.md")
 
 
-def test_place_list_matches_the_canonical_order_function():
+def test_place_list_matches_the_language_prompt():
     """
-    `PLACE`, the order `canonical_place` sorts by, must be the same list
+    `PLACE` must be the same list
     `language.md` declares -- read out of the prompt's own wording, not
     copied here, so the two cannot drift apart silently.
     """
@@ -34,39 +34,6 @@ def test_language_md_declares_the_canonical_place_order():
     `PLACE`'s order, or a model has no way to know which of two readings
     is the one to write."""
     assert "front-inner` never `inner-front" in _language_md()
-
-
-# Every same-token-set fillet/chamfer id pair `docs/research/
-# fillet-prompt-adherence.md` (§3, "The permutation-duplicate id
-# measurement, verified and extended") quotes verbatim, across the 3 runs
-# it found duplicate pairs in. `canonical_place` must collapse each pair
-# to one spelling.
-_DUPLICATE_ID_PAIRS_FROM_THE_RESEARCH_DOC = (
-    ("fillet-inner-front", "fillet-front-inner"),      # mm-effort-sweep/opus-low
-    ("fillet-inner-rear", "fillet-rear-inner"),        # mm-effort-sweep/opus-low
-    ("fillet-front-outer", "fillet-outer-front"),      # mm-effort-sweep/opus-medium
-    ("fillet-rear-outer", "fillet-outer-rear"),        # mm-effort-sweep/opus-medium
-    ("fillet-front-left", "fillet-left-front"),        # mm-effort-sweep/opus-medium
-    ("fillet-front-right", "fillet-right-front"),      # mm-effort-sweep/opus-medium
-    ("fillet-rear-left", "fillet-left-rear"),          # mm-effort-sweep/opus-medium
-    ("fillet-rear-right", "fillet-right-rear"),        # mm-effort-sweep/opus-medium
-    ("fillet-left-rear", "fillet-rear-left"),          # mm-openai-sweep/gpt-5.6-luna-high
-    ("fillet-right-rear", "fillet-rear-right"),        # mm-openai-sweep/gpt-5.6-luna-high
-    ("fillet-inner-top", "fillet-top-inner"),          # mm-openai-sweep/gpt-5.6-luna-high
-    ("fillet-inner-bottom", "fillet-bottom-inner"),    # mm-openai-sweep/gpt-5.6-luna-high
-    ("fillet-inner-left", "fillet-left-inner"),        # mm-openai-sweep/gpt-5.6-luna-high
-    ("fillet-inner-right", "fillet-right-inner"),      # mm-openai-sweep/gpt-5.6-luna-high
-)
-
-
-def _canonical_id(feature_id):
-    kind, place = feature_id.split("-", 1)
-    return kind + "-" + "-".join(canonical_place(place.split("-")))
-
-
-def test_canonical_place_collapses_every_quoted_duplicate_pair_to_one_id():
-    for first, second in _DUPLICATE_ID_PAIRS_FROM_THE_RESEARCH_DOC:
-        assert _canonical_id(first) == _canonical_id(second), (first, second)
 
 
 def _read(value):

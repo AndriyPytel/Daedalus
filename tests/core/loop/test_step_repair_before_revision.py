@@ -23,6 +23,7 @@ from core.events import PLAN_REVISED, TOOL_RESULT
 from core.kernel import KernelResult
 
 from tests.loop_helpers import StubKernel, drive, plan_reply, suspect_reply, verdict_reply
+from tests.event_helpers import events_of
 
 
 _ISERROR = ("Traceback (most recent call last):\n"
@@ -48,11 +49,11 @@ def test_a_rehearsal_python_error_is_repaired_in_place_before_any_revision():
        kernel=StubKernel(fails=[KernelResult(ok=False, traceback=_ISERROR)]))
 
     assert result.ok, result.reason
-    assert not events.of(PLAN_REVISED), (
+    assert not events_of(events, PLAN_REVISED), (
         "a Python-level error in the Step's own code is a bug to repair, not a "
         "verdict on the Plan; no revision should have followed it")
     assert tools.applied_codes() == ["additive_pipe_fixed()"]
-    refusals = [event.data["result"] for event in events.of(TOOL_RESULT)
+    refusals = [event.data["result"] for event in events_of(events, TOOL_RESULT)
                if event.data.get("result", {}).get("status") == "refused"]
     assert any("bug in the Step's own code" in refusal.get("traceback", "")
               for refusal in refusals), "the model must be told this is its own bug, not the Plan's"
@@ -79,6 +80,6 @@ def test_a_geometric_refusal_still_reaches_the_revision_at_once():
            ok=False, traceback="RuntimeError: BRep_API: command not done")]))
 
     assert result.ok, result.reason
-    revisions = events.of(PLAN_REVISED)
+    revisions = events_of(events, PLAN_REVISED)
     assert len(revisions) == 1, "a geometric refusal must reach the revision at once"
     assert tools.applied_codes() == ["lofted_rib()"]

@@ -13,9 +13,10 @@ makes, so a Step retry or a plan revision inherits what was already spent.
 """
 import json
 
-from core.loop import execute as execute_module
-from core.loop import plan as plan_module
+from core.agent import agent as agent_module
+from core.agent import phase_contract as pc
 from tests.loop_helpers import code_reply, drive, plan_reply, suspect_reply, verdict_reply
+from tests.event_helpers import events_of
 
 
 def _unbuildable_after_two_steps():
@@ -26,13 +27,14 @@ def _unbuildable_after_two_steps():
 
 def test_a_plan_revision_shares_the_same_supervisor_execute_spent_its_turns_on(monkeypatch):
     seen = []
-    real_run_phase = execute_module.run_phase
+    real_run_phase = agent_module.run_phase
 
-    def spying(*args, **kwargs):
-        seen.append(kwargs.get("supervisor"))
-        return real_run_phase(*args, **kwargs)
+    def spying(phase, *args, **kwargs):
+        if phase == pc.EXECUTE:
+            seen.append(kwargs.get("supervisor"))
+        return real_run_phase(phase, *args, **kwargs)
 
-    monkeypatch.setattr(execute_module, "run_phase", spying)
+    monkeypatch.setattr(agent_module, "run_phase", spying)
 
     result, events, llm, tools = drive([
         plan_reply("Pad the outline", "Pad the boss", "Fillet the edge"),
@@ -57,21 +59,15 @@ def test_a_plan_revision_shares_the_same_supervisor_execute_spent_its_turns_on(m
 
 
 def test_execute_and_plan_share_the_one_supervisor_the_run_created(monkeypatch):
-    execute_seen = []
-    plan_seen = []
-    real_execute_run_phase = execute_module.run_phase
-    real_plan_run_phase = plan_module.run_phase
+    seen = {}
+    real_run_phase = agent_module.run_phase
 
-    def spying_execute(*args, **kwargs):
-        execute_seen.append(kwargs.get("supervisor"))
-        return real_execute_run_phase(*args, **kwargs)
+    def spying(phase, *args, **kwargs):
+        seen.setdefault(phase, []).append(kwargs.get("supervisor"))
+        return real_run_phase(phase, *args, **kwargs)
 
-    def spying_plan(*args, **kwargs):
-        plan_seen.append(kwargs.get("supervisor"))
-        return real_plan_run_phase(*args, **kwargs)
-
-    monkeypatch.setattr(execute_module, "run_phase", spying_execute)
-    monkeypatch.setattr(plan_module, "run_phase", spying_plan)
+    monkeypatch.setattr(agent_module, "run_phase", spying)
+    plan_seen, execute_seen = seen.setdefault("plan", []), seen.setdefault("execute", [])
 
     result, events, llm, tools = drive([
         plan_reply("Pad the outline"),
@@ -98,13 +94,14 @@ def test_a_long_plan_gets_a_ceiling_sized_from_its_own_step_count(monkeypatch):
     from core.agent.subagent import RESERVE
 
     seen = []
-    real_run_phase = execute_module.run_phase
+    real_run_phase = agent_module.run_phase
 
-    def spying(*args, **kwargs):
-        seen.append(kwargs.get("supervisor"))
-        return real_run_phase(*args, **kwargs)
+    def spying(phase, *args, **kwargs):
+        if phase == pc.EXECUTE:
+            seen.append(kwargs.get("supervisor"))
+        return real_run_phase(phase, *args, **kwargs)
 
-    monkeypatch.setattr(execute_module, "run_phase", spying)
+    monkeypatch.setattr(agent_module, "run_phase", spying)
 
     steps = [f"Step {number}" for number in range(1, 17)]
     codes = [f"op{number}()" for number in range(1, 17)]
@@ -169,7 +166,7 @@ def test_a_plan_revision_grows_the_ceiling_when_it_ends_up_longer(monkeypatch):
     ])
 
     assert result.ok, result.reason
-    revisions = events.of(PLAN_REVISED)
+    revisions = events_of(events, PLAN_REVISED)
     assert revisions, "the Plan must have been revised"
     assert revisions[-1].data["turn_budget"] == 3 * 16 + RESERVE, (
         "a Plan revision that ends up longer than the first Plan must raise "

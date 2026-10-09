@@ -3,25 +3,27 @@
 
 The bare `checkpoints` list that replaced it was unpacked at every call
 site and read at none; this is the grep-level guard against that
-regression, so a future call site cannot bring the dead name back without
-this test failing.
+regression. Every phase reaches `run_phase` through `run_declaring` alone.
 """
 import os
 
-from tests.source_tree import ROOT
+from tests.source_tree import ROOT, tracked
 
-CALL_SITES = (
-    "src/core/loop/plan.py",
-    "src/core/loop/execute.py",
-    "src/core/loop/design.py",
-    "src/core/loop/assertion.py",
-    "src/core/loop/review.py",
-)
+
+def _callers():
+    for relative in sorted(tracked()):
+        if relative.startswith("src/core/") and relative.endswith(".py") \
+                and relative != "src/core/agent/agent.py":
+            with open(os.path.join(ROOT, relative), encoding="utf-8") as handle:
+                yield relative, handle.read()
 
 
 def test_no_call_site_unpacks_run_phase_into_an_unread_checkpoints_list():
-    for relative in CALL_SITES:
-        with open(os.path.join(ROOT, relative), encoding="utf-8") as handle:
-            source = handle.read()
+    callers = [(relative, source) for relative, source in _callers() if "run_declaring(" in source]
+    assert callers
+    for relative, source in callers:
         assert "checkpoints" not in source, relative
-        assert "declarations = run_phase(" in source, relative
+
+
+def test_no_phase_calls_run_phase_around_run_declaring():
+    assert [relative for relative, source in _callers() if "run_phase(" in source] == []

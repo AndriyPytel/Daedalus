@@ -14,6 +14,7 @@ from core.agent import run_phase
 from core.events import TOOL_RESULT, EventStream
 from core.kernel import Kernel, find_freecadcmd
 from core.llm import ScriptedLLMClient
+from tests.event_helpers import events_of
 
 pytestmark = pytest.mark.freecad
 
@@ -57,6 +58,6 @@ def test_the_next_turn_after_a_spent_budget_sees_no_debris_from_it(tmp_path, wor
     run_phase(pc.EXECUTE, str(tmp_path / "execute"), {}, llm, "pad a box",
              document=empty_document, kernel=worker, on_declaration=gave_up, stream=stream)
 
-    checked = [event.data["result"] for event in stream.of(TOOL_RESULT)]
+    checked = [event.data["result"] for event in events_of(stream, TOOL_RESULT)]
     assert checked[1]["ok"], (
         "the turn after Step 1's spent budget still saw its debris: %s" % checked[1].get("traceback"))

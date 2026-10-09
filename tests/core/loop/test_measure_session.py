@@ -17,6 +17,7 @@ from tests.loop_helpers import (
     ASSERT_FAILED, CHECKS, SELF_INTERSECTION_HELD, a_run_over_the_nut, assertion_failed,
     assertion_reply, code_reply, planning_the_nut, suspect_reply, verdict_reply,
 )
+from tests.event_helpers import events_of, first_event, log_of
 
 FIXTURES = modelmania_harness.RECORDED_DIR / "sessions"
 
@@ -43,12 +44,12 @@ def test_steps_started_and_applied_come_from_the_declaration_event(tmp_path):
 
     path = str(tmp_path / "session.jsonl")
     with open(path, "w", encoding="utf-8") as handle:
-        handle.write(events.as_log())
+        handle.write(log_of(events))
 
     result = measure(path)
 
-    assert result.steps_started == len(events.of(STEP_STARTED)) == 3
-    assert result.steps_applied == len(events.of(APPLIED)) == 3
+    assert result.steps_started == len(events_of(events, STEP_STARTED)) == 3
+    assert result.steps_applied == len(events_of(events, APPLIED)) == 3
 
 
 def test_a_run_that_reached_a_verdict():
@@ -80,7 +81,7 @@ def test_review_rejected_until_the_budget_is_spent_measures_as_fail(tmp_path):
 
     path = str(tmp_path / "session.jsonl")
     with open(path, "w", encoding="utf-8") as handle:
-        handle.write(events.as_log())
+        handle.write(log_of(events))
 
     result = measure(path)
 
@@ -241,11 +242,11 @@ def test_a_run_with_a_failed_assertion_that_passed_on_retry(tmp_path):
                 SELF_INTERSECTION_HELD, None])
 
     assert result.ok
-    assert events.first(REVIEW_VERDICT) is not None
+    assert first_event(events, REVIEW_VERDICT) is not None
 
     log_path = str(tmp_path / "run.jsonl")
     with open(log_path, "w", encoding="utf-8") as handle:
-        handle.write(events.as_log())
+        handle.write(log_of(events))
 
     result = measure(log_path)
 
@@ -277,7 +278,7 @@ def test_review_suspected_never_counts_toward_the_review_fail_rate(tmp_path):
 
     log_path = str(tmp_path / "run.jsonl")
     with open(log_path, "w", encoding="utf-8") as handle:
-        handle.write(events.as_log())
+        handle.write(log_of(events))
 
     result = measure(log_path)
 
@@ -309,7 +310,7 @@ def test_assertion_fail_rate_counts_named_checks_not_whole_batches(tmp_path):
 
     log_path = str(tmp_path / "run.jsonl")
     with open(log_path, "w", encoding="utf-8") as handle:
-        handle.write(events.as_log())
+        handle.write(log_of(events))
 
     result = measure(log_path)
 
@@ -377,7 +378,7 @@ def test_a_run_cut_off_mid_wait_does_not_crash_or_go_negative(tmp_path):
 def _write(tmp_path, name, events):
     log_path = str(tmp_path / name)
     with open(log_path, "w", encoding="utf-8") as handle:
-        handle.write(events.as_log())
+        handle.write(log_of(events))
     return log_path
 
 
@@ -554,7 +555,7 @@ def test_a_run_counts_the_questions_it_asked(tmp_path):
 
     log_path = str(tmp_path / "run.jsonl")
     with open(log_path, "w", encoding="utf-8") as handle:
-        handle.write(events.as_log())
+        handle.write(log_of(events))
 
     result = measure(log_path)
 
@@ -577,7 +578,7 @@ def test_not_defined_and_conflicted_counts_read_off_the_last_design_event(tmp_pa
 
     log_path = str(tmp_path / "run.jsonl")
     with open(log_path, "w", encoding="utf-8") as handle:
-        handle.write(events.as_log())
+        handle.write(log_of(events))
 
     result = measure(log_path)
 

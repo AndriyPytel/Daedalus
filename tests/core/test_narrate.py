@@ -17,7 +17,7 @@ import pytest
 
 from core.events import (
     ABORTED, ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, BUDGET_EXHAUSTED,
-    CALL_STARTED, CHANGE_SET, COMPLETED, CONSULT_DESIGN, CONSULT_DESIGN_ANSWERED, COST,
+    CALL_STARTED, CHANGE_SET, COMPLETED, COST,
     ERROR, FAILED, GATE, INTENT, INVOKE_MARKUP, KINDS,
     OUTSTANDING, PART, PLAN, DESIGN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION,
     REVIEW_SUSPECTED, REVIEW_VERDICT, ROUTED, STEP_DECLARED, STEP_STARTED, STOPPED,
@@ -68,8 +68,6 @@ SAMPLES = {
     SUB_AGENT_ANSWERED: {"phase": "design", "answer": "13.0 mm",
                          "transcript": [{"role": "user", "content": "read page 2"}]},
     SUB_AGENT_REFUSED: {"phase": "design", "reason": "depth"},
-    CONSULT_DESIGN: {},
-    CONSULT_DESIGN_ANSWERED: {"description": {"features": []}},
     TURN_BUDGET_EXHAUSTED: {"phase": "execute", "turns": 31, "budget": 30},
     INVOKE_MARKUP: {"phase": "execute", "name": "Bash",
                     "parameters": ["command"], "recovered": False},

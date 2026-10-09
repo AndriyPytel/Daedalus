@@ -11,6 +11,7 @@ about.
 import json
 import os
 import shutil
+import tempfile
 import time
 
 from core.events import (
@@ -23,7 +24,7 @@ from core.llm.exceptions import StreamCutOff
 from core.agent import phase_contract as pc
 from core.agent.invoke_guard import first_invoke_in, recovered_message
 from core.agent.phase_contract import spawn
-from core.agent.subagent import delegate
+from core.agent.subagent import SessionTreeSupervisor, delegate
 from core.freecad_apply import discard
 from core.lint import lint
 from core.loop.prompt import _CUT_OFF_ATTEMPTS, _LEDGER_HEADING, _object_of, prompt
@@ -120,6 +121,11 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
         if supervisor is not None and plan_length:
             supervisor.begin_step(max(plan_length - len(delivered_steps), 1))
 
+    def replied_with(result):
+        if stream is not None:
+            stream.emit(TOOL_RESULT, name=phase, result=result)
+        return _say(session, llm, json.dumps(result), phase=phase, stream=stream)
+
     own_turns()
     try:
         text = _say(session, llm, task, phase=phase, stream=stream)
@@ -138,9 +144,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                                             "not a verdict on the Plan -- write the Step "
                                             "again rather than declare it unbuildable."
                                             % last_failure}
-                    if stream is not None:
-                        stream.emit(TOOL_RESULT, name=phase, result=refused)
-                    text = _say(session, llm, json.dumps(refused), phase=phase, stream=stream)
+                    text = replied_with(refused)
                     continue
                 if pending_retry is not None and not (
                         declared.get("unbuildable") or declared.get("obsolete")):
@@ -149,7 +153,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
             if "delegate" in message:
                 if supervisor is None:
                     raise AgentGaveUp("%s tried to delegate with no supervisor" % phase)
-                answer = delegate(supervisor, session, 0, llm, message["delegate"],
+                answer = delegate(supervisor, session, llm, message["delegate"],
                                   stream=stream, phase=phase)
                 if answer is not None and declaration_demanded:
                     declaration_demanded = False
@@ -187,12 +191,10 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                     refused = {"ok": False, "status": "refused", "fix": fix,
                               "traceback": "Step %s has not been delivered, so there is "
                                             "nothing to fix. Write it as a Step." % fix}
-                    if stream is not None:
-                        stream.emit(TOOL_RESULT, name=phase, result=refused)
-                    text = _say(session, llm, json.dumps(refused), phase=phase, stream=stream)
+                    text = replied_with(refused)
                     continue
                 if message.get("step") in delivered_steps:
-                    next_step = _next_step(message["step"], sources.get("plan"))
+                    next_step = _step_beside(message["step"], sources.get("plan"), forward=True)
                     refused = {"ok": False, "status": "refused", "step": message["step"]}
                     if next_step is not None:
                         refused["next_step"] = next_step
@@ -201,21 +203,17 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                     else:
                         refused["traceback"] = ("Step %s was already delivered, and is the "
                                                 "Plan's last Step. Declare." % message["step"])
-                    if stream is not None:
-                        stream.emit(TOOL_RESULT, name=phase, result=refused)
-                    text = _say(session, llm, json.dumps(refused), phase=phase, stream=stream)
+                    text = replied_with(refused)
                     continue
                 if message.get("step") is not None:
-                    previous_step = _previous_step(message["step"], sources.get("plan"))
+                    previous_step = _step_beside(message["step"], sources.get("plan"), forward=False)
                     if (previous_step is not None and previous_step not in delivered_steps
                             and previous_step != declared_failure):
                         refused = {"ok": False, "status": "refused", "step": message["step"],
                                   "traceback": "Step %s has neither landed nor been declared. "
                                                 "Write Step %s first."
                                                 % (previous_step, previous_step)}
-                        if stream is not None:
-                            stream.emit(TOOL_RESULT, name=phase, result=refused)
-                        text = _say(session, llm, json.dumps(refused), phase=phase, stream=stream)
+                        text = replied_with(refused)
                         continue
                 if stream is not None:
                     stream.emit(TOOL_CALL, name=phase,
@@ -270,9 +268,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                                                     % (fix, delivered.get("traceback", ""))}
                     else:
                         answer = _feedback(result, None)
-                    if stream is not None:
-                        stream.emit(TOOL_RESULT, name=phase, result=answer)
-                    text = _say(session, llm, json.dumps(answer), phase=phase, stream=stream)
+                    text = replied_with(answer)
                     continue
                 delivered_step = None
                 if "step" in message and result.ok and result.checkpoint:
@@ -295,9 +291,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                                                 "failed. Fix Step %s first."
                                                 % (message["step"], declared_failure,
                                                    declared_failure)}
-                        if stream is not None:
-                            stream.emit(TOOL_RESULT, name=phase, result=skipped)
-                        text = _say(session, llm, json.dumps(skipped), phase=phase, stream=stream)
+                        text = replied_with(skipped)
                         continue
                     delivered = (on_declaration(declaration) if on_declaration is not None
                                 else {"delivered": True})
@@ -322,9 +316,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                         if delivered.get("directive"):
                             drifted["you_have_failed_this_the_same_way_twice"] = \
                                 delivered["directive"]
-                        if stream is not None:
-                            stream.emit(TOOL_RESULT, name=phase, result=drifted)
-                        text = _say(session, llm, json.dumps(drifted), phase=phase, stream=stream)
+                        text = replied_with(drifted)
                         continue
                     elif not delivered.get("delivered"):
                         pending_retry = None
@@ -346,12 +338,10 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                 answer = _feedback(result, lint_warnings)
                 if delivered_step is not None:
                     answer["step"] = delivered_step
-                    next_step = _next_step(delivered_step, sources.get("plan"))
+                    next_step = _step_beside(delivered_step, sources.get("plan"), forward=True)
                     if next_step is not None:
                         answer["next_step"] = next_step
-                if stream is not None:
-                    stream.emit(TOOL_RESULT, name=phase, result=answer)
-                text = _say(session, llm, json.dumps(answer), phase=phase, stream=stream)
+                text = replied_with(answer)
                 continue
             if supervisor is not None:
                 supervisor.record_turn()
@@ -389,32 +379,44 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
             working_kernel.kill()
 
 
-def _next_step(step, plan):
+def run_declaring(phase, sources, llm, task, working_dir=None, supervisor=None, **kwargs):
     """
-    The Step after *step* the Plan still holds, or `None` once none remain.
+    `run_phase` in a working directory of its own, removed afterwards unless
+    *working_dir* is given, under *supervisor* or a fresh one. Returns the
+    declaration as a dict -- `{}` when the phase declared anything else -- and
+    the declarations the phase made.
+    """
+    supervisor = supervisor or SessionTreeSupervisor()
+    if working_dir is not None:
+        declared, _, declarations = run_phase(
+            phase, working_dir, sources, llm, task, supervisor=supervisor, **kwargs)
+    else:
+        with tempfile.TemporaryDirectory() as made:
+            declared, _, declarations = run_phase(
+                phase, made, sources, llm, task, supervisor=supervisor, **kwargs)
+    return (declared if isinstance(declared, dict) else {}), declarations
+
+
+def _step_beside(step, plan, forward):
+    """
+    The Step after *step* the Plan still holds (*forward*) or the one before it,
+    or `None` where none remains.
 
     *plan* -- `sources["plan"]` -- names its own numbers through a list of
     `{"step": ...}` dicts; a plain list of Steps, or none at all, is read
     position by position, 1-based, the only numbering it can mean.
     """
     if not isinstance(plan, list) or not plan:
-        return step + 1
-    if all(isinstance(item, dict) and "step" in item for item in plan):
-        numbers = [item["step"] for item in plan]
-    else:
-        numbers = range(1, len(plan) + 1)
-    later = [number for number in numbers if number > step]
-    return min(later) if later else None
-
-
-def _previous_step(step, plan):
-    """The Step before *step* the Plan holds, or `None` when *step* is first."""
-    if not isinstance(plan, list) or not plan:
+        if forward:
+            return step + 1
         return step - 1 if step > 1 else None
     if all(isinstance(item, dict) and "step" in item for item in plan):
         numbers = [item["step"] for item in plan]
     else:
         numbers = range(1, len(plan) + 1)
+    if forward:
+        later = [number for number in numbers if number > step]
+        return min(later) if later else None
     earlier = [number for number in numbers if number < step]
     return max(earlier) if earlier else None
 

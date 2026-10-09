@@ -10,6 +10,7 @@ from core.agent import agent
 from core.events import CALL_STARTED, EventStream, INVOKE_MARKUP
 from core.llm import Session
 from core.llm.types import TEXT, Chunk
+from tests.event_helpers import events_of
 
 MARKUP = os.path.join(os.path.dirname(__file__), "invoke_markup")
 
@@ -98,4 +99,4 @@ def test_recovering_an_invoke_emits_an_event():
     assert invoked is not None
     assert invoked.data["name"] == "fcc_turn"
     assert invoked.data["recovered"] is True
-    assert stream.of(CALL_STARTED)
+    assert events_of(stream, CALL_STARTED)

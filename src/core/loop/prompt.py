@@ -1,4 +1,4 @@
-"""Prompt composition, streaming, and parsing utilities."""
+"""Prompt composition and parsing utilities."""
 import base64
 import contextlib
 import contextvars
@@ -6,15 +6,10 @@ import json
 import mimetypes
 import os
 import re
-import time
 
-from core.events import CALL_STARTED, COST, THOUGHT, WRITING
 from core.freecad_apply import TRAPS
 from core.lint import OP_TYPEIDS
-from core.llm import REASONING, StreamCutOff
 from core.sheets import sheet_reader
-
-from core.loop.budgets import PhaseError
 
 
 DESIGN_PHASE = "design"
@@ -135,101 +130,6 @@ def prompt(phase, ledger=""):
     return body
 
 
-def _ask(llm, events, phase, system, user):
-    """
-    One phase's turn: stream it, surface the reasoning as it forms, parse the reply.
-
-    A reply with no object is asked once more as a second turn: kimi-k3
-    replied to Execute with prose whose only object-key was a `look`. Of the
-    last 20 sessions, 11 touched Design and 8 died here, 70-640 s in.
-    """
-    body, thought, reasoning = _streamed(llm, events, phase, system, user)
-    if not isinstance(_object_of(body), dict):
-        body, thought, reasoning = _streamed(llm, events, phase, system, user,
-                                             prior=_asked_again(body, reasoning))
-
-    if thought and not body.strip():
-        raise PhaseError(
-            "%s streamed its reasoning and then stopped without answering. Send the "
-            "Intent again, or pick a model that thinks less before it commits." % phase
-        )
-    return _as_json(body, phase)
-
-
-def _streamed(llm, events, phase, system, user, prior=()):
-    """
-    One turn, as the text it wrote, whether it reasoned, and the reasoning.
-
-    A stream the provider closed mid-reply is sent again: of seven long
-    streams measured against the opencode gateway four were cut and three
-    finished. Three attempts, since a gateway that cuts all three is down.
-    """
-    for attempt in range(_CUT_OFF_ATTEMPTS):
-        try:
-            return _one_call(llm, events, phase, system, user, prior)
-        except StreamCutOff:
-            if attempt == _CUT_OFF_ATTEMPTS - 1:
-                raise
-            time.sleep(2 ** attempt)
-
-
-def _one_call(llm, events, phase, system, user, prior=()):
-    """
-    The turn itself, priced whether it answered or the connection went.
-
-    Constraint: `for_phase` picks this call's client, so one price never
-    covers Design's reading and Execute's code at the costlier rate.
-    Measured: a phase went silent 22.4 of 23.6 minutes before streaming.
-    """
-    llm = llm.for_phase(phase) if hasattr(llm, "for_phase") else llm
-    ceiling = getattr(llm, "timeout", None)
-    model = getattr(llm, "model", None)
-    started = {"phase": phase, "model": model}
-    if ceiling is not None:
-        started["ceiling"] = ceiling
-    events.emit(CALL_STARTED, **started)
-
-    start = time.time()
-    text, reasoning, thought = [], [], False
-    messages = [{"role": "system", "content": system},
-               {"role": "user", "content": user}] + list(prior)
-    try:
-        for chunk in llm.stream(messages):
-            if chunk.kind == REASONING:
-                thought = True
-                reasoning.append(chunk.text)
-                events.emit(THOUGHT, phase=phase, text=chunk.text)
-            else:
-                text.append(chunk.text)
-                events.emit(WRITING, phase=phase, text=chunk.text)
-    finally:
-        spent = getattr(llm, "last_cost", None) or {}
-        paid = {"phase": phase, "seconds": time.time() - start,
-                "model": spent.get("model", model)}
-        for key in ("usd", "prompt_tokens", "completion_tokens", "cached_tokens",
-                    "cache_creation_tokens", "reasoning_tokens", "usage_unavailable"):
-            if key in spent:
-                paid[key] = spent[key]
-        events.emit(COST, **paid)
-    return "".join(text), thought, "".join(reasoning)
-
-
-_ASKED_AGAIN = read_prompt("asked_again.md")
-
-
-def _asked_again(body, reasoning):
-    """
-    The retry as a second turn: the model's last reply handed back as its own
-    assistant message, then a nudge for the object — not the original `user`
-    resent, which would prefill tens of thousands of tokens again for one
-    sentence. `reasoning` stands in for `body` when a turn was all thought and
-    nothing after it, since it still reads as *something* to answer against.
-    """
-    said = (body or reasoning or "").strip() or "(nothing was said)"
-    return [{"role": "assistant", "content": said},
-            {"role": "user", "content": _ASKED_AGAIN}]
-
-
 def _as_image(path):
     """
     Read a file as the content block the provider takes for it. None
@@ -250,23 +150,6 @@ def _as_image(path):
                 "file": {"file_data": "data:%s;base64,%s" % (mime, encoded)}}
     return {"type": "image_url",
             "image_url": {"url": "data:%s;base64,%s" % (mime, encoded)}}
-
-
-def _as_json(text, phase):
-    """
-    The reply as the object it carries, wherever in the reply that object is.
-    A reply can answer correctly and still lose the run if the whole reply must parse — Design once did, then added a paragraph explaining itself.
-
-    So the fence is tried, then the whole reply, then the first balanced object in it.
-    """
-    parsed = _object_of(text)
-    if parsed is None:
-        raise PhaseError(
-            "%s did not reply with JSON. It said: %s" % (phase, (text or "").strip()[:400])
-        )
-    if not isinstance(parsed, dict):
-        raise PhaseError("%s replied with JSON that is not an object: %r" % (phase, parsed))
-    return parsed
 
 
 def _object_of(text):

@@ -29,12 +29,12 @@ def test_starting_a_run_shows_design_running_and_the_rest_queued():
 
     queue = _widget()
 
-    assert queue.phase_state(DESIGN) == RUNNING
-    assert queue.phase_state(PLAN) == QUEUED
-    assert queue.phase_state(EXECUTE) == QUEUED
-    assert queue.phase_state(ASSERTION) == QUEUED
-    assert queue.phase_state(REVIEW) == QUEUED
-    assert queue.step_count() == 0
+    assert queue._states[DESIGN] == RUNNING
+    assert queue._states[PLAN] == QUEUED
+    assert queue._states[EXECUTE] == QUEUED
+    assert queue._states[ASSERTION] == QUEUED
+    assert queue._states[REVIEW] == QUEUED
+    assert len(queue._step_states) == 0
 
 
 def test_completing_design_and_starting_plan_moves_design_to_done_and_plan_to_running():
@@ -43,8 +43,8 @@ def test_completing_design_and_starting_plan_moves_design_to_done_and_plan_to_ru
     queue = _widget()
     queue.start_plan(["Make a box", "Fillet it"])
 
-    assert queue.phase_state(DESIGN) == DONE
-    assert queue.phase_state(PLAN) == RUNNING
+    assert queue._states[DESIGN] == DONE
+    assert queue._states[PLAN] == RUNNING
 
 
 def test_entering_execute_lists_the_foreseen_steps_queued_until_they_start():
@@ -54,11 +54,11 @@ def test_entering_execute_lists_the_foreseen_steps_queued_until_they_start():
     queue.start_plan(["Create sketch for base", "Pad the sketch"])
     queue.start_execute()
 
-    assert queue.phase_state(PLAN) == DONE
-    assert queue.phase_state(EXECUTE) == RUNNING
-    assert queue.step_count() == 2
-    assert queue.step_state(1) == QUEUED
-    assert queue.step_state(2) == QUEUED
+    assert queue._states[PLAN] == DONE
+    assert queue._states[EXECUTE] == RUNNING
+    assert len(queue._step_states) == 2
+    assert queue._step_states[0] == QUEUED
+    assert queue._step_states[1] == QUEUED
 
 
 def test_the_wait_for_the_build_button_is_not_plans_time():
@@ -90,8 +90,8 @@ def test_start_execute_takes_the_gates_steps_over_what_plan_foresaw():
     queue.start_plan(["Create sketch for base", "Pad the sketch"])
     queue.start_execute(["Create sketch for base", "Pad the sketch", "Fillet the top edge"])
 
-    assert queue.step_count() == 3
-    assert queue.step_state(3) == QUEUED
+    assert len(queue._step_states) == 3
+    assert queue._step_states[2] == QUEUED
 
 
 def test_a_step_starting_moves_it_from_queued_to_running():
@@ -102,7 +102,7 @@ def test_a_step_starting_moves_it_from_queued_to_running():
     queue.start_execute()
     queue.step_started(1)
 
-    assert queue.step_state(1) == RUNNING
+    assert queue._step_states[0] == RUNNING
 
 
 def test_a_second_step_starting_leaves_the_first_reported_done():
@@ -115,8 +115,8 @@ def test_a_second_step_starting_leaves_the_first_reported_done():
     queue.step_applied(1)
     queue.step_started(2)
 
-    assert queue.step_state(1) == DONE
-    assert queue.step_state(2) == RUNNING
+    assert queue._step_states[0] == DONE
+    assert queue._step_states[1] == RUNNING
 
 
 def test_a_step_completing_moves_it_to_done():
@@ -128,7 +128,7 @@ def test_a_step_completing_moves_it_to_done():
     queue.step_started(1)
     queue.step_applied(1)
 
-    assert queue.step_state(1) == DONE
+    assert queue._step_states[0] == DONE
 
 
 def test_completing_execute_collapses_it_and_expands_assertion_to_running():
@@ -140,8 +140,8 @@ def test_completing_execute_collapses_it_and_expands_assertion_to_running():
     queue.step_started(1)
     queue.step_applied(1)
 
-    assert queue.phase_state(EXECUTE) == DONE
-    assert queue.phase_state(ASSERTION) == RUNNING
+    assert queue._states[EXECUTE] == DONE
+    assert queue._states[ASSERTION] == RUNNING
     assert queue._steps_container.isVisible() is False
 
 
@@ -154,8 +154,8 @@ def test_an_unbuilt_last_step_still_completes_execute():
     queue.step_started(1)
     queue.step_unbuilt(1)
 
-    assert queue.phase_state(EXECUTE) == DONE
-    assert queue.phase_state(ASSERTION) == RUNNING
+    assert queue._states[EXECUTE] == DONE
+    assert queue._states[ASSERTION] == RUNNING
 
 
 def test_completing_review_shows_all_five_phases_done():
@@ -170,7 +170,7 @@ def test_completing_review_shows_all_five_phases_done():
     queue.finish_review()
 
     for phase in (DESIGN, PLAN, EXECUTE, ASSERTION, REVIEW):
-        assert queue.phase_state(phase) == DONE, phase
+        assert queue._states[phase] == DONE, phase
 
 
 def test_a_run_failing_in_plan_leaves_execute_assertion_review_queued():
@@ -180,10 +180,10 @@ def test_a_run_failing_in_plan_leaves_execute_assertion_review_queued():
     queue.start_plan(["Create sketch for base"])
     queue.fail_current()
 
-    assert queue.phase_state(PLAN) == FAILED
-    assert queue.phase_state(EXECUTE) == QUEUED
-    assert queue.phase_state(ASSERTION) == QUEUED
-    assert queue.phase_state(REVIEW) == QUEUED
+    assert queue._states[PLAN] == FAILED
+    assert queue._states[EXECUTE] == QUEUED
+    assert queue._states[ASSERTION] == QUEUED
+    assert queue._states[REVIEW] == QUEUED
 
 
 def test_a_failed_phase_does_not_advance_when_the_run_carries_on_regardless():
@@ -199,7 +199,7 @@ def test_a_failed_phase_does_not_advance_when_the_run_carries_on_regardless():
     queue.fail_current()
     queue.start_plan(["Create sketch for base, revised"])
 
-    assert queue.phase_state(PLAN) == FAILED
+    assert queue._states[PLAN] == FAILED
 
 def test_a_step_whose_attempt_did_not_build_reads_failed_until_one_lands():
     """
@@ -212,13 +212,13 @@ def test_a_step_whose_attempt_did_not_build_reads_failed_until_one_lands():
     queue.start_plan(["Sketch the base", "Pad it"])
     queue.start_execute()
     queue.step_started(2)
-    assert queue.step_state(2) == RUNNING
+    assert queue._step_states[1] == RUNNING
 
     queue.step_failed(2)
-    assert queue.step_state(2) == FAILED
+    assert queue._step_states[1] == FAILED
 
     queue.step_applied(2)
-    assert queue.step_state(2) == DONE, "a Step that recovered stayed red"
+    assert queue._step_states[1] == DONE, "a Step that recovered stayed red"
 
 
 def test_the_part_written_down_closes_design_and_starts_plan():
@@ -231,8 +231,8 @@ def test_the_part_written_down_closes_design_and_starts_plan():
     queue = _widget()
     queue.design_written()
 
-    assert queue.phase_state(DESIGN) == DONE
-    assert queue.phase_state(PLAN) == RUNNING
+    assert queue._states[DESIGN] == DONE
+    assert queue._states[PLAN] == RUNNING
 
 
 def test_a_plan_answered_after_the_part_leaves_both_where_they_are():
@@ -242,8 +242,8 @@ def test_a_plan_answered_after_the_part_leaves_both_where_they_are():
     queue.design_written()
     queue.start_plan(["Make a box"])
 
-    assert queue.phase_state(DESIGN) == DONE
-    assert queue.phase_state(PLAN) == RUNNING
+    assert queue._states[DESIGN] == DONE
+    assert queue._states[PLAN] == RUNNING
 
 
 def test_a_design_that_wrote_no_part_is_closed_by_the_plan_that_follows_it():
@@ -257,8 +257,8 @@ def test_a_design_that_wrote_no_part_is_closed_by_the_plan_that_follows_it():
     queue = _widget()
     queue.start_plan(["Make a box"])
 
-    assert queue.phase_state(DESIGN) == DONE
-    assert queue.phase_state(PLAN) == RUNNING
+    assert queue._states[DESIGN] == DONE
+    assert queue._states[PLAN] == RUNNING
 
 
 def test_exactly_one_phase_is_running_from_the_part_to_the_plan():
@@ -268,7 +268,7 @@ def test_exactly_one_phase_is_running_from_the_part_to_the_plan():
     for act in (lambda: None, queue.design_written,
                 lambda: queue.start_plan(["Make a box"])):
         act()
-        running = [phase for phase in PHASES if queue.phase_state(phase) == RUNNING]
+        running = [phase for phase in PHASES if queue._states[phase] == RUNNING]
         assert len(running) == 1, running
 
 
@@ -279,7 +279,7 @@ def test_a_design_that_failed_is_not_reopened_by_the_part():
     queue.fail_current()
     queue.design_written()
 
-    assert queue.phase_state(DESIGN) == FAILED
+    assert queue._states[DESIGN] == FAILED
 
 
 def test_a_phase_closed_and_reopened_sums_the_time_of_its_passes():

@@ -12,7 +12,8 @@ just reset it because a new Session started.
 """
 import json
 
-from core.loop import execute as execute_module
+from core.agent import agent as agent_module
+from core.agent import phase_contract as pc
 from tests.loop_helpers import _MultiTurn, code_reply, drive, plan_reply, suspect_reply, verdict_reply
 
 
@@ -25,13 +26,14 @@ _DECLARE_NOTHING = json.dumps({"declare": {"steps": []}})
 
 def test_a_same_step_regeneration_inherits_the_prior_calls_exploration_count(monkeypatch):
     seen = []
-    real_run_phase = execute_module.run_phase
+    real_run_phase = agent_module.run_phase
 
-    def spying(*args, **kwargs):
-        seen.append(dict(kwargs.get("exploration") or {}))
-        return real_run_phase(*args, **kwargs)
+    def spying(phase, *args, **kwargs):
+        if phase == pc.EXECUTE:
+            seen.append(dict(kwargs.get("exploration") or {}))
+        return real_run_phase(phase, *args, **kwargs)
 
-    monkeypatch.setattr(execute_module, "run_phase", spying)
+    monkeypatch.setattr(agent_module, "run_phase", spying)
 
     result, events, llm, tools = drive([
         plan_reply("Pad the outline"),
@@ -56,13 +58,14 @@ def test_a_plan_revision_inherits_the_exploration_count_the_step_before_it_spent
     to keep the turns it already burned probing it in the pass before.
     """
     seen = []
-    real_run_phase = execute_module.run_phase
+    real_run_phase = agent_module.run_phase
 
-    def spying(*args, **kwargs):
-        seen.append(dict(kwargs.get("exploration") or {}))
-        return real_run_phase(*args, **kwargs)
+    def spying(phase, *args, **kwargs):
+        if phase == pc.EXECUTE:
+            seen.append(dict(kwargs.get("exploration") or {}))
+        return real_run_phase(phase, *args, **kwargs)
 
-    monkeypatch.setattr(execute_module, "run_phase", spying)
+    monkeypatch.setattr(agent_module, "run_phase", spying)
 
     result, events, llm, tools = drive([
         plan_reply("Pad the outline"),

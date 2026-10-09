@@ -45,10 +45,8 @@ from core.design.report import (
     render,
 )
 from core.design.gaps import (
-    carried_by_no_source,
     decided_for_you,
     entries,
-    measured_from_what_is_gone,
 )
 from core.loop.budgets import Budgets, revisions_ceiling
 from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, prompt
@@ -104,6 +102,7 @@ from tests.loop_helpers import (
     _THE_AXIS_PUT_RIGHT,
     _a_sheet_that_contradicts_itself,
 )
+from tests.event_helpers import events_of, first_event
 
 
 def test_looks_per_turn_and_its_bounded_loop_are_gone():
@@ -634,7 +633,7 @@ def test_a_standing_approval_is_on_the_stream_as_an_approval_not_as_a_silence():
         suspect_reply(), verdict_reply("pass"),
     ])
 
-    gates = events.of(GATE)
+    gates = events_of(events, GATE)
 
     assert [g.data.get("decision") for g in gates] == [None, "approve", None, "approve"]
     assert gates[0].data["asked"] is True
@@ -657,7 +656,7 @@ def test_an_ordinary_approval_does_not_stand():
         suspect_reply(), verdict_reply("pass"),
     ])
 
-    assert all(g.data.get("standing") in (None, False) for g in events.of(GATE))
+    assert all(g.data.get("standing") in (None, False) for g in events_of(events, GATE))
 
 
 def test_a_standing_amendment_is_not_a_standing_approval():
@@ -727,7 +726,7 @@ def test_a_standing_approval_does_not_cover_an_assumption_the_user_has_not_read(
 
     assert result.ok
     assert len(gate.asked) == 2, "a new assumption went past a standing approval"
-    assert [g.data.get("assumed") for g in events.of(GATE)] == [None, None, 1, None], \
+    assert [g.data.get("assumed") for g in events_of(events, GATE)] == [None, None, 1, None], \
         "the stream does not say why the Gate was asked at again"
 
 
@@ -836,7 +835,7 @@ def test_a_part_whose_outside_nobody_carries_goes_back_to_the_drawing():
     assert result.ok, result.reason
     asked = json.loads(llm.calls[1][-1]["content"][-1]["text"])
     assert "outer profile" in asked["the_question"], asked.get("the_question")
-    assert events.first(QUESTION) is None, \
+    assert first_event(events, QUESTION) is None, \
         "the user was asked about a contour the drawing settled"
 
 
@@ -876,7 +875,7 @@ def test_a_shape_the_drawing_will_not_say_is_settled_and_shown_at_the_gate():
     assert asked == [], "the user was asked for the contour: %s" % asked
     told = json.loads(llm.calls[2][-1]["content"][-1]["text"])["the_question"]
     assert "settle it yourself" in told and "because" in told
-    decided = json.dumps(events.first(PLAN).data["decided"])
+    decided = json.dumps(first_event(events, PLAN).data["decided"])
     assert "read off the silhouette" in decided
 
 
@@ -907,38 +906,6 @@ def test_design_is_given_the_line_work_of_the_views_in_millimetres():
     assert "arc R" in said or "line (" in said, "the line work arrived with no entities"
     assert "derived" in said, \
         "nothing told Design that a value measured off the line work is not a guess"
-
-
-def test_a_phase_that_answered_and_then_explained_itself_is_still_an_answer():
-    """
-    The recorded run (`logs/sessions/6fbd31e98fb540818086611841fa9aff.jsonl`)
-    died on a correct reply: Design answered `{"design": {}, "question": ""}`
-    and then wrote a paragraph explaining that the two strings it was asked
-    about are the item numbers of a notes list. The whole reply had to parse or
-    none of it did, so the object that was right there was thrown away and the
-    run ended with an error the user could do nothing about.
-    """
-    from core.loop.prompt import _as_json
-
-    said = ('{"design": {}, "question": ""}\n\nThe two unaccounted strings, `3.` and '
-            '`4.`, are the item numbers of the NOTES list on page 2.')
-
-    assert _as_json(said, "design") == {"design": {}, "question": ""}
-
-
-def test_a_reply_with_no_json_in_it_is_still_a_phase_that_did_not_answer():
-    """
-    Reaching into a reply for an object must not turn prose into an answer: a
-    phase that never replied with JSON is a phase that did not do its job, and
-    the error quotes what it said instead.
-    """
-    from core.loop.budgets import PhaseError
-    from core.loop.prompt import _as_json
-
-    with pytest.raises(PhaseError) as raised:
-        _as_json("I would rather describe this in words.", "design")
-
-    assert "did not reply with JSON" in str(raised.value)
 
 
 def test_a_phase_that_answered_in_prose_is_asked_once_more_rather_than_ending_the_run():
@@ -1101,7 +1068,7 @@ def test_a_re_read_that_corrects_the_axis_reaches_the_plan_instead_of_stopping()
     result, events, _, tools = drive(
         _THE_AXIS_PUT_RIGHT, attachments=[RENDER_PNG])
 
-    assert result.ok, events.first(BLOCKED) and events.first(BLOCKED).data["reason"]
+    assert result.ok, first_event(events, BLOCKED) and first_event(events, BLOCKED).data["reason"]
     assert tools.applied_codes() == ["bore()", "pocket()"]
 
 
@@ -1146,7 +1113,7 @@ def test_a_re_read_that_settles_nothing_no_longer_stops_the_run():
 
     assert result.ok, result.reason
     assert tools.applied_codes() == ["pad()"]
-    assert events.first(BLOCKED) is None
+    assert first_event(events, BLOCKED) is None
 
 
 

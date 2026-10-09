@@ -29,10 +29,8 @@ from core.loop.gate import _DECIDE, _DECIDE_AND_ASSUME, _a_question_for_the_buil
 from core.loop.prompt import PLAN_PHASE, _pictures, prompt
 from core.kernel.kernel_worker import RESERVED_STEP_NAMES
 
-import tempfile
-from core.agent.agent import run_phase
+from core.agent.agent import run_declaring
 from core.agent import phase_contract as pc
-from core.agent.subagent import SessionTreeSupervisor
 from core.loop.results import Stopped
 
 
@@ -106,19 +104,10 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
     if looked:
         request["what_the_tools_say"] = list(looked)
 
-    supervisor = supervisor or SessionTreeSupervisor()
     task = json.dumps(request, indent=2, default=str)
-    
-    with tempfile.TemporaryDirectory() as working_dir:
-        declared, session, declarations = run_phase(
-            pc.PLAN, working_dir,
-            {},
-            llm, task,
-            kernel=kernel, supervisor=supervisor, stream=events,
-            system=prompt(PLAN_PHASE), design=the_part or {},
-        )
-    
-    reply = declared if isinstance(declared, dict) else {}
+    reply, _ = run_declaring(
+        pc.PLAN, {}, llm, task, kernel=kernel, supervisor=supervisor, stream=events,
+        system=prompt(PLAN_PHASE), design=the_part or {})
     known_values = dict(getattr(kernel, "plan_values", None) or {})
     steps, satisfies, cites, ops, unbuildable, values, value_errors = _steps_of(
         reply.get("steps", []), reply.get("op_vocabulary"), known_values)

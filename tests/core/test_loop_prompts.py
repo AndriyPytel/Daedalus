@@ -44,10 +44,8 @@ from core.design.report import (
     render,
 )
 from core.design.gaps import (
-    carried_by_no_source,
     decided_for_you,
     entries,
-    measured_from_what_is_gone,
 )
 from core.loop.budgets import Budgets, revisions_ceiling
 from core.loop.prompt import nobody_answering, prompt
@@ -81,6 +79,7 @@ from tests.loop_helpers import (
     THE_2023_SHEET,
     _a_run_that_reads_the_sheet_every_way,
 )
+from tests.event_helpers import events_of, first_event
 
 
 @pytest.mark.parametrize("turn, phase",
@@ -556,7 +555,7 @@ def test_the_part_travels_as_a_structure_and_reaches_the_gate_laid_out():
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
-    assert events.first(DESIGN).data["model"] == A_PART, "the structure was flattened away"
+    assert first_event(events, DESIGN).data["model"] == A_PART, "the structure was flattened away"
 
     shown = json.loads(llm.calls[1][-1]["content"])["what_the_part_is"]
     assert shown == render(distilled(A_PART)), "Plan was shown something else again"
@@ -896,7 +895,7 @@ def test_plan_produces_an_ordered_list_of_steps_from_the_intent_and_a_snapshot()
     ])
 
     assert result.ok
-    planned = events.first(PLAN).data["steps"]
+    planned = first_event(events, PLAN).data["steps"]
     assert planned == ["Create a 10mm box", "Fillet the top edge"]
 
 
@@ -921,7 +920,7 @@ def test_the_steps_run_in_the_order_the_plan_gave_them():
     ])
 
     assert tools.applied_codes() == ["first()", "second()", "third()"]
-    assert [e.data["description"] for e in events.of(STEP_STARTED)] == ["First", "Second", "Third"]
+    assert [e.data["description"] for e in events_of(events, STEP_STARTED)] == ["First", "Second", "Third"]
 
 
 def test_a_last_turn_with_neither_code_nor_obsolete_fails_the_step_not_the_run():
@@ -943,8 +942,8 @@ def test_a_last_turn_with_neither_code_nor_obsolete_fails_the_step_not_the_run()
     )
 
     assert not result.ok
-    assert events.first(ERROR) is None
-    blocked = events.first(BUDGET_EXHAUSTED)
+    assert first_event(events, ERROR) is None
+    blocked = first_event(events, BUDGET_EXHAUSTED)
     assert blocked is not None
     assert "Step 1 of 1" in blocked.data["reason"]
     assert len(blocked.data["tried"]) == 4
@@ -968,7 +967,7 @@ def test_a_step_that_never_writes_its_tail_still_terminates():
     )
 
     assert not result.ok
-    blocked = events.first(BUDGET_EXHAUSTED)
+    blocked = first_event(events, BUDGET_EXHAUSTED)
     assert blocked is not None
     assert len(blocked.data["tried"]) == 4
 

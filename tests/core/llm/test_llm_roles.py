@@ -1,7 +1,7 @@
 """
 Level 1 -- the role-to-model table every run is built from.
 
-`RoleClient` is the seam `core/loop.py :: _one_call` asks `for_phase` of: a
+`RoleClient` is the seam `core/agent/agent.py :: _one_turn` asks `for_phase` of: a
 phase is answered by the row that names it, and a role with no row of its own
 by the caller.
 """

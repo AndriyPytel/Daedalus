@@ -5,9 +5,9 @@ and Assertion always runs the collateral check. Without a base nothing changes.
 """
 import json
 
+from core.agent import agent as agent_module
 from core.events import EventStream
 from core.llm import ScriptedLLMClient
-from core.loop import assertion as assertion_module
 from core.loop import execute as execute_module
 from core.loop import plan as plan_module
 from core.loop.assertion import assertion
@@ -37,7 +37,7 @@ def _assert_with(monkeypatch, base):
         seen["task"].append(task)
         return {"code": "assert True"}, None, []
 
-    monkeypatch.setattr(assertion_module, "run_phase", fake_run_phase)
+    monkeypatch.setattr(agent_module, "run_phase", fake_run_phase)
     assertion(["the bore is 8 mm"], {}, _tools(seen["checks"]), ScriptedLLMClient([]),
               EventStream(), base=base)
     return seen
@@ -72,7 +72,7 @@ def test_plan_request_carries_the_base_only_when_there_is_one(monkeypatch):
         tasks.append(json.loads(task))
         return {"question": "which?"}, None, []
 
-    monkeypatch.setattr(plan_module, "run_phase", fake_run_phase)
+    monkeypatch.setattr(agent_module, "run_phase", fake_run_phase)
     plan_module.plan("edit", {}, ScriptedLLMClient([]), EventStream(), base=BASE)
     plan_module.plan("make", {}, ScriptedLLMClient([]), EventStream())
 

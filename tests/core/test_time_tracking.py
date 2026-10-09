@@ -1,4 +1,6 @@
 
+from tests.event_helpers import events_of
+
 def test_call_started_event_is_emitted_before_stream_opens():
     """
     call_started carries phase, model, and ceiling before the stream opens.
@@ -6,16 +8,17 @@ def test_call_started_event_is_emitted_before_stream_opens():
     ceiling is absent for clients without a timeout.
     """
     from core.llm import ScriptedLLMClient
-    from core.loop.prompt import _streamed
+    from core.agent.agent import _say
+    from core.llm.session import Session
     from core.events import EventStream, CALL_STARTED, COST
 
     # Test with ScriptedLLMClient (no timeout)
     llm_scripted = ScriptedLLMClient(["test reply"])
     events_scripted = EventStream()
 
-    _streamed(llm_scripted, events_scripted, "design", "system", "user")
+    _say(Session(), llm_scripted, "user", "design", events_scripted)
 
-    started_events = events_scripted.of(CALL_STARTED)
+    started_events = events_of(events_scripted, CALL_STARTED)
     assert len(started_events) == 1
     started_data = started_events[0].data
     assert started_data["phase"] == "design"
@@ -30,7 +33,8 @@ def test_cost_event_always_has_seconds_field():
     The usd field is absent when the client reported no price.
     """
     from core.llm import ScriptedLLMClient
-    from core.loop.prompt import _streamed
+    from core.agent.agent import _say
+    from core.llm.session import Session
     from core.events import EventStream, COST
     import time
 
@@ -38,10 +42,10 @@ def test_cost_event_always_has_seconds_field():
     events = EventStream()
 
     start = time.time()
-    _streamed(llm, events, "design", "system", "user")
+    _say(Session(), llm, "user", "design", events)
     elapsed = time.time() - start
 
-    cost_events = events.of(COST)
+    cost_events = events_of(events, COST)
     assert len(cost_events) == 1
     cost_data = cost_events[0].data
     assert "seconds" in cost_data
@@ -58,7 +62,8 @@ def test_cost_event_includes_usd_when_client_reports_price():
     """
     from litellm.llms.anthropic.chat.handler import ModelResponseIterator
     from core.llm import LiteLLMClient
-    from core.loop.prompt import _streamed
+    from core.agent.agent import _say
+    from core.llm.session import Session
     from core.events import EventStream, COST
     from tests import modelmania_harness
     import json
@@ -73,9 +78,9 @@ def test_cost_event_includes_usd_when_client_reports_price():
                         completion=lambda **kwargs: iter(chunks))
     events = EventStream()
 
-    _streamed(llm, events, "design", "system", "user")
+    _say(Session(), llm, "user", "design", events)
 
-    cost_events = events.of(COST)
+    cost_events = events_of(events, COST)
     assert len(cost_events) == 1
     cost_data = cost_events[0].data
     assert "seconds" in cost_data

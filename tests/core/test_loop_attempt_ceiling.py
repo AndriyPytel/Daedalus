@@ -11,6 +11,7 @@ from core.events import PREFLIGHT_FAILED
 from core.loop.budgets import Budgets
 
 from tests.loop_helpers import drive, failed, plan_reply, retried_code_reply
+from tests.event_helpers import events_of
 
 
 def test_a_step_refused_past_its_budget_reaches_apply_step_no_more_times_than_the_ceiling_allows():
@@ -27,7 +28,7 @@ def test_a_step_refused_past_its_budget_reaches_apply_step_no_more_times_than_th
         retried_code_reply("one()", "two()", "three()", "four()", "five()", "six()", step=1),
     ], applies=[failed("boom")] * 6, budgets=Budgets(attempts_per_step=3))
 
-    failures = events.of(PREFLIGHT_FAILED)
+    failures = events_of(events, PREFLIGHT_FAILED)
     assert len(failures) == 4, (
         "attempts_per_step=3 plus the free first refusal caps a Step at 4 "
         "preflight_failed events; got %d" % len(failures))

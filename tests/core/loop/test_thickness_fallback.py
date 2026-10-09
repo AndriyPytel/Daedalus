@@ -9,6 +9,7 @@ from core.events import PLAN_REVISED
 from core.loop.execute import _FAILED_THIS_WAY
 
 from tests.loop_helpers import _turns_of, drive, plan_reply
+from tests.event_helpers import events_of
 
 _HANDBACK = ("PartDesign::Thickness reports 'Failed to make thick solid' at 1, 2, 3 "
              "and 4 mm and with only the bottom face removed")
@@ -21,7 +22,7 @@ def _the_plan_call_after(handback):
         plan_reply("Rebuild the wall"),
         json.dumps({"declare": {"unbuildable": "still nothing"}}),
     ])
-    assert len(events.of(PLAN_REVISED)) == 1
+    assert len(events_of(events, PLAN_REVISED)) == 1
     return json.dumps(_turns_of(llm, "plan")[-1])
 
 

@@ -12,6 +12,7 @@ from core.events import STEP_DECLARED, EventStream
 from core.kernel import Kernel, find_freecadcmd
 from core.llm import ScriptedLLMClient
 from core.measure import measure
+from tests.event_helpers import events_of, log_of
 
 pytestmark = pytest.mark.freecad
 
@@ -104,13 +105,13 @@ def test_one_step_declared_event_per_declaration_reaches_the_stream(kernel, tmp_
     run_phase(pc.EXECUTE, str(tmp_path / "execute"), {}, llm, "pad two boxes",
               kernel=kernel, stream=stream)
 
-    declared_events = stream.of(STEP_DECLARED)
+    declared_events = events_of(stream, STEP_DECLARED)
     assert len(declared_events) == 2
     assert [event.data["step"] for event in declared_events] == [1, 2]
 
     log_path = str(tmp_path / "session.jsonl")
     with open(log_path, "w", encoding="utf-8") as handle:
-        handle.write(stream.as_log())
+        handle.write(log_of(stream))
 
     result = measure(log_path)
 
