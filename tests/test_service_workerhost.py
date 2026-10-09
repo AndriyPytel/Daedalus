@@ -87,3 +87,12 @@ def test_a_worker_that_exits_closes_its_connection_and_the_relay(host):
     assert hear(process) == {"op": "ready"}
     say(process, op="send", prompt="bye")
     assert process.wait(10) == 0
+
+
+@pytest.mark.skipif(not os.path.exists("/proc/net/tcp"), reason="the kernel table is Linux only")
+def test_listening_sees_a_listening_port_and_asking_starts_no_worker():
+    server = workerhost.listen(0, ["false"], address="127.0.0.1")
+    port = server.getsockname()[1]
+    assert workerhost.listening(port)
+    server.close()
+    assert not workerhost.listening(port)
