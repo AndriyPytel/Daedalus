@@ -23,12 +23,12 @@ The values never enter a shell history or a file: `ssh -t` gives a terminal, `re
 
 ## Up, down, logs
 
-From the repository on the server:
+From `deploy/` in the repository on the server (`podman compose` does not find a relative `-f deploy/compose.yaml`):
 
-    podman compose -f deploy/compose.yaml up -d --build
-    podman compose -f deploy/compose.yaml ps
-    podman compose -f deploy/compose.yaml logs -f gateway
-    podman compose -f deploy/compose.yaml down
+    podman compose up -d --build
+    podman compose ps
+    podman compose logs -f gateway
+    podman compose down
 
 `down` keeps the volumes, so Sessions and Runs survive a `down` and `up`; `down -v` deletes them. The first build downloads FreeCAD and takes several minutes.
 
