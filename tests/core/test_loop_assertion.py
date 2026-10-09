@@ -57,6 +57,7 @@ from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from core.loop.design import _the_groups
 from tests.loop_helpers import (
+    prompts_of,
     _a_real_png,
     _a_real_pdf,
     RENDER_PNG,
@@ -777,7 +778,7 @@ def test_a_re_read_over_a_named_callout_is_shown_only_the_views_it_is_printed_in
         suspect_reply(), verdict_reply("pass"),
     ], attachments=[THE_PIPE_CLAMP])
 
-    calls = [call for call in llm.calls if call[0]["content"].startswith(prompt("design"))]
+    calls = [call for call in llm.calls if call[0]["content"].startswith(prompts_of("design"))]
     re_read = calls[-1][-1]["content"][:-1]
     characters = sum(len(block["text"]) for block in re_read if block.get("type") == "text")
     pictures = [block for block in re_read if block.get("type") == "image_url"]
@@ -803,7 +804,7 @@ def test_a_callout_the_description_never_used_goes_back_to_design_naming_it():
 
     run("Build this", llm=llm, tools=FakeTools().registry, attachments=[MODEL_MANIA])
 
-    design_calls = [call for call in llm.calls if call[0]["content"].startswith(prompt("design"))]
+    design_calls = [call for call in llm.calls if call[0]["content"].startswith(prompts_of("design"))]
     asked = json.loads(design_calls[-1][-1]["content"][-1]["text"])
     assert "the_question" in asked, "Design was not sent back to the sheet at all"
     assert "40" in asked["the_question"]
@@ -823,7 +824,7 @@ def test_looking_again_stops_when_it_stops_finding_anything():
                               attachments=[MODEL_MANIA], budgets=Budgets(readings=1))
 
     assert result.ok, "the run did not finish: the re-look kept going"
-    design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompt("design"))]
+    design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompts_of("design"))]
     assert len(design_turns) == 3, \
         "the sheet was asked again after it had already answered with nothing"
 
@@ -843,7 +844,7 @@ def test_the_second_look_is_bounded_by_the_re_read_ceiling():
     run("Build this", llm=llm, tools=FakeTools().registry,
         budgets=Budgets(rereads=2, readings=1), attachments=[MODEL_MANIA])
 
-    design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompt("design"))]
+    design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompts_of("design"))]
     assert len(design_turns) <= 4, "the re-look ran past its ceiling"
 
 

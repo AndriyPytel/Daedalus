@@ -50,7 +50,7 @@ from core.design.gaps import (
     measured_from_what_is_gone,
 )
 from core.loop.budgets import Budgets, revisions_ceiling
-from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, prompt
+from core.loop.prompt import nobody_answering, prompt
 from core.loop.run import run
 from core.prompts import read_prompt
 from core.loop.design import _the_groups
@@ -103,11 +103,8 @@ def test_each_phase_sends_the_prompt_from_its_config_file(turn, phase):
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
-    phase_body = read_prompt(phase + ".md").strip()
-    sections = _language_sections()
-    vocabulary = "\n\n".join(sections[heading] for heading in _PHASE_VOCABULARY[phase])
-    phase_prompt = ("%s\n\n%s" % (phase_body, vocabulary)).replace(
-        "{{traps}}", "\n".join("- " + trap for trap in TRAPS))
+    with nobody_answering():
+        phase_prompt = prompt(phase)
 
     system = _system_messages(llm)[turn]
     assert phase_prompt in system, "phase prompt not found in system message"
@@ -301,7 +298,7 @@ def test_plan_is_told_each_joins_entry_is_its_own_step():
 
     assert "Each `joins` entry is its own Step, never a predicate over a set" \
         in plan_system
-    assert "A Step a phase refuses to build is a `conflict` or a `question`, " \
+    assert "A Step a phase refuses to build is a `conflict`, " \
         "never prose folded into another Step" in plan_system
 
 

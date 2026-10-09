@@ -1,4 +1,5 @@
 """The Design phase: describe the part from attachments."""
+import contextvars
 import copy
 import json
 import os
@@ -187,7 +188,7 @@ def _first_pass(intent, llm, events, attachments, cancelled, readings=1,
     the_part = {}
     question = ""
     with ThreadPoolExecutor(max_workers=min(len(groups), _A_GROUP_CONCURRENCY)) as pool:
-        futures = [(label, pool.submit(_asked_about_a_group, label, views, intent,
+        futures = [(label, pool.submit(contextvars.copy_context().run, _asked_about_a_group, label, views, intent,
                                        copy.copy(llm), events, attachments, readings,
                                        record_conflicts, base))
                   for label, views in groups]

@@ -1,4 +1,5 @@
 """The main loop runner and coordination logic."""
+import contextlib
 import os
 import re
 from dataclasses import dataclass, field
@@ -97,6 +98,7 @@ from core.loop.helpers import (
     _trailing_gap, _tried, _block, _stopped, _aborted, _budget_exhausted,
     _going_nowhere, _last_kernel_result,
 )
+from core.loop.prompt import nobody_answering
 from core.loop.review import review, review_suspect
 
 
@@ -141,9 +143,10 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, aborte
     aborted = aborted or (lambda: False)
     budget_exceeded = budget_exceeded or (lambda: False)
     try:
-        return outcome(_run(intent, llm, tools, events, budgets,
-                            cancelled or (lambda: False), gate, progress, attachments,
-                            ask, decide, list(outstanding), the_part_path, kernel))
+        with nobody_answering() if ask is nobody_to_ask else contextlib.nullcontext():
+            return outcome(_run(intent, llm, tools, events, budgets,
+                                cancelled or (lambda: False), gate, progress, attachments,
+                                ask, decide, list(outstanding), the_part_path, kernel))
     except Stopped:
         if aborted():
             return outcome(_aborted(events, "Aborted. The Step in flight was discarded; "

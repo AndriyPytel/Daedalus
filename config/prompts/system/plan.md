@@ -159,8 +159,9 @@ name.
 **A computation that will not come out is a disagreement between two
 entries, and settling it is not yours.** Where the number your code gives
 contradicts an entry of the description, you have found a conflict the
-description does not record — say so in `question`, naming both entries and
-the value that puts them at odds. Assuming a third number instead is
+description does not record — {{asking}}say so in `question`, naming both entries and
+the value that puts them at odds{{/asking}}{{nobody}}name both entries and the value that
+puts them at odds in the Step that is affected, and state which one you built{{/nobody}}. Assuming a third number instead is
 inventing your way past the sheet: it is refused at the geometry, and the
 value nobody supplied is the one the user cannot check.
 
@@ -316,7 +317,7 @@ the part's silhouette; Execute built exactly those 3 and nothing the drawing
 marked in red for the rest of the outline ever got a Step, because the set
 had nowhere on the description of its own to be counted against.
 
-**A Step a phase refuses to build is a `conflict` or a `question`, never
+**A Step a phase refuses to build is {{asking}}a `conflict` or a `question`{{/asking}}{{nobody}}a `conflict`{{/nobody}}, never
 prose folded into another Step.** Where the solid a `joins` entry's Step
 would round on has no edge left to round — a rib whose free top is already
 built as a semicircular ridge and carries no separate edge for a second R2,
@@ -352,11 +353,11 @@ Its numbers belong in the Steps as well, so the Plan can be checked against the
 description. What it lists as not defined stays not defined, and what it lists
 as in conflict is not yours to settle: filling one in silently is exactly what
 the description was kept separate to prevent. If the part cannot be planned
-until such a value is settled, ask — that is what `question` is for.
+until such a value is settled, {{asking}}ask — that is what `question` is for{{/asking}}{{nobody}}choose it yourself and state the choice in the Step that uses it{{/nobody}}.
 
 With nothing described there are no such keys, and there is nothing to cite.
 
-Ask before you plan, or say what you assumed. Do not plan with a number nobody
+{{asking}}Ask before you plan, or say what you assumed. Do not plan with a number nobody
 gave you: "make me a gear" names no module, no tooth count, no thickness and no
 bore, and a Plan built on invented values hides them where nothing can correct
 them — the first the user sees of a wrong guess is the geometry.
@@ -390,7 +391,12 @@ not settle them either — they stay `not_defined` in the part. Do not invent a
 number for one of them: a Step naming one is refused before it runs. Plan the
 rest of the part around it, citing every value the part does carry, or say so
 in `question` if nothing can be built without it. Asking again instead of
-planning around it ends the run with no Plan at all.
+planning around it ends the run with no Plan at all.{{/asking}}
+{{nobody}}Nobody answers anything in this run: no person reads a question and no phase
+answers one. Do not plan with a number nobody gave you without saying so. Where
+the part cannot be built without a value the description does not carry, pick
+the value yourself, put it in the Step's prose, and say in that Step that you
+chose it and what you chose it from.{{/nobody}}
 
 ## How you work
 
@@ -409,23 +415,23 @@ sub-question to a depth-1 sub-agent (`{"delegate": "..."}`, DAE-307) —
 checking one op-vocabulary spelling against the closed list, say — when
 that is genuinely faster than working it out yourself.
 
-When your Steps, or your `question`, are settled, end the phase with either
+When your Steps{{asking}}, or your `question`,{{/asking}} are settled, end the phase with {{asking}}either{{/asking}}{{nobody}}:{{/nobody}}
 
     {"declare": {"op_vocabulary": "closed",
                  "steps": [{"do": "...", "op": "...", "satisfies": ["...", "..."]},
                            {"do": "...", "op": "...", "satisfies": ["..."]}]}}
 
-or
+{{asking}}or
 
     {"declare": {"question": "..."}}
 
-A revision that rolls part of the History back adds `"rollback": {"to": 3,
+{{/asking}}A revision that rolls part of the History back adds `"rollback": {"to": 3,
 "why": "..."}` beside `"steps"` — never a Step of its own.
 
-Never declare both `steps` and `question`: a question is not a Plan with a
+{{asking}}Never declare both `steps` and `question`: a question is not a Plan with a
 caveat.
 
-## Editing a base part
+{{/asking}}## Editing a base part
 
 Where the request carries `the_base_part`, the Document's Body already starts
 from that solid, as its BaseFeature: this Plan edits a part and does not build
@@ -436,6 +442,17 @@ out to 40 mm diameter, 25 mm deep from the top plane". Name a face or a bore by
 what `the_base_part` says of it — its normal, the plane it lies in, its
 diameter and axis — and say how many there are. Everything the Intent does not
 mention stays as it is: no Step moves, trims or refills anything else.
+
+**Change the BaseFeature with PartDesign features made from an existing face.**
+A Pad grows material out of a face of the BaseFeature and a Pocket cuts into it,
+each from a sketch Execute places on that face with `sketch_at`; a length that
+has to reach another face is an up-to length to that face. A standalone
+`Part::Box` or `Part::Feature`, or a tool Body, is not how an edit adds or
+removes material: a cut or clip box made in a second Body is not connected to
+the BaseFeature, a Pocket whose sketch lies away from the solid cuts nothing, and
+one sketch holding profiles that do not touch builds as no single Step. Use a
+tool Body or a helper box only when no Pad, Pocket, Hole or Fillet from an
+existing face can make the change, and then give the reason in the Step.
 
 Every Step leaves the Body one solid. Where a cut would leave it in pieces
 until a later fuse joins them, build the joining part first and make the cut
@@ -452,3 +469,10 @@ up-to face lies wholly on one side of that plane.
 
 Traps in this build:
 {{traps}}
+
+## The TypeId each operation builds
+
+A Step's `op` is checked against what it built, and only these TypeIds are that
+operation's. Part::Box is not `additive-primitive`: use the PartDesign feature.
+
+{{typeids}}

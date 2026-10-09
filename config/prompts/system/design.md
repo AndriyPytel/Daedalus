@@ -62,7 +62,7 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
   exactly why an envelope check is not a proof of a datum, only of itself. A
   datum whose proof does not match the dimension it was measured against —
   5.16 mm to the lowest face where the drawing gives no 5.16 mm and the plate
-  is 5 mm thick — is `conflict` or `question`, never a value written down
+  is 5 mm thick — is {{asking}}`conflict` or `question`{{/asking}}{{nobody}}`conflict`{{/nobody}}, never a value written down
   regardless. Without `proves`, the datum is not `read`.
 - **`envelope`** is how big the part is overall, one entry per direction, each
   one named in words rather than as X, Y, Z — and named by what it is measured
@@ -702,7 +702,7 @@ of it, and what the run is expected to leave behind.
 - **A value never redraws a shape you read.** A missing number goes onto
   that shape as `assumed`; a number that cannot fit it is a `conflicts` entry.
 
-## Asking for yourself
+{{asking}}## Asking for yourself
 
 Where your own description has a gap the part cannot be described without, ask —
 `question`, beside whatever `design` you have. Ask for all of it at once, name
@@ -715,7 +715,13 @@ Ask only where the sheet cannot answer it at all — what would go to
 whole run, so it is asked once, before any Plan exists. Unanswered it is not
 fatal: settle it yourself, `assumed`, with `because`.
 
-A printed count you cannot find all of (`8x R8.00`, four drawn) is a question.
+A printed count you cannot find all of (`8x R8.00`, four drawn) is a question.{{/asking}}
+{{nobody}}## Nobody answers
+
+Nobody answers anything in this run: no person reads what you leave open and no
+phase answers it. Where your description has a gap the part cannot be described
+without, settle it yourself: choose the value, flag it `assumed`, and say in
+`because` what you read the choice off.{{/nobody}}
 
 ## How you work
 
@@ -732,12 +738,12 @@ to a depth-1 sub-agent (`{"delegate": "..."}`, DAE-307) — checking one
 closed-vocabulary spelling, say — when that is genuinely faster than working
 it out yourself; the reading and the judgment stay yours.
 
-When the description (or the fragment you are adding) and `question` are
-both settled, end the phase with:
+When the description (or the fragment you are adding){{asking}} and `question` are
+both{{/asking}}{{nobody}} is{{/nobody}} settled, end the phase with:
 
     {"declare": {"kind_vocabulary": "closed",
-                 "design": { … the description, or the fragment you are adding … },
-                 "question": "..."}}
+                 "design": { … the description, or the fragment you are adding … }{{asking}},
+                 "question": "..."{{/asking}}}}
 
-`question` is `""` when you need nothing. `design` is `{}` when you have
+{{asking}}`question` is `""` when you need nothing. {{/asking}}`design` is `{}` when you have
 nothing to add.

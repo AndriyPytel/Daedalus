@@ -87,7 +87,7 @@ from core.design.gaps import (
     measured_from_what_is_gone,
 )
 from core.loop.budgets import Budgets, revisions_ceiling
-from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, prompt
+from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, nobody_answering, prompt
 from core.loop.run import run
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
@@ -611,6 +611,13 @@ def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
     return result, events, llm, tools
 
 
+def prompts_of(phase):
+    """The phase's system prompt as a run with a person to ask sends it, and as a batch run does."""
+    asking = prompt(phase)
+    with nobody_answering():
+        return asking, prompt(phase)
+
+
 def _system_messages(llm):
     """The system message of every turn, in order, as the provider saw it."""
     return [call[0]["content"] for call in llm.calls]
@@ -625,9 +632,9 @@ def _turns_of(llm, phase):
     and the bare `prompt(phase)` this compares against is always
     that section's prefix.
     """
-    system = prompt(phase)
+    systems = prompts_of(phase)
     return [json.loads(call[-1]["content"]) for call in llm.calls
-            if call[0]["content"].startswith(system)]
+            if call[0]["content"].startswith(systems)]
 
 
 def _execute_attempts(llm):
@@ -874,7 +881,7 @@ def _asked_of_design(llm):
     stable prefix a repeated Design turn can cache (`core/loop.py :: design`).
     """
     return [json.loads(call[-1]["content"][-1]["text"]) for call in llm.calls
-            if call[0]["content"].startswith(prompt("design"))]
+            if call[0]["content"].startswith(prompts_of("design"))]
 
 
 THE_PIPE_CLAMP = str(modelmania_harness.SHEETS[

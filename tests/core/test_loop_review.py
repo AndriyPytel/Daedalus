@@ -60,6 +60,7 @@ import core.loop.prompt as loop_prompt_module
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from tests.loop_helpers import (
+    prompts_of,
     RENDER_PNG,
     read,
     settled,
@@ -1172,7 +1173,7 @@ def test_a_settle_attempt_that_changes_nothing_falls_through_and_asks_no_more():
         intent=GEAR)
 
     assert result.ok, result.reason
-    design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompt("design"))]
+    design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompts_of("design"))]
     assert len(design_turns) == 2, "a settle attempt that changed nothing was tried again"
     assert [answer.data["by"] for answer in events.of(ANSWER)] == ["nobody"]
     assert events.first(PLAN).data["unanswered"] == [MISSING]
@@ -1265,7 +1266,7 @@ def test_a_question_about_a_material_card_is_answered_from_the_tools():
     assert result.ok, result.reason
     assert ("materials", {"name": "plain carbon steel"}) in tools.calls, \
         "the question never reached the Tool that answers it: %s" % tools.calls
-    design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompt("design"))]
+    design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompts_of("design"))]
     assert len(design_turns) == 1, "the sheet was asked what no drawing prints"
     assert "b9b3a6ff-1c8e" in json.dumps(_turns_of(llm, "plan")[-1]), \
         "what the Tool said never reached Plan"
@@ -1290,7 +1291,7 @@ def test_rereads_are_spent_only_on_questions_put_to_the_drawing():
     ], attachments=[RENDER_PNG], budgets=Budgets(rereads=1))
 
     assert result.ok, result.reason
-    design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompt("design"))]
+    design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompts_of("design"))]
     assert len(design_turns) == 2, \
         "the question about the part was charged for the question about the build"
     assert events.first(PLAN).data["unanswered"] == []
@@ -1312,7 +1313,7 @@ def test_rereads_counts_re_reads_of_the_drawing_and_nothing_else():
     ], attachments=[RENDER_PNG], budgets=Budgets(rereads=1))
 
     assert result.ok, result.reason
-    design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompt("design"))]
+    design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompts_of("design"))]
     assert len(design_turns) == 5, "the sheet was read past its ceiling"
     assert events.first(PLAN).data["unanswered"] == ["q1", "q2", "q3"]
 

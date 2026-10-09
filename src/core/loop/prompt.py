@@ -1,5 +1,7 @@
 """Prompt composition, streaming, and parsing utilities."""
 import base64
+import contextlib
+import contextvars
 import json
 import mimetypes
 import os
@@ -8,6 +10,7 @@ import time
 
 from core.events import CALL_STARTED, COST, THOUGHT, WRITING
 from core.freecad_apply import TRAPS
+from core.lint import OP_TYPEIDS
 from core.llm import REASONING, StreamCutOff
 from core.sheets import sheet_reader
 
@@ -85,6 +88,35 @@ def _language_sections():
     return sections
 
 
+_nobody_answers = contextvars.ContextVar("nobody_answers", default=False)
+
+
+_ASKING = re.compile(r"\{\{asking\}\}(.*?)\{\{/asking\}\}", re.DOTALL)
+
+
+_NOBODY = re.compile(r"\{\{nobody\}\}(.*?)\{\{/nobody\}\}", re.DOTALL)
+
+
+@contextlib.contextmanager
+def nobody_answering():
+    """
+    Prompts composed inside it say that no one answers and leave out the
+    `{{asking}}` passages, so `question` is not offered. A run is in it when
+    its `ask` is `nobody_to_ask`; worker threads need `contextvars.copy_context`.
+    """
+    token = _nobody_answers.set(True)
+    try:
+        yield
+    finally:
+        _nobody_answers.reset(token)
+
+
+def _typeid_table():
+    """The verb-to-TypeId table the op_mismatch gate checks against, one verb a line."""
+    return "\n".join("- %s: %s" % (op, ", ".join(typeids) or "(builds no feature of its own)")
+                     for op, typeids in OP_TYPEIDS.items())
+
+
 def prompt(phase, ledger=""):
     """
     A phase's system prompt, read from `config/prompts/<phase>.md` and
@@ -94,7 +126,10 @@ def prompt(phase, ledger=""):
     sections = _language_sections()
     vocabulary = "\n\n".join(sections[heading] for heading in _PHASE_VOCABULARY[phase])
     body = "%s\n\n%s" % (body, vocabulary)
+    asking, nobody = (r"", r"\1") if _nobody_answers.get() else (r"\1", r"")
+    body = _NOBODY.sub(nobody, _ASKING.sub(asking, body))
     body = body.replace(_TRAPS_PLACEHOLDER, "\n".join("- " + trap for trap in TRAPS))
+    body = body.replace("{{typeids}}", _typeid_table())
     if ledger:
         body = "%s\n\n%s\n%s" % (body, _LEDGER_HEADING, ledger)
     return body
