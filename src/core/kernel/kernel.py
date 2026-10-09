@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from core.kernel.kernel_worker import SCRATCH, SENTINEL
 
 DEFAULT_TIMEOUT = 30.0
+TIMED_OUT = "The kernel timed out"
 STARTUP_TIMEOUT = 60.0
 
 _WORKER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kernel_worker.py")
@@ -359,9 +360,9 @@ class Kernel:
         died = None if timed_out else self._died_message("while running " + doing)
         self.restart()
         if timed_out:
-            return None, ("The kernel timed out after %ss -- %s did not finish. An "
+            return None, ("%s after %ss -- %s did not finish. An "
                           "unbounded loop or a runaway recompute is the usual cause."
-                          % (timeout, doing))
+                          % (TIMED_OUT, timeout, doing))
         return None, died
 
     def _pump(self):

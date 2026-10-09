@@ -3,9 +3,39 @@ The model's part of Assertion: one expression per acceptance entry, each evaluat
 An expression gives True or False; one that raises, or gives anything else, is a defect in that check and leaves every other entry's result as it was.
 """
 
-def each_expression_evaluated(expressions):
-    """The check script that evaluates `{entry: expression}` one at a time, leaving `held`, `failed` and `defects` in its namespace."""
-    return "held, failed, defects = check_each(%r)\n" % (dict(sorted(expressions.items())),)
+import json
+
+TOO_SLOW = "the expression took longer than the kernel allows"
+
+
+def each_expression_evaluated(expressions, progress=None):
+    """The check script that evaluates `{entry: expression}` one at a time, leaving `held`, `failed` and `defects` in its namespace; *progress* names the file the kernel writes each entry to as it goes."""
+    head = "check_progress = %r\n" % (progress,) if progress else ""
+    return head + "held, failed, defects = check_each(%r)\n" % (dict(sorted(expressions.items())),)
+
+
+def progress_read(path):
+    """What a killed `each_expression_evaluated` call left in *path*: `(held, failed, defects, in_flight)`, the last being the entry that started and never finished, or None."""
+    held, failed, defects, started = [], [], [], None
+    try:
+        lines = open(path).read().splitlines()
+    except OSError:
+        lines = []
+    for line in lines:
+        try:
+            note = json.loads(line)
+        except ValueError:
+            continue
+        entry = note["entry"]
+        if note.get("started"):
+            started = entry
+            continue
+        started = None
+        if "defect" in note:
+            defects.append([entry, note["defect"]])
+        else:
+            (held if note["verdict"] else failed).append(entry)
+    return held, failed, defects, started
 
 
 def answers_in(declared, entries):

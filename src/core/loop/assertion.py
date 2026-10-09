@@ -1,5 +1,6 @@
 """The Assertion phase: check acceptance criteria."""
 import json
+import os
 from dataclasses import dataclass, field
 
 from core.events import ASSERTION, CONSULT_DESIGN, CONSULT_DESIGN_ANSWERED, TOOL_CALL, TOOL_RESULT
@@ -15,7 +16,8 @@ from core.loop.document import copied
 from core.loop.mechanical import covered_entries, envelope_figures, the_collateral_measured, the_sizes_measured
 from core.surfaces import LINEAR
 from core.loop.execute import _DID_NOT_HOLD, _MODEL_IS_INVALID
-from core.loop.expressions import answers_in, each_expression_evaluated
+from core.kernel.kernel import TIMED_OUT
+from core.loop.expressions import TOO_SLOW, answers_in, each_expression_evaluated, progress_read
 from core.loop.prompt import ASSERTION_PHASE, prompt
 from core.prompts import read_prompt
 from core.loop.results import Stopped
@@ -283,10 +285,7 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
                 expressions.update(answered)
                 defects = {entry: "you gave no answer for this entry" for entry in unanswered}
                 if answered:
-                    code = each_expression_evaluated(answered)
-                    events.emit(TOOL_CALL, name="check_assertions", arguments={"code": code})
-                    result = tools.call("check_assertions", {"code": code})
-                    events.emit(TOOL_RESULT, name="check_assertions", result=result)
+                    code, result = _expressions_evaluated(answered, tools, events)
                     geometry = result.get("geometry") or geometry
                     if not result.get("ok"):
                         traceback = result.get("traceback") or "The checks failed without saying why."
@@ -320,6 +319,43 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
                 uncovered=unanswerable, traceback="", defects=[remaining[entry] for entry in asked])
     return Checked(confirmed=confirmed, uncovered=unanswerable,
                    defects=[remaining[entry] for entry in asked], geometry=geometry)
+
+
+def _expressions_evaluated(answered, tools, events):
+    """
+    Evaluates *answered* in as many kernel calls as it takes: `(code, result)` of the last call, its lists holding every entry's outcome.
+    A call the kernel times out keeps the entries it finished, makes the entry in flight a defect, and leaves the rest to a new call.
+    """
+    pending, held, failed, defects = dict(answered), [], [], []
+    with tempfile.TemporaryDirectory() as folder:
+        while True:
+            path = os.path.join(folder, "progress_%d.jsonl" % len(held + failed + defects))
+            code = each_expression_evaluated(pending, path)
+            events.emit(TOOL_CALL, name="check_assertions", arguments={"code": code})
+            result = tools.call("check_assertions", {"code": code})
+            events.emit(TOOL_RESULT, name="check_assertions", result=result)
+            if result.get("ok"):
+                done = result["held"] if result.get("held") is not None else [
+                    entry for entry in pending if entry not in (result.get("failed") or ())
+                    and entry not in dict(result.get("defects") or ())]
+                return code, dict(result, held=held + list(done), failed=failed + list(result.get("failed") or ()),
+                                  defects=defects + list(result.get("defects") or ()))
+            traceback = result.get("traceback") or ""
+            if _MODEL_IS_INVALID in traceback or not (held or failed or defects) and TIMED_OUT not in traceback:
+                return code, result
+            if TIMED_OUT in traceback:
+                done_held, done_failed, done_defects, in_flight = progress_read(path)
+                done_defects += [[in_flight, TOO_SLOW]] if in_flight is not None else []
+            else:
+                done_held, done_failed, done_defects = [], [], [[entry, traceback] for entry in pending]
+            held, failed, defects = held + done_held, failed + done_failed, defects + done_defects
+            reached = set(done_held + done_failed) | {entry for entry, _ in done_defects}
+            if not reached:
+                defects += [[entry, traceback] for entry in pending]
+                return code, dict(result, ok=True, held=held, failed=failed, defects=defects)
+            pending = {entry: text for entry, text in pending.items() if entry not in reached}
+            if not pending:
+                return code, dict(result, ok=True, held=held, failed=failed, defects=defects)
 
 
 def _failed_check(events, code, covered, held, failed, uncovered, remaining, traceback,

@@ -1160,19 +1160,31 @@ def check_each(namespace):
     """
     The evaluator behind an expression check: `{entry: expression}` in, `(held, failed, defects)` out, each expression evaluated alone in *namespace*.
     A raise, or a value that is not a bool, is a defect `[entry, error]` of that entry only.
+    When *namespace* names a `check_progress` file, each entry is written there as it starts and again as it finishes, so a call the kernel kills still leaves its finished entries and the one in flight.
     """
     def run(expressions):
         held, failed, defects = [], [], []
+        path = namespace.get("check_progress")
+
+        def note(entry, **state):
+            if path:
+                with open(path, "a") as log:
+                    log.write(json.dumps(dict(state, entry=entry)) + "\n")
+
         for entry, expression in sorted(expressions.items()):
+            note(entry, started=True)
             try:
                 verdict = eval(expression, namespace)
             except Exception as exc:
                 defects.append([entry, type(exc).__name__ + ": " + str(exc)])
+                note(entry, defect=defects[-1][1])
                 continue
             if isinstance(verdict, bool):
                 (held if verdict else failed).append(entry)
+                note(entry, verdict=verdict)
             else:
                 defects.append([entry, "the expression gave " + repr(verdict)[:80] + ", not True or False"])
+                note(entry, defect=defects[-1][1])
         return held, failed, defects
     return run
 
