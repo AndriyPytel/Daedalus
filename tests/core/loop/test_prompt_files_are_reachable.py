@@ -22,8 +22,7 @@ def _literal_read_prompt_calls():
         tree = ast.parse(text)
         for node in ast.walk(tree):
             if (isinstance(node, ast.Call)
-                    and isinstance(node.func, ast.Name)
-                    and node.func.id == "read_prompt"
+                    and (getattr(node.func, "id", None) or getattr(node.func, "attr", None)) == "read_prompt"
                     and node.args
                     and isinstance(node.args[0], ast.Constant)
                     and isinstance(node.args[0].value, str)):

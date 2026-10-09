@@ -42,6 +42,17 @@ class Settings:
     token has room for both.
     """
 
+    def __init__(self):
+        self._listeners = {}
+
+    def subscribe(self, name, callback):
+        """Call *callback(value)* after each write of the setting *name* (`api_keys`, `base_urls`, `default_model`, `last_model`, `role_table`)."""
+        self._listeners.setdefault(name, []).append(callback)
+
+    def _notify(self, name, value):
+        for callback in self._listeners.get(name, ()):
+            callback(value)
+
     @staticmethod
     def _grp():
         import FreeCAD
@@ -58,6 +69,7 @@ class Settings:
 
     def set_api_keys(self, keys: list):
         self._grp().SetString("ApiKeys", json.dumps(keys))
+        self._notify("api_keys", keys)
 
     def get_api_key_for_provider(self, provider: str) -> str:
         """Return the stored API key string for *provider*, or '' if not found."""
@@ -65,6 +77,17 @@ class Settings:
             if entry.get("provider") == provider:
                 return entry.get("api_key", "")
         return ""
+
+    def set_api_key_for_provider(self, provider: str, key: str):
+        """Upsert a single provider's key."""
+        keys = self.get_api_keys()
+        for entry in keys:
+            if entry.get("provider") == provider:
+                entry["api_key"] = key
+                break
+        else:
+            keys.append({"provider": provider, "api_key": key})
+        self.set_api_keys(keys)
 
     def get_base_urls(self) -> dict:
         """Return {provider: base_url} for every provider that has an address."""
@@ -77,6 +100,17 @@ class Settings:
 
     def set_base_urls(self, urls: dict):
         self._grp().SetString("BaseUrls", json.dumps(urls))
+        self._notify("base_urls", urls)
+
+    def set_base_url_for_provider(self, provider: str, url: str):
+        """Upsert a single provider's address, or drop it when *url* is empty."""
+        urls = self.get_base_urls()
+        url = (url or "").strip()
+        if url:
+            urls[provider] = url
+        else:
+            urls.pop(provider, None)
+        self.set_base_urls(urls)
 
     def get_base_url_for_provider(self, provider: str) -> str:
         """Return the stored server address for *provider*, or '' if not set."""
@@ -104,6 +138,7 @@ class Settings:
 
     def set_default_model(self, model_id: str):
         self._grp().SetString("DefaultModel", model_id)
+        self._notify("default_model", model_id)
 
     def get_naming_model(self) -> str:
         """
@@ -128,6 +163,7 @@ class Settings:
 
     def set_last_model(self, model_id: str):
         self._grp().SetString("LastUsedModel", model_id)
+        self._notify("last_model", model_id)
 
     def get_auto_approve_plan(self) -> bool:
         """
@@ -170,6 +206,7 @@ class Settings:
 
     def set_role_table(self, table: list):
         self._grp().SetString("RoleModelTable", json.dumps(table))
+        self._notify("role_table", table)
 
     def get_role_model(self, role: str) -> dict:
         """The stored row for *role*, or `None` if the table has no row for it."""

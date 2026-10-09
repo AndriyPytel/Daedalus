@@ -8,9 +8,7 @@ import sys
 
 
 def main(out):
-    from core import freecad_apply
-    from core.llm import ScriptedLLMClient
-    from sdk import Client
+    from sdk import Client, ScriptedLLMClient, freecad_apply
 
     llm = ScriptedLLMClient([
         "design",

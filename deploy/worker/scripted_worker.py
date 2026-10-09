@@ -7,8 +7,7 @@ import os
 import time
 import uuid
 
-from core.llm import ScriptedLLMClient
-from sdk import Client
+from sdk import Client, ScriptedLLMClient
 
 from service import worker
 

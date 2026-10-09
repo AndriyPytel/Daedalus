@@ -99,11 +99,11 @@ def quota_refusal(log):
 
     Such a run is recorded `quota` and not retried, and `sweep` stops and returns `True`. A rate limit that clears in a moment is not one.
     """
-    from core.events import BLOCKED, replay
+    import sdk
 
-    events, _truncated = replay(log)
+    events, _truncated = sdk.replay(log)
     for event in reversed(events):
-        if event.kind == BLOCKED:
+        if event.kind == sdk.BLOCKED:
             reason = event.data.get("reason") or ""
             return reason if any(phrase in reason for phrase in QUOTA_PHRASES) else None
     return None
@@ -210,7 +210,7 @@ def step_problem(path):
     `core.manifold` mirrors.
     """
     shape = _part().read(path)
-    from core import manifold
+    import sdk
 
     if not shape.Solids:
         return "no solid"
@@ -218,7 +218,7 @@ def step_problem(path):
         return "%d solids" % len(shape.Solids)
     if not shape.isValid():
         return "not valid"
-    return manifold.check_fc(shape)
+    return sdk.manifold.check_fc(shape)
 
 
 def guard_edit(edit, base):
@@ -243,15 +243,15 @@ def _shippable_base(fixture, folder):
     base = os.path.join(fixture, "input.step")
     if not step_problem(base):
         return base
-    from core.manifold import repair_base, rewrite_step
+    import sdk
 
     shape = _part().read(base)
-    repaired, _note = repair_base(shape)
+    repaired, _note = sdk.repair_base(shape)
     if repaired is shape:
         return base
     path = os.path.join(folder, "input.repaired.step")
     repaired.exportStep(path)
-    rewrite_step(repaired, path)
+    sdk.rewrite_step(repaired, path)
     return base if step_problem(path) else path
 
 
@@ -286,7 +286,7 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
     clock, and *edits* maps a label to its editing fixture folder, whose run ends in
     `<model>/<label>/output.step`: the edit, or a copy of `input.step`.
     """
-    from core.prompts import read_prompt
+    import sdk
 
     edits = edits or {}
     timestamp = timestamp or _attempt_timestamp
@@ -316,7 +316,7 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
                 kwargs = {"conflicts": conflicts} if conflicts is not None else {}
                 if fixture:
                     with open(os.path.join(fixture, "edit_description.txt"), encoding="utf-8") as handle:
-                        run_intent = read_prompt("edit_task_intent.md").strip().format(desc=handle.read().strip())
+                        run_intent = sdk.read_prompt("edit_task_intent.md").strip().format(desc=handle.read().strip())
                     kwargs["base_step"] = os.path.join(fixture, "input.step")
                     kwargs["attach"] = [os.path.join(fixture, "renders", view + ".png")
                                         for view in RENDER_VIEWS]
@@ -355,19 +355,19 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
 
 
 def status(out):
-    from core.measure import compare, measure
+    import sdk
 
     models = sorted(d for d in os.listdir(out) if os.path.isdir(os.path.join(out, d)))
     logs = {m: sorted(glob.glob(os.path.join(out, m, "*.jsonl"))) for m in models}
 
     if len(models) == 2:
         a, b = models
-        print(compare(logs[a], logs[b], a, b))
+        print(sdk.compare(logs[a], logs[b], a, b))
         return
 
     for model in models:
         for log in logs[model]:
-            reading = measure(log)
+            reading = sdk.measure(log)
             print(model, log)
             for field in reading.__dataclass_fields__:
                 print("  %s: %s" % (field, getattr(reading, field)))
@@ -395,10 +395,10 @@ def _logs(out):
 
 
 def _assertion_counts(events):
-    from core.events import ASSERTION
+    import sdk
 
-    confirmed = sum(len(e.data.get("confirmed") or ()) for e in events if e.kind == ASSERTION)
-    unmet = sum(len(e.data.get("unmet") or ()) for e in events if e.kind == ASSERTION)
+    confirmed = sum(len(e.data.get("confirmed") or ()) for e in events if e.kind == sdk.ASSERTION)
+    unmet = sum(len(e.data.get("unmet") or ()) for e in events if e.kind == sdk.ASSERTION)
     return confirmed, unmet
 
 
@@ -409,9 +409,9 @@ def _short(text):
 
 
 def _reason(events, m):
-    from core.events import REVIEW_VERDICT
+    import sdk
 
-    verdicts = [e for e in events if e.kind == REVIEW_VERDICT]
+    verdicts = [e for e in events if e.kind == sdk.REVIEW_VERDICT]
     if verdicts:
         return _short(verdicts[-1].data.get("reason") or "")
     if m.blocked_reason:
@@ -454,12 +454,11 @@ def _score_for(path, label):
 
 def _rows(out):
     """(model, label, events, Measurement), one per sweep log under *out*."""
-    from core.events import replay
-    from core.measure import measure
+    import sdk
 
     for model, label, path in _logs(out):
-        events, _truncated = replay(path)
-        yield model, label, events, measure(path, score=_score_for(path, label))
+        events, _truncated = sdk.replay(path)
+        yield model, label, events, sdk.measure(path, score=_score_for(path, label))
 
 
 def _score_average(measurements):
@@ -469,17 +468,17 @@ def _score_average(measurements):
 
 
 def _summary_rows():
-    from core.measure import _average, _pass_rate, _rate
+    import sdk
 
     return (
-        ("pass rate", _pass_rate, "{:.1%}"),
-        ("blocked rate", lambda ms: _rate(ms, lambda m: m.blocked_reason is not None), "{:.1%}"),
-        ("avg steps applied", lambda ms: _average(ms, lambda m: m.steps_applied), "{:.1f}"),
-        ("assertion fail rate", lambda ms: _average(ms, lambda m: m.assertion_fail_rate), "{:.1%}"),
-        ("review fail rate", lambda ms: _average(ms, lambda m: m.review_fail_rate), "{:.1%}"),
-        ("avg cost (USD)", lambda ms: _average(ms, lambda m: m.cost_usd), "{:.4f}"),
-        ("avg working (s)", lambda ms: _average(ms, lambda m: m.working_seconds), "{:.1f}"),
-        ("avg questions", lambda ms: _average(ms, lambda m: m.question_count), "{:.1f}"),
+        ("pass rate", sdk.pass_rate, "{:.1%}"),
+        ("blocked rate", lambda ms: sdk.rate(ms, lambda m: m.blocked_reason is not None), "{:.1%}"),
+        ("avg steps applied", lambda ms: sdk.average(ms, lambda m: m.steps_applied), "{:.1f}"),
+        ("assertion fail rate", lambda ms: sdk.average(ms, lambda m: m.assertion_fail_rate), "{:.1%}"),
+        ("review fail rate", lambda ms: sdk.average(ms, lambda m: m.review_fail_rate), "{:.1%}"),
+        ("avg cost (USD)", lambda ms: sdk.average(ms, lambda m: m.cost_usd), "{:.4f}"),
+        ("avg working (s)", lambda ms: sdk.average(ms, lambda m: m.working_seconds), "{:.1f}"),
+        ("avg questions", lambda ms: sdk.average(ms, lambda m: m.question_count), "{:.1f}"),
         ("avg score", _score_average, "{:.4f}"),
     )
 
@@ -489,12 +488,12 @@ def _row(cells):
 
 
 def _summary_table(by_model):
-    from core.measure import _pass_rate
+    import sdk
 
     summary_rows = _summary_rows()
     header = ["model"] + [name for name, _, _ in summary_rows] + ["runs", "truncated"]
     lines = [_row(header), _row(["---"] * len(header))]
-    ranked = sorted(by_model.items(), key=lambda kv: -_pass_rate(kv[1]))
+    ranked = sorted(by_model.items(), key=lambda kv: -sdk.pass_rate(kv[1]))
     for model, measurements in ranked:
         cells = [model] + [fmt.format(compute(measurements)) for _, compute, fmt in summary_rows]
         cells += [str(len(measurements)), str(sum(1 for m in measurements if m.truncated))]
@@ -551,12 +550,12 @@ def _noise_floor_section(rows):
     largest of them -- the noise floor a later comparison must clear before
     it can be trusted as a real change, not this instrument's own jitter.
     """
-    from core.measure import score_spread
+    import sdk
 
     grouped = {}
     for model, label, _events, m in rows:
         grouped.setdefault((model, _sheet_stem(label)), []).append(m)
-    spreads = {key: score_spread(ms) for key, ms in grouped.items()}
+    spreads = {key: sdk.score_spread(ms) for key, ms in grouped.items()}
     spreads = {key: s for key, s in spreads.items() if s is not None}
 
     if not spreads:

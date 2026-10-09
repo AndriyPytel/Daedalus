@@ -310,9 +310,8 @@ def _mock_role_table(monkeypatch, model=""):
     the panel reads and writes is handed back to whoever wants to assert on
     it.
     """
-    from bridge import settings_manager
+    import sdk as settings
 
-    settings = settings_manager.instance()
     table = [{"role": "orchestrator", "provider": "", "model": model, "effort": "medium"}]
     monkeypatch.setattr(settings, "get_last_model", lambda: "")
     monkeypatch.setattr(settings, "set_last_model", lambda model_id: None)
@@ -406,11 +405,11 @@ def test_a_picked_model_is_the_shared_fallback_too(panel, monkeypatch):
     Every caller with no role of its own reads the last-used model
     (`settings.get_llm_credentials`), so one pick answers those as well.
     """
-    from bridge import settings_manager
+    import sdk
 
     _mock_role_table(monkeypatch)
     shared = []
-    monkeypatch.setattr(settings_manager.instance(), "set_last_model", shared.append)
+    monkeypatch.setattr(sdk, "set_last_model", shared.append)
 
     panel._on_model_selected("claude-opus-4")
 
@@ -734,9 +733,9 @@ def test_a_provider_list_without_the_stored_model_falls_back_and_says_so(panel, 
     Only a real list that has arrived can retire a model — and when it does the
     user is told, because the model they picked is not the one they get.
     """
-    from bridge import provider_manager, settings_manager
+    import sdk as settings
+    from bridge import provider_manager
 
-    settings = settings_manager.instance()
     table = _mock_role_table(monkeypatch, model="gpt-5.6-sol")
     monkeypatch.setattr(provider_manager.instance(), "awaiting_model_lists", lambda: False)
     monkeypatch.setattr(settings, "get_default_model", lambda: "gpt-4o")
@@ -751,9 +750,9 @@ def test_a_provider_list_without_the_stored_model_falls_back_and_says_so(panel, 
 
 def test_retiring_a_model_with_no_preferences_default_still_names_one(panel, monkeypatch):
     """The default model is a preference, and it may never have been set."""
-    from bridge import provider_manager, settings_manager
+    import sdk as settings
+    from bridge import provider_manager
 
-    settings = settings_manager.instance()
     _mock_role_table(monkeypatch, model="gpt-5.6-sol")
     monkeypatch.setattr(provider_manager.instance(), "awaiting_model_lists", lambda: False)
     monkeypatch.setattr(settings, "get_default_model", lambda: "")

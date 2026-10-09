@@ -6,21 +6,22 @@ inside a function so headless callers never paid for it -- moved to
 `Mod/bridge/main_thread.py`, so the check below no longer needs a
 module-scope exception.
 
-`Mod` -- `ui`, `DaedalusPreferences.py` -- is FreeCAD
-and Qt code, and reaches the engine through `sdk` alone; `bridge` is
-the one sanctioned exception, the Qt-touching layer built to carry a
-`core` setting or a model list across the boundary as a Qt signal.
+Everything else -- `Mod/ui`, `src/tools`, `harness`, `deploy` -- reaches the
+engine through `sdk` alone; `Mod/bridge` is the one sanctioned exception, the
+Qt-touching layer built to carry a `core` setting or a model list across the
+boundary as a Qt signal.
 """
 import ast
 import os
+import subprocess
+import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "src")
-MOD = os.path.join(ROOT, "Mod")
 ENGINE_DIRS = ("core",)
 ENGINE_MODULES = ("sdk.py",)
-MOD_NON_BRIDGE_DIRS = ("ui",)
-MOD_ROOT_FILES = ("DaedalusPreferences.py",)
+SANCTIONED_PREFIXES = ("src/core/", "Mod/bridge/", "tests/", "manual/")
+SANCTIONED_FILES = ("src/sdk.py", "InitGui.py")
 
 
 def _py_files(base):
@@ -37,13 +38,6 @@ def _engine_files():
         yield from _py_files(os.path.join(SRC, dirname))
     for name in ENGINE_MODULES:
         yield os.path.join(SRC, name)
-
-
-def _mod_non_bridge_files():
-    for dirname in MOD_NON_BRIDGE_DIRS:
-        yield from _py_files(os.path.join(MOD, dirname))
-    for name in MOD_ROOT_FILES:
-        yield os.path.join(MOD, name)
 
 
 def _all_imports(tree):
@@ -81,21 +75,66 @@ def test_the_engine_does_not_reach_back_into_bridge_or_mod():
     assert not offenders, "the engine must not import Mod-side code: %s" % ", ".join(offenders)
 
 
-def test_mod_reaches_the_engine_only_through_the_sdk():
+def _imports_core(source):
+    return any(module == "core" or module.startswith("core.")
+               for module in _all_imports(ast.parse(source)))
+
+
+def callers_of_core_outside_the_sanctioned_places(root):
+    """
+    Every tracked `.py` under *root* that imports `core`, outside `src/core`, `src/sdk.py` and `Mod/bridge`.
+    `tests` and `manual` are exempt because they exercise the engine itself, and `InitGui.py` because it runs the dependency check before `sdk` can import numpy.
+    The tree comes from `git ls-files`, so a directory created later is scanned the day it is tracked and a virtualenv or untracked scratch is never read.
+    """
+    listed = subprocess.run(["git", "ls-files", "*.py"], cwd=root, capture_output=True,
+                            text=True, check=True).stdout.split("\n")
     offenders = []
-    for full in _mod_non_bridge_files():
-        if not os.path.exists(full):
+    for path in filter(None, listed):
+        if path.startswith(SANCTIONED_PREFIXES) or path in SANCTIONED_FILES:
             continue
-        where = os.path.relpath(full, ROOT)
-        with open(full, encoding="utf-8") as handle:
-            tree = ast.parse(handle.read(), filename=full)
-        for module in _all_imports(tree):
-            if module == "core" or module.startswith("core."):
-                offenders.append("%s imports %s" % (where, module))
+        with open(os.path.join(root, path), encoding="utf-8") as handle:
+            if _imports_core(handle.read()):
+                offenders.append(path)
+    return offenders
+
+
+def scanned_directories(root):
+    listed = subprocess.run(["git", "ls-files", "*.py"], cwd=root, capture_output=True,
+                            text=True, check=True).stdout.split("\n")
+    return {os.path.dirname(path) for path in filter(None, listed)
+            if not path.startswith(SANCTIONED_PREFIXES) and path not in SANCTIONED_FILES}
+
+
+def test_only_the_sdk_and_the_bridge_import_core():
+    offenders = callers_of_core_outside_the_sanctioned_places(ROOT)
 
     assert not offenders, (
-        "Mod code outside bridge/ must cross into the engine only through "
-        "sdk, bridge/ being the other sanctioned route: %s" % ", ".join(offenders))
+        "outside src/core, src/sdk.py and Mod/bridge the engine is reached through sdk: %s"
+        % ", ".join(offenders))
+
+
+def test_the_scan_reads_the_directories_of_the_tree(tmp_path):
+    assert {"Mod/ui", "src/tools", "harness"} <= scanned_directories(ROOT)
+
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run(git + ["init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / "later").mkdir()
+    (tmp_path / "later" / "caller.py").write_text("from core import settings\n")
+    (tmp_path / "later" / "clean.py").write_text("import sdk\n")
+    (tmp_path / ".venv").mkdir()
+    (tmp_path / ".venv" / "site.py").write_text("import core\n")
+    subprocess.run(["git", "add", "later"], cwd=tmp_path, check=True)
+
+    assert callers_of_core_outside_the_sanctioned_places(str(tmp_path)) == ["later/caller.py"]
+
+
+def test_importing_sdk_loads_neither_manifold_nor_topology_nor_measure():
+    code = ("import sys; sys.path.insert(0, %r); import sdk; "
+            "print([m for m in ('core.manifold', 'core.topology', 'core.measure') if m in sys.modules])"
+            % SRC)
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+
+    assert result.stdout.strip().endswith("[]"), result.stdout + result.stderr
 
 
 def test_initgui_installs_only_the_dock_and_preferences():

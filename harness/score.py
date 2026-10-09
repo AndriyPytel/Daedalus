@@ -45,7 +45,7 @@ def score(candidate_step, exemplar_step):
     from cadgenbench.common.mesh import deflection_for_bbox
     from cadgenbench.eval.evaluate import evaluate_result
 
-    from core.topology import betti_numbers, topology_score
+    import sdk
 
     candidate_step = Path(candidate_step)
     exemplar_step = Path(exemplar_step)
@@ -81,9 +81,9 @@ def score(candidate_step, exemplar_step):
 
     exemplar_mesh = gt_artifacts.mesh()
     candidate_mesh = candidate_artifacts.mesh()
-    exemplar_betti = betti_numbers(exemplar_mesh.vertices, exemplar_mesh.triangles)
-    candidate_betti = betti_numbers(candidate_mesh.vertices, candidate_mesh.triangles)
-    topology = topology_score(candidate_betti, exemplar_betti)
+    exemplar_betti = sdk.betti_numbers(exemplar_mesh.vertices, exemplar_mesh.triangles)
+    candidate_betti = sdk.betti_numbers(candidate_mesh.vertices, candidate_mesh.triangles)
+    topology = sdk.topology_score(candidate_betti, exemplar_betti)
     shape_similarity = shape_scores["shape_similarity_score"]
 
     return {

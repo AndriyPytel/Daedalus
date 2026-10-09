@@ -9,8 +9,7 @@ import tempfile
 
 
 def main():
-    from core.llm import ScriptedLLMClient
-    from sdk import Client
+    from sdk import Client, ScriptedLLMClient
     from service.worker import artifacts
 
     llm = ScriptedLLMClient([

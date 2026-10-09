@@ -284,20 +284,19 @@ reset the selection and throw away a key the user had typed but not saved.
         self._current_provider = provider
         self.title_lbl.setText(provider)
 
-        from bridge import settings_manager
-        sm = settings_manager.instance()
+        from sdk import get_api_key_for_provider, get_base_url_for_provider
 
         if provider in self._edits:
             key = self._edits[provider]
         else:
-            key = sm.get_api_key_for_provider(provider)
+            key = get_api_key_for_provider(provider)
 
         local = self._wants_base_url(provider)
         self.key_container.setVisible(not self._signs_itself_in(provider))
         self.base_url_container.setVisible(local)
         if local:
             self.base_url_edit.setText(
-                self._base_edits.get(provider, sm.get_base_url_for_provider(provider)))
+                self._base_edits.get(provider, get_base_url_for_provider(provider)))
         self.key_lbl.setText("API Key (optional)" if local else "API Key")
         self.key_edit.setPlaceholderText(
             "Only if the server asks for one…" if local else "Enter API key…")
@@ -316,14 +315,14 @@ reset the selection and throw away a key the user had typed but not saved.
             return
         
         from bridge import provider_manager
-        from bridge import settings_manager
-        
+        from sdk import get_default_model, get_naming_model
+
         self.default_model_combo.clear()
         models = provider_manager.instance().get_models_for_provider(self._current_provider)
         for m in models:
             self.default_model_combo.addItem(m['display'], userData=m['id'])
             
-        current_default = settings_manager.instance().get_default_model()
+        current_default = get_default_model()
         for i in range(self.default_model_combo.count()):
             if self.default_model_combo.itemData(i) == current_default:
                 self.default_model_combo.setCurrentIndex(i)
@@ -333,7 +332,7 @@ reset the selection and throw away a key the user had typed but not saved.
         self.naming_model_combo.addItem("Same as the chat model", userData="")
         for m in models:
             self.naming_model_combo.addItem(m['display'], userData=m['id'])
-        current_naming = settings_manager.instance().get_naming_model()
+        current_naming = get_naming_model()
         for i in range(self.naming_model_combo.count()):
             if self.naming_model_combo.itemData(i) == current_naming:
                 self.naming_model_combo.setCurrentIndex(i)
@@ -389,12 +388,12 @@ reset the selection and throw away a key the user had typed but not saved.
 
     def _populate_list(self):
         from bridge import provider_manager
-        from bridge import settings_manager
-        
+        from sdk import get_api_keys
+
         self.provider_list.clear()
         
         all_supported = provider_manager.instance().get_all_providers()
-        saved_keys = settings_manager.instance().get_api_keys()
+        saved_keys = get_api_keys()
         
         seen = set()
         for p in all_supported:
@@ -430,22 +429,21 @@ settings as they still are, all of it synchronous inside this call. A
 choice read afterwards would be the old stored value, and the user's pick
 would be destroyed by the save meant to persist it.
 """
-        from bridge import settings_manager
-        sm = settings_manager.instance()
-        
+        from sdk import get_api_keys, set_api_keys, set_base_url_for_provider
+
         self._remember_edits()
 
         chosen = self._chosen_models()
 
         for provider, url in self._base_edits.items():
-            sm.set_base_url_for_provider(provider, url)
+            set_base_url_for_provider(provider, url)
         self._base_edits.clear()
 
         if not self._edits:
-            self._save_models(sm, chosen)
+            self._save_models(chosen)
             return
 
-        current_keys = sm.get_api_keys()
+        current_keys = get_api_keys()
         for provider, key in self._edits.items():
             existing = next((e for e in current_keys if e["provider"] == provider), None)
             if key:
@@ -457,17 +455,17 @@ would be destroyed by the save meant to persist it.
                 if existing:
                     current_keys.remove(existing)
         
-        sm.set_api_keys(current_keys)
+        set_api_keys(current_keys)
         self._edits.clear()
 
-        self._save_models(sm, chosen)
+        self._save_models(chosen)
 
     def _chosen_models(self):
         """What the two model combos are showing right now."""
         return {"default": self.default_model_combo.currentData(),
                 "naming": self.naming_model_combo.currentData()}
 
-    def _save_models(self, sm, chosen):
+    def _save_models(self, chosen):
         """
         Store the two model choices and show what was stored.
 
@@ -476,8 +474,10 @@ would be destroyed by the save meant to persist it.
         nothing selected at all. The rebuild that runs mid-save re-selects the
         old values, so the combos are refreshed afterwards.
         """
+        from sdk import set_default_model, set_naming_model
+
         if chosen["default"]:
-            sm.set_default_model(chosen["default"])
+            set_default_model(chosen["default"])
         if chosen["naming"] is not None:
-            sm.set_naming_model(chosen["naming"])
+            set_naming_model(chosen["naming"])
         self._refresh_models()

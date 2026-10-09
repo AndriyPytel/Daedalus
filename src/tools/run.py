@@ -31,11 +31,10 @@ def client_for(provider, model_id, effort):
     here, so the provider is named on the command line and recorded before
     `client_from_settings` is asked to resolve it. The service worker solves the same problem through `sdk.remember_model`.
     """
-    from core import model_registry
-    from core.llm.factory import client_from_settings
+    import sdk
 
-    model_registry.remember(model_id, provider, model_id)
-    return client_from_settings(model_id, effort)
+    sdk.remember_model(model_id, provider)
+    return sdk.client_from_settings(model_id, effort)
 
 
 def base_document(step_path):
@@ -53,9 +52,9 @@ def base_document(step_path):
     Import.insert(step_path, doc.Name)
     base = next(obj for obj in doc.Objects
                 if getattr(obj, "Shape", None) is not None and obj.Shape.Solids)
-    from core.manifold import repair_base
+    import sdk
 
-    repaired, note = repair_base(base.Shape)
+    repaired, note = sdk.repair_base(base.Shape)
     if note:
         print("base repair   :", note)
     if repaired is not base.Shape:
@@ -128,10 +127,7 @@ def main():
 
     import FreeCAD  # noqa: F401
 
-    from sdk import Client
-    from core.events import COST
-    from core.loop import nobody_to_ask
-    from core.loop.budgets import Budgets
+    from sdk import COST, Budgets, Client, nobody_to_ask
 
     llm = client_for(args.provider, args.model, args.effort) if args.model else None
     seed = base_document(args.base_step) if args.base_step else None

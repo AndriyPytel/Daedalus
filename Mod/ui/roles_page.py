@@ -80,10 +80,9 @@ class RolesPage(QtWidgets.QWidget):
                                   model_combo.currentText())
 
     def loadSettings(self):
-        from bridge import settings_manager
-        from sdk import EFFORTS
+        from sdk import EFFORTS, get_role_table
 
-        table = settings_manager.instance().get_role_table()
+        table = get_role_table()
         self.table.setRowCount(len(table))
         providers = self._providers()
         for row_index, row in enumerate(table):
@@ -117,7 +116,7 @@ class RolesPage(QtWidgets.QWidget):
         self.table.resizeColumnsToContents()
 
     def saveSettings(self):
-        from bridge import settings_manager
+        from sdk import set_role_table
 
         table = []
         for row_index in range(self.table.rowCount()):
@@ -131,4 +130,4 @@ class RolesPage(QtWidgets.QWidget):
                 "model": model_combo.currentText().strip() if model_combo else "",
                 "effort": effort_combo.currentText() if effort_combo else "",
             })
-        settings_manager.instance().set_role_table(table)
+        set_role_table(table)

@@ -8,22 +8,51 @@ rather than the main-thread marshaller a GUI needs. `run.py` and `lane.py`,
 the two surviving scripts in the harness directory, drive this same object to
 start a run.
 """
-from core import events, model_catalog
+import importlib
+
+from core import events, freecad_apply, model_catalog
 from core import settings as _settings
 from core.freecad_apply import ApplyPipeline, active_document, build_registry
-from core.events import EventStream, replay
+from core.events import (ASSERTION, BLOCKED, COST, REVIEW_VERDICT, EventStream,
+                         replay)
 from core.kernel import Kernel
-from core.llm import (EFFORTS, ORCHESTRATOR, TEXT, Session, client_from_roles,
-                      effort_is_honoured, selected_model_name,
+from core.llm import (EFFORTS, ORCHESTRATOR, TEXT, ScriptedLLMClient, Session,
+                      client_from_roles, effort_is_honoured, selected_model_name,
                       unusable_attachments)
+from core.llm.factory import client_from_settings
 from core.loop import (ACCEPT, APPROVE, ASSERTION_PHASE, DECISIONS, DESIGN_PHASE,
                        EXECUTE_PHASE, PLAN_PHASE, REJECT, REVIEW_PHASE, REVISE,
                        START_OVER, Approval, NeedsAnswer, auto_approve,
-                       revise_by_default, run)
+                       nobody_to_ask, revise_by_default, run)
+from core.loop.budgets import Budgets
 from core.narrate import narrate
 from core.orchestrator import CONTROL, DESIGN, RUN_QUESTION, route
+from core.prompts import read_prompt
 from core.session_title import fallback, generate
 from core.sessions import Sessions
+
+_LAZY = {
+    "manifold": ("core.manifold", None),
+    "repair_base": ("core.manifold", "repair_base"),
+    "rewrite_step": ("core.manifold", "rewrite_step"),
+    "average": ("core.measure", "_average"),
+    "pass_rate": ("core.measure", "_pass_rate"),
+    "rate": ("core.measure", "_rate"),
+    "compare": ("core.measure", "compare"),
+    "measure": ("core.measure", "measure"),
+    "score_spread": ("core.measure", "score_spread"),
+    "betti_numbers": ("core.topology", "betti_numbers"),
+    "topology_score": ("core.topology", "topology_score"),
+}
+
+
+def __getattr__(name):
+    """The names `_LAZY` lists, imported on first use: `manifold` needs OCC and the scorer's venv has none, so `import sdk` must not load it."""
+    if name not in _LAZY:
+        raise AttributeError(name)
+    module, attribute = _LAZY[name]
+    loaded = importlib.import_module(module)
+    return getattr(loaded, attribute) if attribute else loaded
 
 
 def providers():
@@ -56,6 +85,11 @@ def get_api_key_for_provider(provider):
     return _settings.instance().get_api_key_for_provider(provider)
 
 
+def set_api_key_for_provider(provider, key):
+    """Upsert the stored key for *provider*."""
+    _settings.instance().set_api_key_for_provider(provider, key)
+
+
 def get_base_urls():
     """``{provider: base_url}`` for every provider that has an address."""
     return _settings.instance().get_base_urls()
@@ -69,6 +103,11 @@ def set_base_urls(urls):
 def get_base_url_for_provider(provider):
     """The stored server address for *provider*, or ``''`` if unset."""
     return _settings.instance().get_base_url_for_provider(provider)
+
+
+def set_base_url_for_provider(provider, url):
+    """Upsert the stored address for *provider*, or drop it when *url* is empty."""
+    _settings.instance().set_base_url_for_provider(provider, url)
 
 
 def get_default_model():

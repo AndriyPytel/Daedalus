@@ -36,7 +36,6 @@ from ui.design_tokens     import (CONTROL, CONTROL_DENSE, HAIRLINE, ICON, ICON_D
                                   RADIUS_SURFACE, RUNNING, SPACE_COMPOSER, SPACE_MD,
                                   SPACE_SM, SPACE_XS, WASH)
 from ui.typography        import BODY, BODY_STRONG, CAPTION, LABEL, css
-from bridge import settings_manager
 from bridge import provider_manager
 from ui.ui_helpers import UIHelpers
 
@@ -1193,8 +1192,9 @@ left over is what the name is elided to.
         The fallback is the Preferences default, or the first model on offer,
         because that default is only a preference and may never have been set.
         """
-        settings = settings_manager.instance()
-        fallback = settings.get_default_model() or self._models[0]["id"]
+        from sdk import get_default_model
+
+        fallback = get_default_model() or self._models[0]["id"]
         self._store_model(fallback)
         self._queue_widget.now(
             "%s is no longer offered by its provider — switched to %s."
@@ -1207,25 +1207,24 @@ left over is what the name is elided to.
         the composer's two pills edit; every other role is set in Preferences
         alone.
         """
-        from sdk import ORCHESTRATOR
+        from sdk import ORCHESTRATOR, get_role_model
 
-        return settings_manager.instance().get_role_model(ORCHESTRATOR) or {}
+        return get_role_model(ORCHESTRATOR) or {}
 
     def _store_on_the_orchestrator(self, **fields):
         """
         Write *fields* onto that row.
 
-        Through `set_role_table` and not `core.settings`, so the Preferences
-        page hears the change while it is open.
+        Through `set_role_table`, whose write the Preferences page hears while
+        it is open.
         """
-        from sdk import ORCHESTRATOR
+        from sdk import ORCHESTRATOR, get_role_table, set_role_table
 
-        settings = settings_manager.instance()
-        table = settings.get_role_table()
+        table = get_role_table()
         for row in table:
             if row.get("role") == ORCHESTRATOR:
                 row.update(fields)
-        settings.set_role_table(table)
+        set_role_table(table)
 
     def _open_model_selector(self):
         self.model_selector.open_at(self._models, self.model_button)
@@ -1240,7 +1239,9 @@ left over is what the name is elided to.
         entry = next((m for m in self._models if m["id"] == model_id), None)
         self._store_on_the_orchestrator(
             model=model_id, provider=(entry or {}).get("provider", ""))
-        settings_manager.instance().set_last_model(model_id)
+        from sdk import set_last_model
+
+        set_last_model(model_id)
 
     def _on_model_selected(self, model_id: str):
         """Drops the client so the next send rebuilds it from settings."""
@@ -1635,7 +1636,9 @@ switched away from is abandoned rather than rendered.
         Qt owns the thread, so it is kept in a list: without a reference it is
         collected mid-flight.
         """
-        thread = _TitleThread(intent, settings_manager.instance().get_naming_model(), self)
+        from sdk import get_naming_model
+
+        thread = _TitleThread(intent, get_naming_model(), self)
         thread.titled.connect(lambda title: self._title_arrived(session_id, title))
         self._title_threads.append(thread)
         thread.finished.connect(lambda: self._title_threads.remove(thread))
