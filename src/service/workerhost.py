@@ -1,5 +1,5 @@
 """
-The worker-host supervisor: it listens on TCP and runs one worker, in its own process group, per connection, carrying the connection's bytes to the worker's stdin and its stdout back.
+The worker-host supervisor (`workerhost.py`): it listens on TCP and runs one worker, in its own process group, per connection, carrying the connection's bytes to the worker's stdin and its stdout back.
 When the peer closes or dies the worker gets end of input and, if it is still running after `GRACE` seconds, its whole group is killed; a worker that exits closes the connection.
 It reads `DAEDALUS_HOST_PORT` (7000) and `DAEDALUS_HOST_ARGV`, a JSON list that defaults to `python -m service.worker`, and `--check` exits 0 when this port is listening, without starting a worker.
 """

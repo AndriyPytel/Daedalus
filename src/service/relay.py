@@ -1,5 +1,5 @@
 """
-The gateway's `DAEDALUS_WORKER_ARGV`: `python -m service.relay HOST:PORT` connects to a worker host and pipes its own stdin to the socket and the socket to its stdout.
+The gateway's `DAEDALUS_WORKER_ARGV`, launched as `python -m service.relay HOST:PORT` (`relay.py`) connects to a worker host and pipes its own stdin to the socket and the socket to its stdout.
 Closing its stdin half-closes the socket so the worker ends; it exits when the host closes the connection, and if it is killed the closed socket is what ends the worker.
 """
 import os
