@@ -554,7 +554,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         acceptance = [entry for entry in checking if entry not in not_reached]
         checked = assertion(acceptance, described, tools, llm, events, budgets,
                             cancelled, after_a_retry=outcome.get("retried"),
-                            description=part.the_part, supervisor=supervisor, base=base)
+                            description=part.the_part, supervisor=supervisor, base=base,
+                            not_checked=planned.left_out)
         if checked is not None and checked.geometry:
             regressed = _geometry_regressions(geometry_baseline, checked.geometry,
                                               outcome.get("retried_names"))

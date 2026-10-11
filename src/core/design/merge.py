@@ -115,9 +115,64 @@ def merge(held, offered, record_conflicts=True):
         offered = _without_refused_conflicts(offered)
         offered = _without_refused_dimensions(offered)
     merged = _written(dict(held or {}), offered, "", conflicts, record_conflicts)
+    merged = _one_datum_to_a_plane(merged, conflicts, record_conflicts)
     if conflicts:
         merged["conflicts"] = _appended(merged.get("conflicts"), conflicts)
     return _with_the_findings(merged)
+
+
+_A_PLANE_ADDRESS = re.compile(r"^\s*plane\s+([xyz])\s*=\s*(-?\d+(?:\.\d+)?)\s*(?:mm)?\s*$", re.IGNORECASE)
+
+
+def _the_plane_it_names(name):
+    """The canonical `plane y = -177.5` that *name* is an address of in the base part, or None."""
+    found = _A_PLANE_ADDRESS.match(str(name or ""))
+    return "plane %s = %s" % (found.group(1).lower(), "%.6g" % (float(found.group(2)) + 0.0)) if found else None
+
+
+def _one_datum_to_a_plane(model, conflicts, record_conflicts):
+    """
+    Datums whose names are addresses of one plane become the first of them,
+    and every position keyed by one of them is keyed by it. Two positions from
+    that plane left on one feature fall to `_written`, so a value that
+    differs is a conflict, not a second position. The datum that stands keeps
+    its own words; `is` is prose and a second wording is no disagreement.
+    """
+    datums = model.get("datums")
+    if not isinstance(datums, list):
+        return model
+    named = {str(datum.get("name")): _the_plane_it_names(datum.get("name"))
+             for datum in datums if isinstance(datum, dict)}
+    named.update({str(key): _the_plane_it_names(key) for feature in model.get("features") or ()
+                  if isinstance(feature, dict) and isinstance(feature.get("position"), dict)
+                  for key in feature["position"]})
+    if not any(named.values()):
+        return model
+
+    one = []
+    for datum in datums:
+        plane = named.get(str(datum.get("name"))) if isinstance(datum, dict) else None
+        at = next((index for index, other in enumerate(one)
+                   if plane and isinstance(other, dict) and other.get("name") == plane), None)
+        datum = dict(datum, name=plane) if plane else datum
+        if at is None:
+            one.append(datum)
+        else:
+            one[at] = dict(datum, **one[at])
+
+    features = []
+    for feature in model.get("features") or ():
+        if isinstance(feature, dict) and isinstance(feature.get("position"), dict):
+            position = {}
+            for key, value in feature["position"].items():
+                key = named.get(str(key)) or key
+                position[key] = _written(position[key], value, _under(
+                    _under(_under("features", feature.get("id")), "position"), key),
+                    conflicts, record_conflicts) if key in position else value
+            feature = dict(feature, position=position)
+        features.append(feature)
+    return dict(model, datums=one, features=features) if model.get("features") is not None \
+        else dict(model, datums=one)
 
 
 def _refused_kinds(offered):

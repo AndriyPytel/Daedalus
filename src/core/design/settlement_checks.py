@@ -22,7 +22,7 @@ from core.design.core import (
     _one_value,
     _under,
 )
-from core.design.presence_checks import _what_it_is
+from core.design.presence_checks import _what_it_is, placements_twice
 from core.design.orientation_checks import (
     _ALONG_ITS_OWN_AXIS,
     _has_an_axis,
@@ -108,9 +108,22 @@ def twice_over(model) -> list:
     is a duplicate, disagreement is `unsafe_supersession`'s territory once
     `superseded_by` names the pair.
     """
-    features = [feature for feature in _features(model) if not feature.get("superseded_by")]
-
     found = []
+    for feature_a, feature_b, shared in _placed_against_one_datum(model):
+        kind = feature_a.get("kind")
+        pair = sorted([feature_a.get("id") or "unknown", feature_b.get("id") or "unknown"])
+        found.append(_conflict(
+            "features → %s and %s (same kind, placed against %s)"
+            % (pair[0], pair[1], ", ".join(shared)),
+            "both are a %s, placed against %s — one physical feature described twice"
+            % (kind, ", ".join(shared)),
+            kind,
+            kind=A_GAP))
+    return found
+
+
+def _placed_against_one_datum(model):
+    features = [feature for feature in _features(model) if not feature.get("superseded_by")]
     for index, feature_a in enumerate(features):
         for feature_b in features[index + 1:]:
             kind_a, kind_b = feature_a.get("kind"), feature_b.get("kind")
@@ -121,19 +134,36 @@ def twice_over(model) -> list:
             if not isinstance(position_a, dict) or not isinstance(position_b, dict):
                 continue
             shared = sorted(set(position_a) & set(position_b))
-            if not shared:
-                continue
-            id_a = feature_a.get("id") or "unknown"
-            id_b = feature_b.get("id") or "unknown"
-            pair = sorted([id_a, id_b])
-            found.append(_conflict(
-                "features → %s and %s (same kind, placed against %s)"
-                % (pair[0], pair[1], ", ".join(shared)),
-                "both are a %s, placed against %s — one physical feature described twice"
-                % (kind_a, ", ".join(shared)),
-                kind_a,
-                kind=A_GAP))
+            if shared:
+                yield feature_a, feature_b, shared
+
+
+def described_twice(model) -> list:
+    """
+    Each pair of features `twice_over` or `twice_placed` finds to be one
+    physical feature described twice, whose values differ at an address both
+    carry: `(feature_a, feature_b, [(address, value_a, value_b), ...])`.
+    """
+    pairs = [(a, b) for a, b, _ in _placed_against_one_datum(model)]
+    pairs += [(a, b) for a, b, _, differing, opposing in placements_twice(model)
+              if differing or (not opposing and a.get("kind") and a.get("kind") == b.get("kind"))]
+    found = []
+    for feature_a, feature_b in pairs:
+        differing = _values_that_differ(feature_a, feature_b)
+        if differing and not any(feature_a is x and feature_b is y for x, y, _ in found):
+            found.append((feature_a, feature_b, differing))
     return found
+
+
+def _values_that_differ(feature_a, feature_b):
+    said_a = {at: _said_value(node) for at, node in _each_value(feature_a, "")}
+    said_b = {at: _said_value(node) for at, node in _each_value(feature_b, "")}
+    return [(at, said_a[at], said_b[at]) for at in said_a
+            if at in said_b and said_a[at] != said_b[at]]
+
+
+def _said_value(node):
+    return str(node.get("value")).strip()
 
 
 _SAYS_WHAT_SETTLED_IT = {"read": "from", "assumed": "because", "derived": "from"}

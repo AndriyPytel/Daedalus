@@ -151,7 +151,7 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
                                            budgets, cancelled)
     finally:
         if the_part:
-            events.emit(DESIGN, model=the_part)
+            events.emit(DESIGN, model=the_part, the_base_part=base)
     the_part = _the_sweep_is_the_sheets(the_part, attachments)
     the_part = _the_directions_are_the_drawings(the_part, intent, attachments, llm,
                                                 events, budgets, cancelled)

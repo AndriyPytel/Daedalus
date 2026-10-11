@@ -149,6 +149,36 @@ def twice_placed(model) -> list:
     does. Returns conflicts in sorted order, so the result is
     order-independent.
     """
+    found = []
+    for feature_a, feature_b, agreeing, differing, opposing_direction in placements_twice(model):
+        id_a = feature_a.get("id") or "unknown"
+        id_b = feature_b.get("id") or "unknown"
+        pair = sorted([id_a, id_b])
+
+        kind_a, kind_b = feature_a.get("kind"), feature_b.get("kind")
+
+        if differing:
+            datum_diff, value_a_diff, value_b_diff = differing[0]
+            found.append(_conflict(
+                "features → %s and %s (same axis, one placement described twice)" % (pair[0], pair[1]),
+                "%s says %s: %s" % (pair[0], datum_diff, value_a_diff if pair[0] == id_a else value_b_diff),
+                "%s says %s: %s" % (pair[1], datum_diff, value_b_diff if pair[1] == id_b else value_a_diff)))
+        elif not opposing_direction and kind_a and kind_a == kind_b:
+            datum_same, value_same = agreeing[0]
+            found.append(_conflict(
+                "features → %s and %s (same axis, every shared datum agrees -- one feature described twice)" % (pair[0], pair[1]),
+                "%s says %s: %s" % (pair[0], datum_same, value_same),
+                "%s says %s: %s" % (pair[1], datum_same, value_same)))
+
+    return found
+
+
+def placements_twice(model):
+    """
+    Each pair of features on one axis direction that share a datum and agree
+    on at least one of them, with the datums they agree on, the ones they
+    differ on, and whether a shared datum's `direction` names opposing ends.
+    """
     features = [feature for feature in _features(model)
                 if not feature.get("superseded_by")]
 
@@ -158,7 +188,6 @@ def twice_placed(model) -> list:
         if direction:
             by_direction.setdefault(direction, []).append(feature)
 
-    found = []
     for direction, group in by_direction.items():
         for index_a, feature_a in enumerate(group):
             for feature_b in group[index_a + 1:]:
@@ -202,29 +231,8 @@ def twice_placed(model) -> list:
                     else:
                         differing.append((datum, value_a, value_b))
 
-                if not agreeing:
-                    continue
-
-                id_a = feature_a.get("id") or "unknown"
-                id_b = feature_b.get("id") or "unknown"
-                pair = sorted([id_a, id_b])
-
-                kind_a, kind_b = feature_a.get("kind"), feature_b.get("kind")
-
-                if differing:
-                    datum_diff, value_a_diff, value_b_diff = differing[0]
-                    found.append(_conflict(
-                        "features → %s and %s (same axis, one placement described twice)" % (pair[0], pair[1]),
-                        "%s says %s: %s" % (pair[0], datum_diff, value_a_diff if pair[0] == id_a else value_b_diff),
-                        "%s says %s: %s" % (pair[1], datum_diff, value_b_diff if pair[1] == id_b else value_a_diff)))
-                elif not opposing_direction and kind_a and kind_a == kind_b:
-                    datum_same, value_same = agreeing[0]
-                    found.append(_conflict(
-                        "features → %s and %s (same axis, every shared datum agrees -- one feature described twice)" % (pair[0], pair[1]),
-                        "%s says %s: %s" % (pair[0], datum_same, value_same),
-                        "%s says %s: %s" % (pair[1], datum_same, value_same)))
-
-    return found
+                if agreeing:
+                    yield feature_a, feature_b, agreeing, differing, opposing_direction
 
 
 def _different_units(value_a, value_b):
