@@ -715,8 +715,7 @@ Ask only where the sheet cannot answer it at all — what would go to
 whole run, so it is asked once, before any Plan exists. Unanswered it is not
 fatal: settle it yourself, `assumed`, with `because`.
 
-A printed count you cannot find all of (`8x R8.00`, four drawn) is a question.{{/asking}}
-{{nobody}}## Nobody answers
+A printed count you cannot find all of (`8x R8.00`, four drawn) is a question.{{/asking}}{{nobody}}## Nobody answers
 
 Nobody answers anything in this run: no person reads what you leave open and no
 phase answers it. Where your description has a gap the part cannot be described

@@ -56,6 +56,7 @@ from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from tests.loop_helpers import (
     RENDER_PNG,
+    prompts_of,
     read,
     settled,
     A_CUBE_WITH_A_HOLE,
@@ -991,7 +992,8 @@ def test_every_design_call_of_a_run_carries_a_page_and_not_the_whole_sheet():
         suspect_reply(), verdict_reply("pass"),
     ], attachments=[THE_PIPE_CLAMP], budgets=Budgets(readings=1))
 
-    calls = [call for call in llm.calls if prompt("design") in call[0]["content"]]
+    calls = [call for call in llm.calls
+             if any(system in call[0]["content"] for system in prompts_of("design"))]
     assert len(calls) == 4, "first pass (2 pages + reconcile) plus the re-read A_DATUM provokes"
 
     page_calls, reconciling = calls[:2], calls[2]
