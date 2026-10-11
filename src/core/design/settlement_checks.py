@@ -22,7 +22,7 @@ from core.design.core import (
     _one_value,
     _under,
 )
-from core.design.presence_checks import _what_it_is, placements_twice
+from core.design.presence_checks import _what_it_is, _numeric_value, placements_twice
 from core.design.orientation_checks import (
     _ALONG_ITS_OWN_AXIS,
     _has_an_axis,
@@ -140,9 +140,10 @@ def _placed_against_one_datum(model):
 
 def described_twice(model) -> list:
     """
-    Each pair of features `twice_over` or `twice_placed` finds to be one
-    physical feature described twice, whose values differ at an address both
-    carry: `(feature_a, feature_b, [(address, value_a, value_b), ...])`.
+    Each pair `twice_over` or `twice_placed` finds, whose values differ at an address both
+    carry and which are placed at the same position from at least one datum both are placed
+    against: `(feature_a, feature_b, [(address, value_a, value_b), ...])`. Two features
+    apart along a shared axis are two features.
     """
     pairs = [(a, b) for a, b, _ in _placed_against_one_datum(model)]
     pairs += [(a, b) for a, b, _, differing, opposing in placements_twice(model)
@@ -150,9 +151,25 @@ def described_twice(model) -> list:
     found = []
     for feature_a, feature_b in pairs:
         differing = _values_that_differ(feature_a, feature_b)
-        if differing and not any(feature_a is x and feature_b is y for x, y, _ in found):
+        if differing and _at_one_position(feature_a, feature_b) \
+                and not any(feature_a is x and feature_b is y for x, y, _ in found):
             found.append((feature_a, feature_b, differing))
     return found
+
+
+def _at_one_position(feature_a, feature_b):
+    position_a, position_b = feature_a.get("position"), feature_b.get("position")
+    if not isinstance(position_a, dict) or not isinstance(position_b, dict):
+        return False
+    return any(_magnitude(position_a[datum]) is not None
+               and _magnitude(position_a[datum]) == _magnitude(position_b[datum])
+               for datum in set(position_a) & set(position_b))
+
+
+def _magnitude(placed):
+    if not isinstance(placed, dict):
+        return None
+    return placed["mm"] if "mm" in placed else _numeric_value(placed.get("value"))
 
 
 def _values_that_differ(feature_a, feature_b):

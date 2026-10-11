@@ -38,6 +38,17 @@ def test_a_pair_described_twice_with_different_values_gives_no_entry_for_either_
     assert any(line.startswith("envelope") for line in acceptance)
 
 
+def test_two_holes_sharing_only_a_datum_key_at_different_positions_stay_checked():
+    def hole(identity, diameter, along):
+        return {"id": identity, "kind": "hole", "diameter": read(diameter),
+                "position": {"the front face": read(along)}}
+
+    the_part = _described(hole("hole-left", "80 mm", "0 mm"), hole("hole-right", "180 mm", "195 mm"))
+
+    assert _about(the_part, "hole-left") and _about(the_part, "hole-right")
+    assert _left_out(the_part) == []
+
+
 def test_the_reason_names_each_feature_left_out_and_the_values_that_differed():
     the_part = _described(_boss("boss-centre", "110 mm", "10 mm"),
                           _boss("boss-left", "100 mm", "10 mm"))
