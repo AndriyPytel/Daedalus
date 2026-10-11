@@ -3,7 +3,7 @@ import json
 import re
 from dataclasses import dataclass, field
 
-from core.design.core import UNDER
+from core.design.core import UNDER, _under
 from core.design.merge import (
     _the_number,
     diff,
@@ -11,6 +11,7 @@ from core.design.merge import (
 )
 from core.design.report import render
 from core.design.gaps import _TO_BE_READ_AGAIN, _each_value, entries
+from core.design.settlement_checks import described_twice
 from core.events import ANSWER, CHANGE_SET, DESIGN, QUESTION
 
 from core.loop.budgets import PhaseError
@@ -56,6 +57,7 @@ class Plan:
     unbuildable: list = field(default_factory=list)
     values: dict = field(default_factory=dict)
     value_errors: list = field(default_factory=list)
+    left_out: list = field(default_factory=list)
     look: dict = None
     rollback: dict = None
     bad_rollback: str = ""
@@ -124,7 +126,7 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
         raise PhaseError("Plan produced no Steps for this Intent.")
     return Plan(steps=steps, satisfies=satisfies, cites=cites, ops=ops,
                 unbuildable=unbuildable, values=values, value_errors=value_errors,
-                acceptance=_acceptance_of(the_part),
+                acceptance=_acceptance_of(the_part), left_out=_left_out(the_part),
                 rollback=rollback, bad_rollback=bad_rollback)
 
 
@@ -205,8 +207,21 @@ def _acceptance_of(the_part):
     """
     What the finished part has to satisfy: the description's own
     entries. An assumed value is a criterion too, and marked assumed.
+    Every value of both features of a pair described twice with differing
+    values is left out: no part holds both, so neither is checked.
     """
-    return [entry["says"] for entry in entries(the_part)]
+    out = [_under("features", feature.get("id")) for pair in described_twice(the_part)
+           for feature in pair[:2]]
+    return [entry["says"] for entry in entries(the_part)
+            if not any(entry["about"] == at or entry["about"].startswith(at + UNDER) for at in out)]
+
+
+def _left_out(the_part):
+    """One line for each pair `_acceptance_of` leaves out: the features and the values that differed."""
+    return ["%s and %s are one feature described twice; neither is checked (%s)" % (
+                a.get("id"), b.get("id"),
+                "; ".join("%s: %s vs %s" % (at, said_a, said_b) for at, said_a, said_b in differing))
+            for a, b, differing in described_twice(the_part)]
 
 
 _BOOKKEEPING = ("plane", "edges", "position", "angle")
@@ -486,7 +501,7 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
             continue
         if not planned.question:
             if grown != the_part:
-                events.emit(DESIGN, model=grown)
+                events.emit(DESIGN, model=grown, the_base_part=base)
             return planned, grown
 
         events.emit(QUESTION, text=planned.question)

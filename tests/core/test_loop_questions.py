@@ -1376,8 +1376,8 @@ def test_design_settles_plans_questions_a_bounded_number_of_times_then_plan_deci
     """A recorded run spent 67 minutes on eight rounds of Plan asking and Design settling, each settle raising the next question."""
     def told(n):
         return {"features": [{"id": "part-%d" % n, "kind": "boss",
-                              "position": {"the blank axis": {"value": "%d mm" % n,
-                                                              "flag": "assumed"}}}]}
+                              "position": {"the blank axis %d" % n: {"value": "%d mm" % n,
+                                                                     "flag": "assumed"}}}]}
 
     budgets = Budgets()
     replies = []

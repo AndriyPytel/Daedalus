@@ -135,6 +135,13 @@ how to build it: no build order, no `Cut` or `Join`, no sketch planes, no first
 and then. An ordered list has somewhere to write an operation the drawing never
 showed; an unordered one does not.
 
+## When the request carries `the_base_part`
+
+Name a datum by its address there: `plane y = -177.5`, never "the bottom
+face" — pages are read apart, and each words one plane its own way. Name a
+feature by the face or cylinder it sits on: `boss @ plane y = -17.5`. With no
+address in `the_base_part`, name it freely.
+
 ## What needs no reading at all
 
 Units (millimetres), the base plane, the +Z axis and a closed positive volume

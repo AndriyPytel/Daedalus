@@ -185,7 +185,8 @@ def fixed_checks(acceptance, description, base):
 
 
 def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled=None,
-              after_a_retry=(), supervisor=None, kernel=None, description=None, base=None):
+              after_a_retry=(), supervisor=None, kernel=None, description=None, base=None,
+              not_checked=()):
     """
     Writes and runs acceptance checks against the finished Document,
     read-only, once per run, given `description` -- Design's own prose,
@@ -218,7 +219,7 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
         if not result.get("ok"):
             traceback = result.get("traceback") or "the fixed checks failed."
             unmet = _unmet_in(traceback) or ["the envelope and self-intersection checks"]
-            events.emit(ASSERTION, ok=False, code=code, confirmed=[],
+            events.emit(ASSERTION, left_out=list(not_checked), ok=False, code=code, confirmed=[],
                         uncovered=[], traceback=traceback, unmet=unmet)
             return Checked(failed=True, traceback=traceback, unmet=unmet,
                            geometry=result.get("geometry") or {})
@@ -229,7 +230,7 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
         return None
 
     if not remaining:
-        events.emit(ASSERTION, ok=True, code="\n".join(scripts), confirmed=covered,
+        events.emit(ASSERTION, left_out=list(not_checked), ok=True, code="\n".join(scripts), confirmed=covered,
                     uncovered=[], traceback="")
         return Checked(confirmed=covered, geometry=geometry)
 
@@ -270,7 +271,8 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
                         traceback = result.get("traceback") or "The checks failed without saying why."
                         if _MODEL_IS_INVALID in traceback:
                             return _failed_check(events, code, covered, held, failed, uncovered,
-                                                 remaining, traceback, geometry, list(remaining))
+                                                 remaining, traceback, geometry, list(remaining),
+                                                 not_checked=not_checked)
                         defects.update({entry: traceback for entry in answered})
                     else:
                         failed.update(result.get("failed") or ())
@@ -292,9 +294,9 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
         return _failed_check(events, "", covered, held, failed, uncovered, remaining,
                              _DID_NOT_HOLD + "; ".join(remaining[entry] for entry in sorted(failed)),
                              geometry, [remaining[entry] for entry in sorted(failed)],
-                             unanswerable, [remaining[entry] for entry in asked])
+                             unanswerable, [remaining[entry] for entry in asked], not_checked)
     nothing_judged = asked and not held and not uncovered
-    events.emit(ASSERTION, ok=None if nothing_judged else True, code="", confirmed=confirmed,
+    events.emit(ASSERTION, left_out=list(not_checked), ok=None if nothing_judged else True, code="", confirmed=confirmed,
                 uncovered=unanswerable, traceback="", defects=[remaining[entry] for entry in asked])
     return Checked(confirmed=confirmed, uncovered=unanswerable,
                    defects=[remaining[entry] for entry in asked], geometry=geometry)
@@ -338,9 +340,9 @@ def _expressions_evaluated(answered, tools, events):
 
 
 def _failed_check(events, code, covered, held, failed, uncovered, remaining, traceback,
-                  geometry, unmet, unanswerable=(), defects=()):
+                  geometry, unmet, unanswerable=(), defects=(), not_checked=()):
     confirmed = covered + [remaining[entry] for entry in sorted(held)]
-    events.emit(ASSERTION, ok=False, code=code, confirmed=confirmed, uncovered=list(unanswerable),
+    events.emit(ASSERTION, left_out=list(not_checked), ok=False, code=code, confirmed=confirmed, uncovered=list(unanswerable),
                 traceback=traceback, unmet=unmet, defects=list(defects))
     return Checked(failed=True, confirmed=confirmed, traceback=traceback,
                    uncovered=list(unanswerable), unmet=unmet, defects=list(defects),
