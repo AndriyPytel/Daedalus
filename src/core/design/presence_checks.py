@@ -430,3 +430,17 @@ def blanket_edge_treatment(model) -> list:
             "and the text reads as a set of edges rather than one",
             "%r" % (feature.get("region") or feature.get("kind") or marker)))
     return found
+
+
+def nothing_changed(model) -> list:
+    """
+    The finding that an edit Design marks no feature `edit: changed`, or [].
+
+    On an edit every feature is `changed` or `kept`; a Design with no `changed` feature asks for no edit, so the Preflight check of a Step's `changes` against the changed features would pass nothing.
+    """
+    if any(str(feature.get("edit") or "").strip().lower() == "changed" for feature in _features(model)):
+        return []
+    return [_conflict(
+        _under("features", "edit"),
+        "no feature is marked `edit: changed`, so the description asks for no change to the base part",
+        "every feature is `kept` or carries no `edit` marker")]
