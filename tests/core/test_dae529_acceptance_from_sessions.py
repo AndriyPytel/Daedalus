@@ -1,7 +1,7 @@
 """
 The three Acceptance Criteria of the edit runs, computed from sessions copied into `logs/dae529-*/`.
 
-The session list is whatever `*.jsonl` files sit under those directories, one task per file-name prefix up to the first dot, the last session of a task counting. With no session there the measurement is skipped; with sessions it needs `EDIT_TASKS` tasks, the 11 edit tasks of the ticket.
+The session list is every `*.jsonl` file under those directories, one run each: the 11 edit tasks of the ticket are 11 runs over five parts, 202 and 245 three times, 208 and 240 twice, 241 once. With no session there the measurement is skipped; with sessions it needs `EDIT_TASKS` of them.
 """
 import glob
 import json
@@ -20,10 +20,7 @@ REWORK_SHARE = 0.20
 
 
 def sessions(logs=LOGS):
-    last = {}
-    for path in sorted(glob.glob(os.path.join(logs, "dae529-*", "**", "*.jsonl"), recursive=True)):
-        last[os.path.basename(path).split(".")[0]] = path
-    return [last[task] for task in sorted(last)]
+    return sorted(glob.glob(os.path.join(logs, "dae529-*", "**", "*.jsonl"), recursive=True))
 
 
 def wall(events):
@@ -85,12 +82,12 @@ def test_with_no_session_there_is_nothing_to_measure(tmp_path):
     assert sessions(str(tmp_path)) == []
 
 
-def test_the_session_list_is_the_files_one_per_task_the_last_one_counting(tmp_path):
+def test_every_session_is_one_run_however_many_of_one_part(tmp_path):
     first = _session(tmp_path, "241.20261012-100000.jsonl", [])
-    last = _session(tmp_path, "241.20261012-110000.jsonl", [])
+    second = _session(tmp_path, "241.20261012-110000.jsonl", [])
     other = _session(tmp_path, "245.20261012-100000.jsonl", [])
 
-    assert sessions(str(tmp_path)) == [last, other] and first not in sessions(str(tmp_path))
+    assert sessions(str(tmp_path)) == [first, second, other]
 
 
 def test_rework_is_the_wall_after_the_first_plan_revision(tmp_path):
