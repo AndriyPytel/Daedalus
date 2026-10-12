@@ -1396,9 +1396,7 @@ _INVENTORY_LINES = 40
 
 def base_inventory(doc):
     """
-    The part a Body starts from, in words: bounding box, then one line per face address, planes, cylinders told apart as holes or bosses, and every other surface. None where no Body has a BaseFeature.
-
-    Two ceilings hold. A B-spline address is approximate: family, bounding box and centroid rounded to 0.1 mm, so a small move can leave it standing and a rounding edge can change it. A plane address is the whole plane: the areas of every face on it are summed, so removing one of several faces on one plane leaves the address standing. The harness reads it so Design never touches a FreeCAD API; a section past `_INVENTORY_LINES` entries is cut, largest planes first.
+    The part a Body starts from, in words: bounding box, then one line per face address, sections cut past `_INVENTORY_LINES`. None where no Body has a BaseFeature. Two ceilings: a B-spline address is approximate (family, bounding box and centroid rounded to 0.1 mm), and a plane address is the whole plane, so removing one of several faces on one plane leaves the address standing.
     """
     base = _base_feature(doc)
     if base is None:
