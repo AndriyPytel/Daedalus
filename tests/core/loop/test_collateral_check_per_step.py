@@ -1,7 +1,7 @@
 """
 After a Step builds on an edit, an address of the base part that is gone and that the Step did not name undoes the Step and hands it back to Plan with the list. It is an ordinary hand-back: two in a row with nothing applied between them end the run through the existing going-nowhere rule.
 """
-from core.events import PREFLIGHT_FAILED, EventStream
+from core.events import APPLIED, PREFLIGHT_FAILED, EventStream
 from core.llm import ScriptedLLMClient
 from core.loop.execute import execute
 from tests.event_helpers import events_of
@@ -26,6 +26,12 @@ def test_a_step_that_removes_only_the_faces_it_names_stays():
     written, undone, _ = _executed([A, B], [A], [B])
 
     assert undone == [] and written.for_step(1).apply_failed is None
+
+
+def test_an_applied_step_reports_the_base_faces_it_changed():
+    _, _, events = _executed([A, B], [A], [B])
+
+    assert [event.data["faces_changed"] for event in events_of(events, APPLIED)] == [[B]]
 
 
 def test_a_step_that_removes_a_face_it_did_not_name_is_undone_and_handed_back_with_the_list():

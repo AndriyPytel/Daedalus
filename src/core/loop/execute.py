@@ -255,6 +255,7 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         events.emit(TOOL_CALL, name="apply_step", arguments=dict(arguments))
         result = tools.call("apply_step", arguments)
         events.emit(TOOL_RESULT, name="apply_step", result=result)
+        gone = set()
         if result.get("status") == "applied" and before is not None:
             after = tools.call("base_addresses")
             gone = set(before["now"]) & set(before["base"]) - set(after["now"])
@@ -267,7 +268,8 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
             if fix is None:
                 events.emit(APPLIED, step=number,
                             label=declaration.get("label") or "Daedalus Step",
-                            created=result.get("created", []))
+                            created=result.get("created", []),
+                            **({"faces_changed": sorted(gone)} if before is not None else {}))
             declaration["description"] = result.get("description")
             declaration["created"] = result.get("created", [])
             if tried.get(number):
