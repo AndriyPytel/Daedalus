@@ -8,9 +8,9 @@ from core.llm import ScriptedLLMClient
 from tests.loop_helpers import FakeTools, StubKernel, code_reply
 
 DESIGN = {"features": [
-    {"id": "flange @ plane z = 10", "edit": "changed"},
+    {"id": "flange", "edit": "changed", "at": ["plane z = 10"]},
     {"id": "plane z = 0", "edit": "kept"},
-    {"id": "hole diameter 30, axis (0, 0, 1), at (0, 0, 0)", "edit": "kept"}]}
+    {"id": "bore", "edit": "kept"}]}
 
 
 def _executed(changes, design=DESIGN):

@@ -347,12 +347,12 @@ _COLLATERAL = ("Step %d was undone: it removed or moved these faces of the base 
 
 
 def _changed_addresses(design):
-    """The addresses of the features Design marks `changed`: each id, and what follows its `@`."""
+    """The union of `at` over the features Design marks `changed`, whitespace normalised."""
     found = set()
     for feature in (design or {}).get("features") or ():
-        if isinstance(feature, dict) and str(feature.get("edit") or "").strip().lower() == "changed":
-            identity = " ".join(str(feature.get("id") or "").split())
-            found.update({identity, identity.rpartition("@")[2].strip()})
+        if isinstance(feature, dict) and str(feature.get("edit") or "").strip().lower() == "changed" \
+                and isinstance(feature.get("at"), list):
+            found.update(" ".join(str(entry).split()) for entry in feature["at"])
     found.discard("")
     return found
 

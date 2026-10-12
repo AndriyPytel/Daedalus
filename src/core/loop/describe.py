@@ -21,7 +21,7 @@ from core.design.merge import (
     merge,
 )
 from core.design.citation_checks import fabricated_citation
-from core.design.presence_checks import nobody_carries_the_outside, nothing_changed
+from core.design.presence_checks import nobody_carries_the_outside, nothing_changed, unplaced_changes
 from core.design.orientation_checks import (
     ROUND_IN,
     read_off_the_wrong_view,
@@ -458,15 +458,19 @@ def _the_outside_is_carried(the_part, intent, attachments, llm, events, budgets,
     return merge(the_part, grew, budgets.record_conflicts) if grew else the_part
 
 
+def _unsettled(the_part, base):
+    return nothing_changed(the_part) + unplaced_changes(the_part, base)
+
+
 def _the_change_is_marked(the_part, intent, attachments, llm, events, budgets, cancelled,
                           base=None):
     """
-    On an edit, a Design with a `changed` feature; asked again up to `budgets.rereads` times, then refused as a finding in `conflicts`.
+    On an edit, a Design with a `changed` feature, each carrying the base-part addresses it changes in `at`; asked again up to `budgets.rereads` times, then refused as a finding in `conflicts`.
 
     A run without a base part has nothing to mark and is not asked.
     """
     looked = 0
-    while base and nothing_changed(the_part) and looked < budgets.rereads:
+    while base and _unsettled(the_part, base) and looked < budgets.rereads:
         if cancelled():
             raise Stopped()
         looked += 1
@@ -474,7 +478,7 @@ def _the_change_is_marked(the_part, intent, attachments, llm, events, budgets, c
                           "the_question": _MARK_WHAT_CHANGES}, llm, events, attachments)
         if grew:
             the_part = merge(the_part, grew, budgets.record_conflicts)
-    found = nothing_changed(the_part) if base else []
+    found = _unsettled(the_part, base) if base else []
     return merge(the_part, {"conflicts": found}) if found else the_part
 
 

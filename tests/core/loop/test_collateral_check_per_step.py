@@ -9,7 +9,7 @@ from tests.loop_helpers import (FakeTools, _turns_of, StubKernel, code_reply, de
                                 plan_reply, suspect_reply, verdict_reply)
 
 A, B = "plane z = 0", "hole diameter 30, axis (0, 0, 1), at (0, 0, 0)"
-DESIGN = {"features": [{"id": "bore @ " + B, "edit": "changed"}, {"id": A, "edit": "kept"}]}
+DESIGN = {"features": [{"id": "bore", "edit": "changed", "at": [B]}, {"id": A, "edit": "kept"}]}
 
 
 def _executed(before_now, after_now, changes, base=(A, B)):

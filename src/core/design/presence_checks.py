@@ -444,3 +444,35 @@ def nothing_changed(model) -> list:
         _under("features", "edit"),
         "no feature is marked `edit: changed`, so the description asks for no change to the base part",
         "every feature is `kept` or carries no `edit` marker")]
+
+
+def listed_addresses(base) -> set:
+    """The face addresses an inventory lists: each indented line, without its area, whitespace normalised."""
+    found = set()
+    for line in str(base or "").splitlines():
+        if line.startswith("  ") and not line.strip().startswith("..."):
+            found.add(" ".join(line.split("(area")[0].split()))
+    return found
+
+
+def unplaced_changes(model, base) -> list:
+    """
+    The findings for `changed` features with no `at`, or an `at` entry that is no address in the inventory *base*, or [].
+
+    Preflight reads the addresses a Step may change from `at`, so a feature without one allows nothing.
+    """
+    listed = listed_addresses(base)
+    found = []
+    for feature in _features(model):
+        if str(feature.get("edit") or "").strip().lower() != "changed":
+            continue
+        at = [" ".join(str(entry).split()) for entry in feature.get("at") or ()
+              if str(entry).strip()] if isinstance(feature.get("at"), list) else []
+        unlisted = [entry for entry in at if entry not in listed]
+        if at and not unlisted:
+            continue
+        found.append(_conflict(
+            _under(_under("features", _named(feature, ("id", "name")) or "a changed feature"), "at"),
+            "a `changed` feature carries no `at`, or an `at` that is not an address of the base part",
+            "; ".join(unlisted) or "no `at`"))
+    return found

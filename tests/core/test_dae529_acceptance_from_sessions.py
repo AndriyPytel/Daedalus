@@ -112,7 +112,7 @@ def test_an_op_mismatch_is_counted_and_another_gate_is_not(tmp_path):
 
 
 def test_an_applied_step_outside_the_changed_features_is_found(tmp_path):
-    design = {"features": [{"id": "bore @ plane z = 0", "edit": "changed"}]}
+    design = {"features": [{"id": "bore", "edit": "changed", "at": ["plane z = 0"]}]}
     path = _session(tmp_path, "241.a.jsonl", [
         (DESIGN, 1, {"model": design}),
         (APPLIED, 2, {"step": 1, "faces_changed": ["plane z = 0"]}),
