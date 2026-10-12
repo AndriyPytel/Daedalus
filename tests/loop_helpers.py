@@ -315,7 +315,8 @@ class FakeTools:
 
     APPLIED = {"status": "applied", "created": ["Box"], "description": DESCRIPTION}
 
-    def __init__(self, applies=(), views=None, checks=(), undo_capacity=None):
+    def __init__(self, applies=(), views=None, checks=(), undo_capacity=None, base=None,
+                 faces=()):
         """
         What is in the Document by now. A Snapshot frozen at empty could not
         show that a regeneration is written against the Steps that did apply.
@@ -333,6 +334,8 @@ class FakeTools:
         self.created = []
         self._applied_groups = []
         self.undo_capacity = undo_capacity
+        self.base = base
+        self.faces = list(faces)
         self.views = views
         self.checks = list(checks)
         self.calls = []
@@ -349,7 +352,12 @@ class FakeTools:
                         object_count=len(self.created))
 
         registry.tool("base_inventory", "The base part, in words.")(
-            lambda: {"inventory": None})
+            lambda: {"inventory": self.base})
+
+        @registry.tool("base_addresses", "The face addresses of the base part and of the Body now.")
+        def base_addresses():
+            self.calls.append(("base_addresses", {}))
+            return self.faces.pop(0) if self.faces else {"base": [], "now": []}
 
         @registry.tool("overall_size", "How big the part came out.")
         def overall_size():
@@ -592,11 +600,12 @@ def needs_drawing(*paths):
 
 def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
           views=None, checks=(), attachments=(), decide=None, outstanding=(),
-          the_part_path=None, kernel=None, undo_capacity=None):
+          the_part_path=None, kernel=None, undo_capacity=None, base=None, faces=()):
     """Run the loop over scripted turns and hand back everything to assert on."""
     needs_drawing(*attachments)
     llm = scripted(turns, attachments, resuming=bool(the_part_path))
-    tools = FakeTools(applies, views=views, checks=checks, undo_capacity=undo_capacity)
+    tools = FakeTools(applies, views=views, checks=checks, undo_capacity=undo_capacity,
+                      base=base, faces=faces)
     events = EventStream()
     kwargs = {"ask": ask} if ask is not None else {}
     if decide is not None:

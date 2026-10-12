@@ -135,13 +135,13 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
 def _steps_of(planned, op_vocabulary=None, known_values=None, changes=None):
     """
     The prose of each Step, the entries the Plan cites, the operation each kept
-    Step declared, and the Steps refused outright. What a Step satisfies goes
+    Step declared (its `changes` land in *changes* when given), and the Steps refused outright. What a Step satisfies goes
     into its own prose, so the Gate can tell one physical cavity planned three
     times; `op` is checked against `OP_VERBS` only where `"op_vocabulary":
     "closed"` -- unmarked, that check was measured at 14.9% and rejected. A
     Step's own `values` names the numbers it reads from Plan's own kernel,
     one not in *known_values* collected as a value nobody computed, the same
-    shape `unbuildable` already is rather than raised as a Step failure. A kept Step's `changes`, the base-part addresses it names, is appended to *changes* when given.
+    shape `unbuildable` already is rather than raised as a Step failure.
     """
     known_values = known_values or {}
     steps, satisfies, cites, ops, unbuildable, values, value_errors = \

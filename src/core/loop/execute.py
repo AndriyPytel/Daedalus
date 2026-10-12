@@ -144,7 +144,7 @@ class Written:
 
 def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_described="",
             looks=None, entries=(), ledger=None, supervisor=None, kernel=None, ops=(),
-            exploration=None, design=None, plan_values=None, base=None):
+            exploration=None, design=None, plan_values=None, base=None, changes=()):
     """
     Run every Step from `start` to the end of the Plan as one agent phase,
     against one kernel held open for the whole call. `Written` comes from
@@ -195,6 +195,20 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
     free_refusal_spent = set()
     exhausted = set()
 
+    def handed_back(number, declaration, traceback, gate):
+        """
+        A Step on an edit that Plan, not Execute, has to change, so it is handed back at once without an in-place retry.
+
+        Two causes: `changes` names an address no `changed` feature owns, checked before the build, or the built Step removed a face of the base part it did not name, undone.
+        """
+        tried.setdefault(number, []).append(traceback)
+        events.emit(PREFLIGHT_FAILED, step=number, attempt=len(tried[number]),
+                    traceback=traceback, gate=gate)
+        resync = tools.call("document_copy")["path"]
+        exhausted.add(number)
+        declaration["retries"] = list(tried[number])
+        return {"delivered": False, "traceback": traceback, "drift": False, "resync": resync}
+
     def on_declaration(declaration):
         """
         Replay one declared Step into the live Document via `apply_step` the
@@ -224,6 +238,14 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
                                        "objects": declaration.get("objects") or [],
                                        "names": declaration.get("names") or {},
                                        "signature": declaration.get("signature")}}
+        wanted = set(changes[index]) if base and fix is None and index is not None \
+            and index < len(changes) else set()
+        unasked = sorted(wanted - _changed_addresses(design)) if base and fix is None else []
+        if unasked:
+            return handed_back(number, declaration, _UNASKED % (
+                number, "; ".join(unasked), "; ".join(sorted(_changed_addresses(design))) or "none"),
+                "changes_unasked")
+        before = tools.call("base_addresses") if base and fix is None else None
         if op:
             arguments["op"] = op
         if design:
@@ -233,6 +255,14 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         events.emit(TOOL_CALL, name="apply_step", arguments=dict(arguments))
         result = tools.call("apply_step", arguments)
         events.emit(TOOL_RESULT, name="apply_step", result=result)
+        if result.get("status") == "applied" and before is not None:
+            after = tools.call("base_addresses")
+            gone = set(before["now"]) & set(before["base"]) - set(after["now"])
+            if gone - wanted:
+                tools.call("undo_step")
+                return handed_back(number, declaration, _COLLATERAL % (
+                    number, "; ".join(sorted(gone)), "; ".join(sorted(wanted)) or "none",
+                    "; ".join(sorted(gone - wanted))), "collateral")
         if result.get("status") == "applied":
             if fix is None:
                 events.emit(APPLIED, step=number,
@@ -303,6 +333,26 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
 _SKIPPED_A_STEP = "skipped a Step it could have written"
 
 _THICKNESS_FAILED = "Failed to make thick solid"
+
+
+_UNASKED = ("Step %d names faces of the base part the intent did not ask to change: %s. "
+            "The features Design marks `changed` are at: %s. Name only those, or leave the "
+            "Step out.")
+
+_COLLATERAL = ("Step %d was undone: it removed or moved these faces of the base part: %s. "
+               "It named: %s. It did not name: %s. Plan the Step so that it changes only "
+               "the faces it names, or name every face it changes.")
+
+
+def _changed_addresses(design):
+    """The addresses of the features Design marks `changed`: each id, and what follows its `@`."""
+    found = set()
+    for feature in (design or {}).get("features") or ():
+        if isinstance(feature, dict) and str(feature.get("edit") or "").strip().lower() == "changed":
+            identity = " ".join(str(feature.get("id") or "").split())
+            found.update({identity, identity.rpartition("@")[2].strip()})
+    found.discard("")
+    return found
 
 
 def _classified_failures():
