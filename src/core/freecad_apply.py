@@ -1471,12 +1471,16 @@ def _addresses_of(shape):
                 _vector(_along(surface.Axis)), _vector(_rounded(surface.Center)),
                 _g(round(surface.MajorRadius, 4)), _g(round(surface.MinorRadius, 4)))
         else:
-            box = face.BoundBox
-            address = "%s bbox x %s..%s, y %s..%s, z %s..%s, centroid %s" % (
-                kind, _g(round(box.XMin, 1) + 0.0), _g(round(box.XMax, 1) + 0.0),
-                _g(round(box.YMin, 1) + 0.0), _g(round(box.YMax, 1) + 0.0),
-                _g(round(box.ZMin, 1) + 0.0), _g(round(box.ZMax, 1) + 0.0),
-                _vector(_rounded(face.CenterOfMass, 1)))
+            poles = getattr(surface, "getPoles", None)
+            if poles:
+                points = [point for row in surface.getPoles() for point in row]
+                low = [min(point[i] for point in points) for i in range(3)]
+                high = [max(point[i] for point in points) for i in range(3)]
+            else:
+                box = face.BoundBox
+                low, high = [box.XMin, box.YMin, box.ZMin], [box.XMax, box.YMax, box.ZMax]
+            address = "%s bbox x %s..%s, y %s..%s, z %s..%s" % (
+                kind, *[_g(round(v, 1) + 0.0) for pair in zip(low, high) for v in pair])
         found[address] = found.get(address, 0.0) + face.Area
     return found
 

@@ -37,7 +37,7 @@ def test_a_plane_a_cylinder_a_cone_a_torus_and_a_spline_each_get_one_address():
     torus = _addresses(Part.makeTorus(20, 3))
     assert len(torus) == 1 and "axis (0, 0, 1)" in next(iter(torus)) and "radii 20 and 3" in next(iter(torus))
     spline = [a for a in _addresses(_spline_block()) if "bbox" in a]
-    assert spline and all("centroid" in a for a in spline)
+    assert spline
 
 
 def test_an_address_is_the_same_across_two_builds_of_the_part():
@@ -101,3 +101,26 @@ def test_the_tool_reports_the_base_part_s_addresses_and_the_Body_s_now():
         FreeCAD.closeDocument(doc.Name)
 
     assert said["base"] == said["now"] and "plane z = 10" in said["base"]
+
+
+def test_a_spline_face_trimmed_by_a_cut_beside_it_keeps_its_address():
+    import FreeCAD
+    import Part
+
+    block = _spline_block()
+    cutter = Part.makeBox(4, 40, 40, FreeCAD.Vector(-2, -20, -20))
+    trimmed = block.cut(cutter)
+    kept = {a for a in _addresses(block) if "bbox" in a}
+
+    assert kept and kept <= set(_addresses(trimmed))
+
+
+def test_a_spline_face_that_is_removed_is_gone():
+    import FreeCAD
+    import Part
+
+    block = _spline_block()
+    cutter = Part.makeBox(40, 40, 40, FreeCAD.Vector(-5, -20, -20))
+    kept = {a for a in _addresses(block) if "bbox" in a}
+
+    assert kept and not kept & set(_addresses(block.cut(cutter)))
