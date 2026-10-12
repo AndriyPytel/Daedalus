@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass, field
 
 from core.design import part_file
+from core.prompts import read_prompt
 from core.design.core import (
     A_CONFLICT,
     UNDER,
@@ -477,10 +478,7 @@ def _the_change_is_marked(the_part, intent, attachments, llm, events, budgets, c
     return merge(the_part, {"conflicts": found}) if found else the_part
 
 
-_MARK_WHAT_CHANGES = (
-    "This is an edit of `the_base_part`, and no feature of the description is marked "
-    "`edit: changed`. Mark every feature the intent changes `changed`, and every other "
-    "`kept`. Name a feature by its address in `the_base_part`.")
+_MARK_WHAT_CHANGES = read_prompt("mark_what_changes.md")
 
 
 def _settle_the_outer_profile(why):

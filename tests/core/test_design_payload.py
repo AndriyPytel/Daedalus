@@ -85,6 +85,8 @@ literal forms. What it buys is a `place` two readings of the same feature
 always spell the same way, a measured-from end that is never guessed, and a
 through-ness that is never inferred from prose.
 
+`BASELINE`'s input_tokens moved up by 36 on every call when `design.md` gained the `edit: changed | kept` marker an edit's features carry. 150 characters, 36 tokens on every call the first pass makes. What it buys is the set of faces Preflight lets a Step change.
+
 `BASELINE`'s input_tokens moved up by 26 more on every call when
 `language.md` gained a rib's own `slope` and `rounding` fields, so its
 sloped, rounded top is read off a value rather than re-derived by hand
@@ -137,19 +139,19 @@ FIRST_PASS_CEILING_RATIO = 1.81
 BASELINE = {
     "model-mania_-in-person-2023.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 7195, "input_tokens": 25283},
-            {"label": "page 2", "pictures": 14, "total_chars": 6999, "input_tokens": 26021},
+            {"label": "page 1", "pictures": 15, "total_chars": 7195, "input_tokens": 25319},
+            {"label": "page 2", "pictures": 14, "total_chars": 6999, "input_tokens": 26057},
         ],
-        "reconcile": {"total_chars": 40545, "input_tokens": 21750},
-        "total": 73054,
+        "reconcile": {"total_chars": 40545, "input_tokens": 21786},
+        "total": 73162,
     },
     "model-mania-2024.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 8636, "input_tokens": 23618},
-            {"label": "page 2", "pictures": 15, "total_chars": 8539, "input_tokens": 26502},
+            {"label": "page 1", "pictures": 15, "total_chars": 8636, "input_tokens": 23654},
+            {"label": "page 2", "pictures": 15, "total_chars": 8539, "input_tokens": 26538},
         ],
-        "reconcile": {"total_chars": 41375, "input_tokens": 21957},
-        "total": 72077,
+        "reconcile": {"total_chars": 41375, "input_tokens": 21993},
+        "total": 72185,
     },
 }
 
