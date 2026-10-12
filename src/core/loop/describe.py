@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass, field
 
 from core.design import part_file
+from core.prompts import read_prompt
 from core.design.core import (
     A_CONFLICT,
     UNDER,
@@ -20,7 +21,7 @@ from core.design.merge import (
     merge,
 )
 from core.design.citation_checks import fabricated_citation
-from core.design.presence_checks import nobody_carries_the_outside
+from core.design.presence_checks import nobody_carries_the_outside, nothing_changed
 from core.design.orientation_checks import (
     ROUND_IN,
     read_off_the_wrong_view,
@@ -455,6 +456,29 @@ def _the_outside_is_carried(the_part, intent, attachments, llm, events, budgets,
                       "the_question": _settle_the_outer_profile(why)},
                      llm, events, attachments)
     return merge(the_part, grew, budgets.record_conflicts) if grew else the_part
+
+
+def _the_change_is_marked(the_part, intent, attachments, llm, events, budgets, cancelled,
+                          base=None):
+    """
+    On an edit, a Design with a `changed` feature; asked again up to `budgets.rereads` times, then refused as a finding in `conflicts`.
+
+    A run without a base part has nothing to mark and is not asked.
+    """
+    looked = 0
+    while base and nothing_changed(the_part) and looked < budgets.rereads:
+        if cancelled():
+            raise Stopped()
+        looked += 1
+        grew, _ = design({"intent": intent, "the_part_as_you_described_it": the_part,
+                          "the_question": _MARK_WHAT_CHANGES}, llm, events, attachments)
+        if grew:
+            the_part = merge(the_part, grew, budgets.record_conflicts)
+    found = nothing_changed(the_part) if base else []
+    return merge(the_part, {"conflicts": found}) if found else the_part
+
+
+_MARK_WHAT_CHANGES = read_prompt("mark_what_changes.md")
 
 
 def _settle_the_outer_profile(why):

@@ -443,6 +443,16 @@ what `the_base_part` says of it — its normal, the plane it lies in, its
 diameter and axis — and say how many there are. Everything the Intent does not
 mention stays as it is: no Step moves, trims or refills anything else.
 
+Every Step on an edit carries **`changes`**: the addresses in `the_base_part` of
+the faces that Step removes or moves, copied as `the_base_part` writes them
+(`plane z = 10`, `hole diameter 30, axis (0, 0, 1), at (0, 0, 0)`), without the
+area. A face that only grows or shrinks keeps its address and needs none. A Step
+that names an address the Intent did not ask to change is refused before it is
+built, and one that removes a face of `the_base_part` it did not name is undone
+and handed back to you with the list.
+
+    {"do": "pad the flange up 5 mm", "op": "pad", "changes": ["plane z = 10"]}
+
 **Change the BaseFeature with PartDesign features made from an existing face.**
 A Pad grows material out of a face of the BaseFeature and a Pocket cuts into it,
 each from a sketch Execute places on that face with `sketch_at`; a length that

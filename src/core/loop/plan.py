@@ -54,6 +54,7 @@ class Plan:
     satisfies: list = field(default_factory=list)
     cites: list = field(default_factory=list)
     ops: list = field(default_factory=list)
+    changes: list = field(default_factory=list)
     unbuildable: list = field(default_factory=list)
     values: dict = field(default_factory=dict)
     value_errors: list = field(default_factory=list)
@@ -111,8 +112,9 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
         pc.PLAN, {}, llm, task, kernel=kernel, supervisor=supervisor, stream=events,
         system=prompt(PLAN_PHASE), design=the_part or {})
     known_values = dict(getattr(kernel, "plan_values", None) or {})
+    changes = []
     steps, satisfies, cites, ops, unbuildable, values, value_errors = _steps_of(
-        reply.get("steps", []), reply.get("op_vocabulary"), known_values)
+        reply.get("steps", []), reply.get("op_vocabulary"), known_values, changes)
     rollback, bad_rollback = _rollback_field(reply.get("rollback"), len(history), undo_depth)
 
     look = reply.get("look")
@@ -124,16 +126,16 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
         return Plan(steps=[], question=question)
     if not steps and not rollback and not bad_rollback and not history:
         raise PhaseError("Plan produced no Steps for this Intent.")
-    return Plan(steps=steps, satisfies=satisfies, cites=cites, ops=ops,
+    return Plan(steps=steps, satisfies=satisfies, cites=cites, ops=ops, changes=changes,
                 unbuildable=unbuildable, values=values, value_errors=value_errors,
                 acceptance=_acceptance_of(the_part), left_out=_left_out(the_part),
                 rollback=rollback, bad_rollback=bad_rollback)
 
 
-def _steps_of(planned, op_vocabulary=None, known_values=None):
+def _steps_of(planned, op_vocabulary=None, known_values=None, changes=None):
     """
     The prose of each Step, the entries the Plan cites, the operation each kept
-    Step declared, and the Steps refused outright. What a Step satisfies goes
+    Step declared (its `changes` land in *changes* when given), and the Steps refused outright. What a Step satisfies goes
     into its own prose, so the Gate can tell one physical cavity planned three
     times; `op` is checked against `OP_VERBS` only where `"op_vocabulary":
     "closed"` -- unmarked, that check was measured at 14.9% and rejected. A
@@ -153,8 +155,11 @@ def _steps_of(planned, op_vocabulary=None, known_values=None):
             op = str(step.get("op") or "").strip() or None
             named_values = [str(name).strip() for name in (step.get("values") or ())
                             if str(name).strip()]
+            named_changes = [_as_written(entry) for entry in (step.get("changes") or ())
+                             if _as_written(entry)]
         else:
             prose, cited, op, named_values = str(step).strip(), [], None, []
+            named_changes = []
         if not prose:
             continue
         if closed and op and op not in OP_VERBS:
@@ -183,6 +188,8 @@ def _steps_of(planned, op_vocabulary=None, known_values=None):
         satisfies.extend(cited)
         cites.append(cited)
         ops.append(op if closed else None)
+        if changes is not None:
+            changes.append(named_changes)
     return steps, satisfies, cites, ops, unbuildable, values, value_errors
 
 

@@ -142,6 +142,9 @@ face" — pages are read apart, and each words one plane its own way. Name a
 feature by the face or cylinder it sits on: `boss @ plane y = -17.5`. With no
 address in `the_base_part`, name it freely.
 
+Mark each feature `"edit": "changed"` (the intent changes it) or `"edit": "kept"` (all else,
+the BaseFeature too); none `changed` is refused.
+
 ## What needs no reading at all
 
 Units (millimetres), the base plane, the +Z axis and a closed positive volume

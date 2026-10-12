@@ -500,6 +500,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         full_steps = (list(last_pass.steps[:carried]) if last_pass.steps else []) + continuation
         full_cites = (list(last_pass.cites[:carried]) if last_pass.cites else []) + list(planned.cites)
         full_ops = [None] * carried + list(planned.ops)
+        full_changes = [[]] * carried + list(planned.changes)
         outcome = _work_through(full_steps, intent, tools, llm, events, budgets, cancelled,
                                 progress, render(part.the_part), looks,
                                 planned.acceptance, full_cites, ledger,
@@ -507,7 +508,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                                 exploration=exploration,
                                 design=distilled(part.the_part) if part.the_part else None,
                                 supervisor=supervisor, plan_values=dict(frozen_values),
-                                base=base)
+                                base=base, changes=full_changes)
         for offset in range(outcome["applied_here"] - carried):
             history_log.append({"step": carried + offset + 1, "text": continuation[offset],
                                "rolled_back": None})
@@ -625,7 +626,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
                   as_described="", looks=None, entries=(), cites=(), ledger=None,
                   start=0, ops=(), kernel=None, exploration=None, design=None,
-                  supervisor=None, plan_values=None, base=None):
+                  supervisor=None, plan_values=None, base=None, changes=()):
     """
     One pass over the Plan: written by one Execute phase, applied one Step at a
     time. `budgets.attempts_per_step` bounds one Step; a spent Step hands back
@@ -654,7 +655,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                       as_described=as_described, looks=looks, entries=entries,
                       ledger=ledger, kernel=kernel, ops=ops, exploration=probe,
                       design=design, supervisor=supervisor, plan_values=plan_values,
-                      base=base)
+                      base=base, changes=changes)
     if probed_step is not None:
         exploration[probed_step] = probe["turns"]
 
@@ -777,7 +778,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
         probe, probed_step = _step_exploration(exploration, steps, index)
         written = execute(steps, tools, llm, events, index, attempts, budgets, as_described,
                           looks, entries, ledger, kernel=kernel, ops=ops, exploration=probe,
-                          supervisor=supervisor, base=base)
+                          supervisor=supervisor, base=base, changes=changes)
         if probed_step is not None:
             exploration[probed_step] = probe["turns"]
 
