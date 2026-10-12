@@ -1396,33 +1396,22 @@ _INVENTORY_LINES = 40
 
 def base_inventory(doc):
     """
-    The part a Body starts from, in words: bounding box, planes, cylinders told apart as holes or bosses, and other surfaces. None where no Body has a BaseFeature.
+    The part a Body starts from, in words: bounding box, then one line per face address, planes, cylinders told apart as holes or bosses, and every other surface. None where no Body has a BaseFeature.
 
-    The harness reads it so Design never touches a FreeCAD API; a section past `_INVENTORY_LINES` entries is cut, largest planes first.
+    Two ceilings hold. A B-spline address is approximate: family, bounding box and centroid rounded to 0.1 mm, so a small move can leave it standing and a rounding edge can change it. A plane address is the whole plane: the areas of every face on it are summed, so removing one of several faces on one plane leaves the address standing. The harness reads it so Design never touches a FreeCAD API; a section past `_INVENTORY_LINES` entries is cut, largest planes first.
     """
-    base = next((obj.BaseFeature for obj in doc.Objects
-                 if obj.TypeId == "PartDesign::Body" and obj.BaseFeature is not None), None)
-    if base is None or _measurable(base) is None:
+    base = _base_feature(doc)
+    if base is None:
         return None
     shape = base.Shape
     bound = shape.optimalBoundingBox(False)
-    planes, cylinders, others = {}, {}, {}
-    for face in shape.Faces:
-        surface = face.Surface
-        kind = surface.__class__.__name__
-        if kind == "Plane":
-            axis = _along(surface.Axis)
-            key = (axis, round(sum(a * b for a, b in zip(axis, surface.Position)), 4))
-            planes[key] = planes.get(key, 0.0) + face.Area
-        elif kind == "Cylinder":
-            key = (_concave(face, surface), round(surface.Radius * 2, 4), _along(surface.Axis))
-            centre = surface.Center
-            reach = sum(a * b for a, b in zip(key[2], centre))
-            seat = tuple(round(c - reach * a + 0.0, 4) for c, a in zip(centre, key[2]))
-            cylinders.setdefault(key, set()).add(seat)
-        else:
-            family, _ = _family(surface)
-            others[family] = others.get(family, 0) + 1
+    addresses = _addresses_of(shape)
+    planes = {a: v for a, v in addresses.items() if a.startswith("plane ")}
+    cylinders = {a: v for a, v in addresses.items() if a.startswith(("hole ", "boss "))}
+    others = {a: v for a, v in addresses.items() if a not in planes and a not in cylinders}
+
+    def line(address, area):
+        return "%s (area %s mm2)" % (address, _g(area))
 
     lines = ["The part before the edit, in mm:",
              "bounding box: %s x %s x %s mm (x %s..%s, y %s..%s, z %s..%s)" % (
@@ -1430,18 +1419,72 @@ def base_inventory(doc):
                  _g(bound.XMin), _g(bound.XMax), _g(bound.YMin), _g(bound.YMax),
                  _g(bound.ZMin), _g(bound.ZMax)),
              "volume: %s mm3, solids: %d" % (_g(shape.Volume), len(shape.Solids))]
-    lines += _cut(["plane %s (area %s mm2)" % (_plane_at(axis, offset), _g(area))
-                   for (axis, offset), area in sorted(planes.items(), key=lambda item: -item[1])], "planes")
-    lines += _cut(["%s diameter %s, axis %s, %d at %s" % (
-                       "hole" if concave else "boss", _g(diameter), _vector(axis),
-                       len(seats), ", ".join(_vector(seat) for seat in sorted(seats)[:6]))
-                   for (concave, diameter, axis), seats in sorted(cylinders.items())],
-                  "cylinders")
-    lines += _cut(["%s, diameter %s, axis %s, x%d" % (kind, _g(diameter), _vector(axis), count)
-                   if diameter is not None else "%s x%d" % (kind, count)
-                   for (kind, diameter, axis), count in sorted(others.items(), key=str)],
-                  "other surfaces")
+    lines += _cut([line(a, v) for a, v in sorted(planes.items(), key=lambda item: -item[1])],
+                  "planes")
+    lines += _cut([line(a, v) for a, v in sorted(cylinders.items())], "cylinders")
+    lines += _cut([line(a, v) for a, v in sorted(others.items())], "other surfaces")
     return "\n".join(lines)
+
+
+def _base_feature(doc):
+    base = next((obj.BaseFeature for obj in doc.Objects
+                 if obj.TypeId == "PartDesign::Body" and obj.BaseFeature is not None), None)
+    return base if base is not None and _measurable(base) is not None else None
+
+
+def base_addresses(doc):
+    """
+    The face addresses of the base part and of the Body as it stands, or None where no Body has a BaseFeature.
+
+    A face is gone when its address is in `base` and not in `now`; an address that stays with another area is not gone.
+    """
+    base = _base_feature(doc)
+    if base is None:
+        return None
+    body = next(obj for obj in doc.Objects
+                if obj.TypeId == "PartDesign::Body" and obj.BaseFeature is not None)
+    return {"base": sorted(_addresses_of(base.Shape)), "now": sorted(_addresses_of(body.Shape))}
+
+
+def _addresses_of(shape):
+    """Every face address of *shape* with the area summed over the faces that share it."""
+    found = {}
+    for face in shape.Faces:
+        surface = face.Surface
+        kind = surface.__class__.__name__
+        if kind == "Plane":
+            axis = _along(surface.Axis)
+            address = _plane_at(axis, round(sum(a * b for a, b in zip(axis, surface.Position)), 4))
+            address = "plane " + address
+        elif kind == "Cylinder":
+            axis = _along(surface.Axis)
+            centre = surface.Center
+            reach = sum(a * b for a, b in zip(axis, centre))
+            seat = tuple(round(c - reach * a + 0.0, 4) for c, a in zip(centre, axis))
+            address = "%s diameter %s, axis %s, at %s" % (
+                "hole" if _concave(face, surface) else "boss",
+                _g(round(surface.Radius * 2, 4)), _vector(axis), _vector(seat))
+        elif kind == "Cone":
+            address = "cone axis %s, apex %s, angle %s" % (
+                _vector(_along(surface.Axis)), _vector(_rounded(surface.Apex)),
+                _g(round(abs(math.degrees(surface.SemiAngle)), 2)))
+        elif kind == "Toroid":
+            address = "torus axis %s, centre %s, radii %s and %s" % (
+                _vector(_along(surface.Axis)), _vector(_rounded(surface.Center)),
+                _g(round(surface.MajorRadius, 4)), _g(round(surface.MinorRadius, 4)))
+        else:
+            box = face.BoundBox
+            address = "%s bbox x %s..%s, y %s..%s, z %s..%s, centroid %s" % (
+                kind, _g(round(box.XMin, 1) + 0.0), _g(round(box.XMax, 1) + 0.0),
+                _g(round(box.YMin, 1) + 0.0), _g(round(box.YMax, 1) + 0.0),
+                _g(round(box.ZMin, 1) + 0.0), _g(round(box.ZMax, 1) + 0.0),
+                _vector(_rounded(face.CenterOfMass, 1)))
+        found[address] = found.get(address, 0.0) + face.Area
+    return found
+
+
+def _rounded(point, places=4):
+    return tuple(round(value, places) for value in (point.x, point.y, point.z))
 
 
 def _g(value):
@@ -1640,6 +1683,14 @@ def _register_document(registry, active, dispatch=_direct):
     )
     def base_inventory_tool():
         return {"inventory": base_inventory(active())}
+
+    @registry.tool(
+        "base_addresses",
+        "The face addresses of the base part and of the Body as it stands. Driven by "
+        "the loop to find what a Step removed, never by a phase.",
+    )
+    def base_addresses_tool():
+        return base_addresses(active()) or {"base": [], "now": []}
 
     @registry.tool(
         "overall_size",

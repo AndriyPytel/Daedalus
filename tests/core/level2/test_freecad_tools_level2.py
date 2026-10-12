@@ -652,6 +652,12 @@ def test_build_registry_registers_the_same_tools_and_schemas_as_before_the_split
             "parameters": {"type": "object", "properties": {}},
         },
         {
+            "name": "base_addresses",
+            "description": "The face addresses of the base part and of the Body as it stands. Driven by "
+                            "the loop to find what a Step removed, never by a phase.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+        {
             "name": "overall_size",
             "description": "How big the finished part is. Driven by the loop once before Review, "
                             "never by a phase.",
