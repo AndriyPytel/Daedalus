@@ -12,6 +12,8 @@ is the part-file YAML `run_phase` carries straight into the kernel's own
 namespace, read-only there because `step_namespace` hands each Step a deep
 copy, so `PHASE_CONTRACT` says nothing about it.
 """
+import contextlib
+import contextvars
 import json
 import os
 import shutil
@@ -25,16 +27,41 @@ from core.loop.prompt import (ASSERTION_PHASE as ASSERTION, DESIGN_PHASE as DESI
 RO = "ro"
 RW = "rw"
 
-ARTIFACTS = ("intent", "plan", "execute", "document", "outcome")
+ARTIFACTS = ("intent", "plan", "execute", "document", "outcome", "base_faces")
 
 PHASE_CONTRACT = {
-    DESIGN: {"intent": RO},
-    PLAN: {},
+    DESIGN: {"intent": RO, "base_faces": RO},
+    PLAN: {"base_faces": RO},
     EXECUTE: {"plan": RO, "document": RW},
     ASSERTION: {"document": RO},
     REVIEW_SUSPECT: {"intent": RO, "outcome": RO},
     REVIEW: {"intent": RO, "outcome": RO},
 }
+
+
+BASE_FACES = contextvars.ContextVar("base_faces", default=None)
+
+
+@contextlib.contextmanager
+def the_base_faces(faces):
+    """The address -> area map of the base part for every Design and Plan call made inside; None when the run has no base part."""
+    token = BASE_FACES.set(faces or None)
+    try:
+        yield
+    finally:
+        BASE_FACES.reset(token)
+
+
+def the_base_faces_of(tools):
+    """`the_base_faces` read off *tools*: the base part's addresses once the Document has one, nothing otherwise."""
+    has_base = tools.call("base_inventory")["inventory"]
+    return the_base_faces(tools.call("base_addresses")["base"] if has_base else None)
+
+
+def with_the_base_faces(sources):
+    """*sources* with the run's `base_faces` added, when it has any."""
+    faces = BASE_FACES.get()
+    return dict(sources, base_faces=faces) if faces else dict(sources)
 
 
 def _write_json(base, value):
@@ -55,6 +82,7 @@ _WRITERS = {
     "plan": _write_json,
     "execute": _write_json,
     "outcome": _write_json,
+    "base_faces": _write_json,
     "document": _write_document,
 }
 

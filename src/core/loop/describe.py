@@ -8,6 +8,7 @@ import re
 import time
 from dataclasses import dataclass, field
 
+from core.agent.phase_contract import BASE_FACES
 from core.design import part_file
 from core.prompts import read_prompt
 from core.design.core import (
@@ -459,7 +460,7 @@ def _the_outside_is_carried(the_part, intent, attachments, llm, events, budgets,
 
 
 def _unsettled(the_part, base):
-    return nothing_changed(the_part) + unplaced_changes(the_part, base)
+    return nothing_changed(the_part) + unplaced_changes(the_part, BASE_FACES.get())
 
 
 def _the_change_is_marked(the_part, intent, attachments, llm, events, budgets, cancelled,

@@ -43,7 +43,7 @@ def design(body, llm, events, attachments=(), views=None, phase=DESIGN_PHASE,
 
     intent_data = body.get("intent", body)
     reply, _ = run_declaring(
-        pc.DESIGN, {"intent": intent_data}, llm, task, kernel=kernel,
+        pc.DESIGN, pc.with_the_base_faces({"intent": intent_data}), llm, task, kernel=kernel,
         supervisor=supervisor, stream=events, system=prompt(DESIGN_PHASE))
     the_part = reply.get("design")
     return (the_part if isinstance(the_part, dict) else {},

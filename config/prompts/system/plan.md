@@ -444,7 +444,8 @@ diameter and axis — and say how many there are. Everything the Intent does not
 mention stays as it is: no Step moves, trims or refills anything else.
 
 Every Step on an edit carries **`changes`**: the addresses in `the_base_part` of
-the faces that Step removes or moves, copied as `the_base_part` writes them
+the faces that Step removes or moves, copied as `the_base_part` writes them;
+it is cut, so search the full list, `base_faces.json` here, with `{"code": ...}`
 (`plane z = 10`, `hole diameter 30, axis (0, 0, 1), at (0, 0, 0)`), without the
 area. A face that only grows or shrinks keeps its address and needs none. A Step
 that names an address the Intent did not ask to change is refused before it is

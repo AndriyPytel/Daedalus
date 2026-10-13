@@ -37,6 +37,7 @@ from core.kernel import Kernel
 from core.ledger import Ledger
 from core.llm import ProviderRefused
 
+from core.agent.phase_contract import the_base_faces_of
 from core.loop.assertion import (
     Checked,
     _GEOMETRY_REGRESSION,
@@ -143,7 +144,8 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, aborte
     aborted = aborted or (lambda: False)
     budget_exceeded = budget_exceeded or (lambda: False)
     try:
-        with nobody_answering() if ask is nobody_to_ask else contextlib.nullcontext():
+        with nobody_answering() if ask is nobody_to_ask else contextlib.nullcontext(), \
+                the_base_faces_of(tools):
             return outcome(_run(intent, llm, tools, events, budgets,
                                 cancelled or (lambda: False), gate, progress, attachments,
                                 ask, decide, list(outstanding), the_part_path, kernel))

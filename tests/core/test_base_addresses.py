@@ -100,7 +100,7 @@ def test_the_tool_reports_the_base_part_s_addresses_and_the_Body_s_now():
     finally:
         FreeCAD.closeDocument(doc.Name)
 
-    assert said["base"] == said["now"] and "plane z = 10" in said["base"]
+    assert sorted(said["base"]) == said["now"] and said["base"]["plane z = 10"] > 0
 
 
 def test_a_spline_face_trimmed_by_a_cut_beside_it_keeps_its_address():

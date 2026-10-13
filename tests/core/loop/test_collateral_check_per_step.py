@@ -67,7 +67,7 @@ _GONE = [{"base": [A, B], "now": [A, B]}, {"base": [A, B], "now": [A]}]
 
 
 def _drive(turns, faces):
-    return drive(turns, base=_BASE, faces=faces)
+    return drive(turns, base=_BASE, faces=[{"base": {A: 1.0, B: 1.0}, "now": []}] + faces)
 
 
 def test_two_collateral_rejections_with_nothing_applied_between_them_end_the_run():

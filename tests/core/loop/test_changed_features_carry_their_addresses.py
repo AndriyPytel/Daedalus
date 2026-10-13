@@ -1,34 +1,32 @@
 """
 On an edit every `changed` feature carries `at`, the base-part addresses it is or changes, copied from the inventory; a feature with none, or with one the inventory does not list, is asked again like a Design that changes nothing.
 """
-from core.design.presence_checks import listed_addresses, unplaced_changes
+from core.agent import phase_contract as pc
+from core.design.presence_checks import unplaced_changes
 from core.events import EventStream
 from core.loop import describe as describe_module
 from core.loop.budgets import Budgets
 from core.loop.execute import _changed_addresses
 from core.loop.prompt import prompt
 
-BASE = """The part before the edit, in mm:
-planes:
-  plane y = -17.5 (area 1605.35 mm2)
-  plane y = -177.5 (area 29511 mm2)
-cylinders:
-  boss diameter 110, axis (0, 1, 0), at (-96.5145, 0, -4.7774) (area 3000 mm2)
-other surfaces:
-  cone axis (0, 0, 1), apex (0, 0, -142.768), angle 45 (area 478.9 mm2)
-  ... and 3 more"""
+CONE = "cone axis (0, 0, 1), apex (0, 0, -142.768), angle 45"
+
+FACES = {"plane y = -17.5": 1605.35, "plane y = -177.5": 29511.0,
+         "boss diameter 110, axis (0, 1, 0), at (-96.5145, 0, -4.7774)": 3000.0, CONE: 478.9}
+
+for_the_run = pc.the_base_faces
 
 
 def _feature(identity, edit, at=None):
     return dict({"id": identity, "edit": edit}, **({"at": at} if at is not None else {}))
 
 
-def test_the_inventory_lines_are_the_addresses_without_their_area():
-    listed = listed_addresses(BASE)
+def test_an_inventory_cut_at_forty_lines_does_not_hide_the_cone_from_at():
+    faces = {"plane z = %d" % n: 100.0 - n for n in range(60)}
+    faces[CONE] = 478.9
+    part = {"features": [_feature("fillet-bottom", "changed", [CONE])]}
 
-    assert "plane y = -17.5" in listed
-    assert "cone axis (0, 0, 1), apex (0, 0, -142.768), angle 45" in listed
-    assert not any("area" in line or "more" in line or "mm," in line.split("diameter")[0] for line in listed)
+    assert unplaced_changes(part, faces) == []
 
 
 def test_a_changed_feature_at_a_listed_address_is_placed():
@@ -36,21 +34,21 @@ def test_a_changed_feature_at_a_listed_address_is_placed():
                          _feature("fillet-bottom", "changed", ["cone axis (0, 0, 1), apex (0, 0, -142.768), angle 45"]),
                          _feature("pad-outer", "kept")]}
 
-    assert unplaced_changes(part, BASE) == []
+    assert unplaced_changes(part, FACES) == []
 
 
 def test_a_changed_feature_without_at_is_a_finding():
-    assert unplaced_changes({"features": [_feature("boss-centre", "changed")]}, BASE)
+    assert unplaced_changes({"features": [_feature("boss-centre", "changed")]}, FACES)
 
 
 def test_an_at_the_inventory_does_not_list_is_a_finding():
-    found = unplaced_changes({"features": [_feature("boss-centre", "changed", ["plane y = -17.6"])]}, BASE)
+    found = unplaced_changes({"features": [_feature("boss-centre", "changed", ["plane y = -17.6"])]}, FACES)
 
     assert found and "plane y = -17.6" in found[0]["was_also_said"]
 
 
 def test_the_whitespace_of_an_address_is_not_part_of_it():
-    assert unplaced_changes({"features": [_feature("a", "changed", ["plane  y = -17.5"])]}, BASE) == []
+    assert unplaced_changes({"features": [_feature("a", "changed", ["plane  y = -17.5"])]}, FACES) == []
 
 
 def test_the_changed_addresses_are_the_union_of_at_and_the_ids_are_not_read():
@@ -81,8 +79,10 @@ def _asked(monkeypatch, answers):
 
 
 def _marked(part):
-    return describe_module._the_change_is_marked(
-        part, "move the bosses", [], None, EventStream(), Budgets(), lambda: False, base=BASE)
+    with for_the_run(FACES):
+        return describe_module._the_change_is_marked(
+            part, "move the bosses", [], None, EventStream(), Budgets(), lambda: False,
+            base="planes:\n  plane y = -17.5 (area 1 mm2)")
 
 
 def test_a_changed_feature_with_no_at_is_asked_again_and_the_answer_places_it(monkeypatch):
