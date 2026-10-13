@@ -62,7 +62,7 @@ def test_an_address_the_base_part_never_had_is_no_collateral():
 
 
 _BASE = "The part before the edit, in mm:\nplane z = 0 (area 100 mm2)"
-_MODEL = {"features": [{"id": "bore @ plane z = 0", "edit": "changed", "kind": "bore"}]}
+_MODEL = {"features": [{"id": "bore @ plane z = 0", "edit": "changed", "kind": "bore", "at": [A]}]}
 _GONE = [{"base": [A, B], "now": [A, B]}, {"base": [A, B], "now": [A]}]
 
 

@@ -151,6 +151,8 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
                                                 budgets, cancelled)
         the_part = _the_outside_is_carried(the_part, intent, attachments, llm, events,
                                            budgets, cancelled)
+        the_part = _the_change_is_marked(the_part, intent, attachments, llm, events, budgets,
+                                         cancelled, base)
     finally:
         if the_part:
             events.emit(DESIGN, model=the_part, the_base_part=base)
