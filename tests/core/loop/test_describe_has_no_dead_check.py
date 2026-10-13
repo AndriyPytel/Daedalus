@@ -6,7 +6,7 @@ import re
 
 import core.loop.describe as describe_module
 
-SRC = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(describe_module.__file__))))
+SRC = os.path.dirname(os.path.dirname(os.path.dirname(describe_module.__file__)))
 
 
 def _defined():
