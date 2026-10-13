@@ -9,7 +9,7 @@ from tests.loop_helpers import (FakeTools, _turns_of, StubKernel, code_reply, de
                                 plan_reply, suspect_reply, verdict_reply)
 
 A, B = "plane z = 0", "hole diameter 30, axis (0, 0, 1), at (0, 0, 0)"
-DESIGN = {"features": [{"id": "bore @ " + B, "edit": "changed"}, {"id": A, "edit": "kept"}]}
+DESIGN = {"features": [{"id": "bore", "edit": "changed", "at": [B]}, {"id": A, "edit": "kept"}]}
 
 
 def _executed(before_now, after_now, changes, base=(A, B)):
@@ -67,7 +67,7 @@ _GONE = [{"base": [A, B], "now": [A, B]}, {"base": [A, B], "now": [A]}]
 
 
 def _drive(turns, faces):
-    return drive(turns, base=_BASE, faces=faces)
+    return drive(turns, base=_BASE, faces=[{"base": {A: 1.0, B: 1.0}, "now": []}] + faces)
 
 
 def test_two_collateral_rejections_with_nothing_applied_between_them_end_the_run():

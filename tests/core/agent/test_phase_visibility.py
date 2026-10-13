@@ -30,6 +30,7 @@ def _sources(tmp_path):
         "execute": {"trace": "ok"},
         "document": str(doc),
         "outcome": {"verdict": "pass"},
+        "base_faces": {"plane z = 10": 100.0},
     }
 
 

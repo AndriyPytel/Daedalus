@@ -87,6 +87,10 @@ through-ness that is never inferred from prose.
 
 `BASELINE`'s input_tokens moved up by 36 on every call when `design.md` gained the `edit: changed | kept` marker an edit's features carry. 150 characters, 36 tokens on every call the first pass makes. What it buys is the set of faces Preflight lets a Step change.
 
+`BASELINE`'s input_tokens moved up by 24 on every call when `design.md` asked a `changed` feature for `at`, the base-part addresses it changes. 96 characters, 24 tokens on every call the first pass makes. What it buys is the set of faces Preflight lets a Step change, read from a field and not from a feature id.
+
+`BASELINE`'s input_tokens moved up by 24 more on every call when `design.md` named `base_faces.json` as the full list behind the cut `the_base_part`. 96 characters, 24 tokens on every call the first pass makes. What it buys is an `at` that can name a face past the 40-line cut.
+
 `BASELINE`'s input_tokens moved up by 26 more on every call when
 `language.md` gained a rib's own `slope` and `rounding` fields, so its
 sloped, rounded top is read off a value rather than re-derived by hand
@@ -139,19 +143,19 @@ FIRST_PASS_CEILING_RATIO = 1.81
 BASELINE = {
     "model-mania_-in-person-2023.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 7195, "input_tokens": 25319},
-            {"label": "page 2", "pictures": 14, "total_chars": 6999, "input_tokens": 26057},
+            {"label": "page 1", "pictures": 15, "total_chars": 7195, "input_tokens": 25367},
+            {"label": "page 2", "pictures": 14, "total_chars": 6999, "input_tokens": 26105},
         ],
-        "reconcile": {"total_chars": 40545, "input_tokens": 21786},
-        "total": 73162,
+        "reconcile": {"total_chars": 40545, "input_tokens": 21834},
+        "total": 73306,
     },
     "model-mania-2024.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 8636, "input_tokens": 23654},
-            {"label": "page 2", "pictures": 15, "total_chars": 8539, "input_tokens": 26538},
+            {"label": "page 1", "pictures": 15, "total_chars": 8636, "input_tokens": 23702},
+            {"label": "page 2", "pictures": 15, "total_chars": 8539, "input_tokens": 26586},
         ],
-        "reconcile": {"total_chars": 41375, "input_tokens": 21993},
-        "total": 72185,
+        "reconcile": {"total_chars": 41375, "input_tokens": 22041},
+        "total": 72329,
     },
 }
 

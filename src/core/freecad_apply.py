@@ -1432,7 +1432,7 @@ def _base_feature(doc):
 
 def base_addresses(doc):
     """
-    The face addresses of the base part and of the Body as it stands, or None where no Body has a BaseFeature.
+    The face addresses of the base part with their areas, and of the Body as it stands, or None where no Body has a BaseFeature.
 
     A face is gone when its address is in `base` and not in `now`; an address that stays with another area is not gone.
     """
@@ -1441,7 +1441,8 @@ def base_addresses(doc):
         return None
     body = next(obj for obj in doc.Objects
                 if obj.TypeId == "PartDesign::Body" and obj.BaseFeature is not None)
-    return {"base": sorted(_addresses_of(base.Shape)), "now": sorted(_addresses_of(body.Shape))}
+    return {"base": {address: round(area, 3) for address, area in sorted(_addresses_of(base.Shape).items())},
+            "now": sorted(_addresses_of(body.Shape))}
 
 
 def _addresses_of(shape):
@@ -1692,7 +1693,7 @@ def _register_document(registry, active, dispatch=_direct):
         "the loop to find what a Step removed, never by a phase.",
     )
     def base_addresses_tool():
-        return base_addresses(active()) or {"base": [], "now": []}
+        return base_addresses(active()) or {"base": {}, "now": []}
 
     @registry.tool(
         "overall_size",
