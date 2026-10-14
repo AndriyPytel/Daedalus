@@ -1,6 +1,6 @@
 """Effort policy constants."""
 
-EFFORTS = ("low", "medium", "high")
+EFFORTS = ("low", "medium", "high", "xhigh")
 
 _OUTPUT_BUDGET = 16384
 
@@ -8,7 +8,7 @@ _REASONING_EFFORT = "low"
 
 _SUBSCRIPTION_EFFORT = "medium"
 
-_CEILING = {"low": 300.0, "medium": 900.0, "high": 1500.0}
+_CEILING = {"low": 300.0, "medium": 900.0, "high": 1500.0, "xhigh": 2400.0}
 
 CALL_TIMEOUT = _CEILING[_SUBSCRIPTION_EFFORT]
 
