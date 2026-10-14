@@ -30,10 +30,10 @@ no code, no reasoning. Judge the render alone.
 
 ## How you work
 
-Your working directory holds `intent.json` and `outcome.json`, read-only —
-the same visibility Review itself gets (DAE-305), because you are looking at
-the same evidence, only before the checks run. Where you need to work out a
-ratio or a count from `outcome.json`'s own numbers before deciding whether
+Your code sees two variables, `intent` and `outcome`, the same values as in
+the request: the same evidence Review itself gets, only before the checks
+run. Where you need to work out a ratio or a count from `outcome`'s own
+numbers before deciding whether
 it is worth flagging, write it as Python and run it with `{"code": "..."}`.
 
 End the phase with:

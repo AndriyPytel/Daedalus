@@ -258,7 +258,8 @@ class Kernel:
 
     def check(self, code, document=_CONTINUE, render_path=None, timeout=None, names=None,
               ephemeral=False, design=None, exploring=False, plan_values=None,
-              capture_values=False, builds=False, geometry=False, base_faces=None):
+              capture_values=False, builds=False, geometry=False, base_faces=None,
+              intent=None, outcome=None):
         """
         Run *code* as one Step in the kernel. `document` not given
         continues the kernel's own session, resuming on the last
@@ -271,7 +272,7 @@ class Kernel:
         the last checkpoint with the result naming what was undone where it
         creates, deletes or modifies an object. *capture_values* marks a
         Plan-phase call whose own top-level numbers fold into *plan_values*
-        rather than only reading it, *base_faces* is the base part's address -> area map for this one call and not remembered, *geometry* asks for the geometry snapshot a Step that changes nothing
+        rather than only reading it, *base_faces* is the base part's address -> area map, and *intent* and *outcome* are the Intent and the result's description, each for this one call and not remembered, *geometry* asks for the geometry snapshot a Step that changes nothing
         otherwise skips, *builds* marks a Step or a fix that fails
         where it changes nothing in the Document, and the return is always a
         KernelResult, never a raise for anything the code did.
@@ -311,6 +312,10 @@ class Kernel:
             request["plan_values"] = plan_values
         if base_faces is not None:
             request["base_faces"] = base_faces
+        if intent is not None:
+            request["intent"] = intent
+        if outcome is not None:
+            request["outcome"] = outcome
         if capture_values:
             request["capture_values"] = True
         if builds:

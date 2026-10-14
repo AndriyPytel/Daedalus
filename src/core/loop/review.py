@@ -50,7 +50,7 @@ def review_suspect(intent, views, described, llm, events, attachments=(),
     content = _review_content(request, views, attachments)
     
     reply, _ = run_declaring(
-        pc.REVIEW_SUSPECT, {}, llm, content, kernel=kernel, supervisor=supervisor,
+        pc.REVIEW_SUSPECT, {"intent": intent, "outcome": described}, llm, content, kernel=kernel, supervisor=supervisor,
         stream=events, system=prompt(REVIEW_SUSPECT_PHASE))
     suspected = [str(entry).strip() for entry in (reply.get("suspected") or ())
                 if str(entry).strip()]
@@ -71,7 +71,7 @@ def review(intent, views, described, llm, events, attachments=(), checked=None,
     content = _review_content(request, views, attachments)
     
     reply, _ = run_declaring(
-        pc.REVIEW, {}, llm, content, kernel=kernel, supervisor=supervisor,
+        pc.REVIEW, {"intent": intent, "outcome": described}, llm, content, kernel=kernel, supervisor=supervisor,
         stream=events, system=prompt(REVIEW_PHASE))
     verdict = str(reply.get("verdict", "")).lower()
     if verdict not in ("pass", "fail"):
