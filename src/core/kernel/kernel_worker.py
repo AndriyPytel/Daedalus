@@ -395,7 +395,7 @@ def _step_design(design):
     return design
 
 
-def step_namespace(doc, design=None, plan_values=None, capture_values=False):
+def step_namespace(doc, design=None, plan_values=None, capture_values=False, base_faces=None):
     """
     What a Step's code runs with, built identically by the kernel and the GUI's
     replay or they run different programs. Sketch geometry lives outside
@@ -434,6 +434,8 @@ def step_namespace(doc, design=None, plan_values=None, capture_values=False):
     namespace["check_each"] = check_each(namespace)
     if design is not None:
         namespace["design"] = _step_design(design)
+    if base_faces is not None:
+        namespace["base_faces"] = dict(base_faces)
     for module in STEP_MODULES:
         try:
             namespace[module] = __import__(module)
@@ -448,7 +450,7 @@ def step_namespace(doc, design=None, plan_values=None, capture_values=False):
 
 RESERVED_STEP_NAMES = frozenset(
     {"App", "FreeCAD", "doc", "__name__", "edges_between", "edges_by_concavity",
-     "built_ok", "pick_edges", "bbox", "by_label", "sketch_at", "design", "names", "plan_values",
+     "built_ok", "pick_edges", "bbox", "by_label", "sketch_at", "design", "names", "plan_values", "base_faces",
      "pick_faces", "plane_face", "cylinder_face", "no_collateral", "measure", "face_at", "cylinder",
      "distance", "check_each"}
     | set(STEP_MODULES))
@@ -1417,7 +1419,8 @@ def run_step(request):
     names = dict(_SESSION["names"])
     namespace = step_namespace(_NamedDoc(doc, names), design=_SESSION["design"],
                                plan_values=_SESSION["plan_values"],
-                               capture_values=capture_values)
+                               capture_values=capture_values,
+                               base_faces=request.get("base_faces"))
     namespace["names"] = names
 
     touched = _Touched(doc)

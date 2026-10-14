@@ -145,7 +145,7 @@ address in `the_base_part`, name it freely.
 Mark each feature `"edit": "changed"` or `"kept"` (all else, the BaseFeature too).
 A `changed` feature carries `"at"`: the `the_base_part` addresses it is or changes;
 none `changed`, or one without `at`, is refused. `the_base_part` is cut: the full
-list is `base_faces.json` here, to search with `{"code": ...}` and copy from exactly.
+list is the variable `base_faces` ({address: area}) in your `{"code": ...}`: search it and copy from exactly.
 
 ## What needs no reading at all
 
