@@ -485,6 +485,17 @@ def _the_change_is_marked(the_part, intent, attachments, llm, events, budgets, c
     return merge(the_part, {"conflicts": found}) if found else the_part
 
 
+def the_change_refused(the_part, base):
+    """Why an edit's Design stands refused after its re-asks, naming each feature and its entries, or "" where it is settled or the run has no base part."""
+    if not base:
+        return ""
+    return "; ".join(
+        "%s: %s" % (found["about"].rpartition(UNDER)[0].rpartition(UNDER)[2] or "the description",
+                    found["was_also_said"]) if "at" == found["about"].rpartition(UNDER)[2]
+        else "no feature is marked `edit: changed`"
+        for found in _unsettled(the_part, base))
+
+
 _MARK_WHAT_CHANGES = read_prompt("mark_what_changes.md")
 
 

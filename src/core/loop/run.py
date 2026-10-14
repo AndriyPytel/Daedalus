@@ -46,7 +46,7 @@ from core.loop.assertion import (
     assertion,
 )
 from core.loop.budgets import Budgets, PhaseError, _Revisions, revisions_ceiling
-from core.loop.describe import _DECIDED, _RAN_OUT_OF_ROOM, _describe_the_part
+from core.loop.describe import _DECIDED, _RAN_OUT_OF_ROOM, _describe_the_part, the_change_refused
 from core.loop.execute import (
     OP_VERBS,
     Attempt,
@@ -242,6 +242,10 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                                        attachments, base))
         written = events.last(PART)
         progress.the_part_path = written.data["path"] if written else ""
+        refused = the_change_refused(part.the_part, base)
+        if refused:
+            return _block(events, "The description of this edit is refused, so nothing was planned: "
+                                  + refused, [], 0)
 
     asking = _Asking()
     ledger = Ledger(_FAILED_THIS_WAY)
