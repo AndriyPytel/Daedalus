@@ -16,8 +16,7 @@ from tests.core.kernel import part_202
 
 pytestmark = pytest.mark.freecad
 
-A_DESIGN = {"features": [{"id": "hub-raise", "edit": "changed",
-                         "at": ["BSplineSurface bbox x -1..3.1, y 150.4..153.5, z -60.1..-51.7"], "length": {"value": 8.0, "flag": "read"}}]}
+A_DESIGN = {"features": [{"id": "hub-raise", "edit": "changed", "length": {"value": 8.0, "flag": "read"}}]}
 
 STEP = """
 doc.getObject("HubRaise").Length = design["features"]["hub-raise"]["length"]["value"]
@@ -39,6 +38,9 @@ def test_the_event_kinds_of_a_scripted_run_on_part_202_are_the_recorded_sequence
     except RuntimeError as exc:
         pytest.skip(str(exc))
     doc = part_202.opened()
+    from core.freecad_apply import base_addresses
+    a_face = next(iter(base_addresses(doc)["base"]))
+    a_design = {"features": [dict(A_DESIGN["features"][0], at=[a_face])]}
     try:
         with Kernel(timeout=120) as worker:
             pipeline = ApplyPipeline(document=doc, worker=worker,
@@ -47,8 +49,8 @@ def test_the_event_kinds_of_a_scripted_run_on_part_202_are_the_recorded_sequence
                                      confirm=lambda kinds: False)
             events = EventStream()
             llm = ScriptedLLMClient([
-                design_reply(A_DESIGN),
-                plan_reply("Raise the hub to 8 mm", satisfies=everything(A_DESIGN)),
+                design_reply(a_design),
+                plan_reply("Raise the hub to 8 mm", satisfies=everything(a_design)),
                 json.dumps({"code": STEP, "step": 1, "label": "Raise the hub"}),
                 json.dumps({"declare": {"steps": [{"step": 1, "label": "Raise the hub"}]}}),
                 json.dumps({"declare": {"suspected": []}}),
