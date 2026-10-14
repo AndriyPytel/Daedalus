@@ -2,15 +2,16 @@
 The Design -> Plan -> Execute -> Assertion -> Review visibility contract, as
 one declared table rather than five hand-written spawn cases: Plan sees only
 Design; Execute sees Plan and Design; Assertion sees only Design and a
-read-only Document, never an Execute artifact; Review sees intent and
-outcome and nothing that would let it grade its own work. This is enforced
+read-only Document, never an Execute artifact; Review sees nothing that
+would let it grade its own work. This is enforced
 structurally -- a phase's kernel is spawned with a working directory
 `spawn()` builds from `PHASE_CONTRACT` alone, containing exactly what that
 phase's row declares, and an artefact `_WRITERS` does not cover raises
-rather than dropping silently. Design is never a disk artefact -- `design`
-is the part-file YAML `run_phase` carries straight into the kernel's own
-namespace, read-only there because `step_namespace` hands each Step a deep
-copy, so `PHASE_CONTRACT` says nothing about it.
+rather than dropping silently. `design`, `intent` and `outcome` are never
+disk artefacts: `design` is the part-file YAML `run_phase` carries into the
+kernel's namespace, and `intent` and `outcome` are variables of the same
+namespace on every call of the phases `NAMESPACE_VALUES` lists, taken from
+`run_phase`'s `sources`, so `PHASE_CONTRACT` says nothing about them.
 """
 import contextlib
 import contextvars
@@ -27,15 +28,21 @@ from core.loop.prompt import (ASSERTION_PHASE as ASSERTION, DESIGN_PHASE as DESI
 RO = "ro"
 RW = "rw"
 
-ARTIFACTS = ("intent", "plan", "execute", "document", "outcome")
+ARTIFACTS = ("plan", "execute", "document")
 
 PHASE_CONTRACT = {
-    DESIGN: {"intent": RO},
+    DESIGN: {},
     PLAN: {},
     EXECUTE: {"plan": RO, "document": RW},
     ASSERTION: {"document": RO},
-    REVIEW_SUSPECT: {"intent": RO, "outcome": RO},
-    REVIEW: {"intent": RO, "outcome": RO},
+    REVIEW_SUSPECT: {},
+    REVIEW: {},
+}
+
+NAMESPACE_VALUES = {
+    DESIGN: ("intent",),
+    REVIEW_SUSPECT: ("intent", "outcome"),
+    REVIEW: ("intent", "outcome"),
 }
 
 
@@ -72,10 +79,8 @@ def _write_document(base, value):
 
 
 _WRITERS = {
-    "intent": _write_json,
     "plan": _write_json,
     "execute": _write_json,
-    "outcome": _write_json,
     "document": _write_document,
 }
 

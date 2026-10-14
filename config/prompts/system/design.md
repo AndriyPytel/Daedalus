@@ -737,9 +737,8 @@ without, settle it yourself: choose the value, flag it `assumed`, and say in
 ## How you work
 
 You are a multi-turn agent, not a one-shot reply. Your working directory
-holds exactly `intent.json`, read-only, because Design's row of the
-visibility table (DAE-305) grants nothing else — no drawing lives on disk
-there, only the sheet's pictures and text layer, handed to you as this
+sees the variable `intent` and no file — no drawing lives on disk there,
+only the sheet's pictures and text layer, handed to you as this
 conversation's own content. Where the description needs arithmetic worked
 out — a distance measured off the line work, a fraction of an assumed
 overall — write it as Python and run it with `{"code": "..."}`; you see back

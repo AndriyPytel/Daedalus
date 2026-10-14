@@ -33,9 +33,7 @@ def test_assertion_sees_only_a_readonly_document():
 
 
 def test_review_sees_no_code_at_all():
-    seen = pc.PHASE_CONTRACT[pc.REVIEW]
-    assert set(seen) == {"intent", "outcome"}
-    assert "design" not in seen and "plan" not in seen and "execute" not in seen
+    assert pc.PHASE_CONTRACT[pc.REVIEW] == {}
 
 
 SOURCES = {
@@ -63,10 +61,9 @@ def test_spawn_assertion_directory_has_only_a_readonly_document(tmp_path):
     assert not (mode & stat.S_IWUSR)
 
 
-def test_spawn_review_directory_has_no_code_at_all(tmp_path):
+def test_spawn_review_directory_is_empty(tmp_path):
     working = pc.spawn(pc.REVIEW, str(tmp_path / "review"), **_sources(tmp_path))
-    names = set(os.listdir(working))
-    assert names == {"intent.json", "outcome.json"}
+    assert set(os.listdir(working)) == set()
 
 
 def test_spawn_ignores_a_source_the_table_does_not_declare_for_that_phase(tmp_path):
