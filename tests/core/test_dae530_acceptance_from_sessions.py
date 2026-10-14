@@ -26,8 +26,8 @@ def sessions(logs=LOGS):
 def _final_design(path):
     events, _ = replay(path)
     designs = [event for event in events if event.kind == DESIGN]
-    base = next((event.data["the_base_part"] for event in reversed(designs)
-                 if event.data.get("the_base_part")), "")
+    base = next((event.data["base_faces"] for event in reversed(designs)
+                 if event.data.get("base_faces")), None)
     return (designs[-1].data.get("model") or {}) if designs else {}, base, \
         [event.data for event in events if event.kind == ASSERTION]
 
@@ -58,9 +58,9 @@ def pairs_failed_or_unnamed(path):
 
 
 def names_that_are_not_addresses(path):
-    """AC3: datums and feature ids that are no address in the base part, and planes named by more than one datum."""
+    """AC3: datums and feature ids that are no address in the base part, and planes named by more than one datum; the addresses are the session's full `base_faces`."""
     the_part, base, _ = _final_design(path)
-    offered = {" ".join(line.split("(area")[0].split()) for line in base.splitlines()}
+    offered = {" ".join(address.split()) for address in base}
     datums = [str(datum.get("name")) for datum in the_part.get("datums") or () if isinstance(datum, dict)]
     ids = [str(feature.get("id")) for feature in the_part.get("features") or () if isinstance(feature, dict)]
     planes = [_the_plane_it_names(name) or name for name in datums]
@@ -73,6 +73,11 @@ def _part_202(paths):
     return [path for path in paths if os.path.basename(path).startswith("202.")]
 
 
+def measurable(paths):
+    """The sessions whose DESIGN event records `base_faces`; the others cannot be measured on AC3 and are neither green nor red."""
+    return [path for path in paths if _final_design(path)[1]]
+
+
 def test_the_edit_runs_after_the_change_meet_the_three_acceptance_criteria():
     paths = sessions()
     if not paths:
@@ -81,21 +86,21 @@ def test_the_edit_runs_after_the_change_meet_the_three_acceptance_criteria():
 
     assert {path: pairs_checked(path) for path in _part_202(paths) if pairs_checked(path)} == {}
     assert {path: pairs_failed_or_unnamed(path) for path in paths if pairs_failed_or_unnamed(path)} == {}
-    assert {path: names_that_are_not_addresses(path) for path in _part_202(paths)
+    assert {path: names_that_are_not_addresses(path) for path in measurable(_part_202(paths))
             if names_that_are_not_addresses(path)} == {}
 
 
 def _a_session(tmp_path, name, model, base, assertion):
     import json
     path = tmp_path / "dae530-x" / "opus" / name
-    path.parent.mkdir(parents=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(json.dumps(event) for event in [
-        {"kind": "design", "at": 1, "data": {"model": model, "the_base_part": base}},
+        {"kind": "design", "at": 1, "data": {"model": model, "base_faces": base}},
         {"kind": "assertion", "at": 2, "data": assertion}]))
     return str(path)
 
 
-_BASE = "The part before the edit, in mm:\nplane y = -17.5 (area 1605 mm2)\nplane y = -177.5 (area 900 mm2)"
+_BASE = {"plane y = -17.5": 1605.0, "plane y = -177.5": 900.0}
 
 
 def _bosses(a, b):
@@ -121,3 +126,19 @@ def test_the_measurements_find_a_pair_that_failed_names_off_the_base_and_one_pla
 
     assert set(pairs_failed_or_unnamed(path)) == {"boss-centre", "boss-left"}
     assert set(names_that_are_not_addresses(path)) >= {"boss-centre", "boss-left", "plane y = -177.5"}
+
+
+def test_a_session_without_base_faces_is_not_measurable_on_ac3(tmp_path):
+    with_it = _a_session(tmp_path, "202.1.jsonl", _bosses("boss @ plane y = -17.5", "pin @ plane y = -17.5"),
+                         _BASE, {"unmet": [], "left_out": []})
+    without = _a_session(tmp_path, "202.2.jsonl", _bosses("a", "b"), None, {"unmet": [], "left_out": []})
+
+    assert measurable([with_it, without]) == [with_it]
+
+
+def test_a_real_address_beyond_the_inventory_cut_is_an_address(tmp_path):
+    address = "boss diameter 80, axis (0, 1, 0), at (-96.5145, 0, -4.7774)"
+    part = {"datums": [], "features": [{"id": "boss @ %s" % address, "kind": "boss"}]}
+    path = _a_session(tmp_path, "202.1.jsonl", part, dict(_BASE, **{address: 3000.0}), {"unmet": [], "left_out": []})
+
+    assert names_that_are_not_addresses(path) == []

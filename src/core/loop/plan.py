@@ -508,7 +508,7 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
             continue
         if not planned.question:
             if grown != the_part:
-                events.emit(DESIGN, model=grown, the_base_part=base)
+                events.emit(DESIGN, model=grown, the_base_part=base, base_faces=pc.BASE_FACES.get())
             return planned, grown
 
         events.emit(QUESTION, text=planned.question)
