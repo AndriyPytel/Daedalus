@@ -85,7 +85,8 @@ def _design_at(effort):
     One recorded Design call, by the effort it was made at.
 
     The same sheet and the same prompt through `--effort low`, `medium` and
-    `high`, kept as the three `result` events the CLI ended each of them with.
+    `high` on Opus, kept as the `result` events the CLI ended each of them with;
+    `xhigh` is the longest Design call of a `mm2025-phase1` run on Haiku 5.5.
     """
     return [call for call in _events(DESIGN_AT_EFFORT)
             if call["effort"] == effort][0]["result"]
@@ -768,7 +769,7 @@ def test_an_effort_the_dial_no_longer_offers_falls_back(monkeypatch):
     """
     from core import settings
 
-    monkeypatch.setattr(settings.instance(), "get_effort", lambda: "xhigh")
+    monkeypatch.setattr(settings.instance(), "get_effort", lambda: "ultra")
     client, spawn = client_replaying()
     collect(client.stream(a_turn()))
 
