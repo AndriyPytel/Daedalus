@@ -109,7 +109,7 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
 
     task = json.dumps(request, indent=2, default=str)
     reply, _ = run_declaring(
-        pc.PLAN, pc.with_the_base_faces({}), llm, task, kernel=kernel, supervisor=supervisor, stream=events,
+        pc.PLAN, {}, llm, task, kernel=kernel, supervisor=supervisor, stream=events,
         system=prompt(PLAN_PHASE), design=the_part or {})
     known_values = dict(getattr(kernel, "plan_values", None) or {})
     changes = []

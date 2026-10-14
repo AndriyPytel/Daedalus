@@ -226,6 +226,8 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                     kernel_kwargs["plan_values"] = plan_values
                 if step_document is not _NO_DOCUMENT:
                     kernel_kwargs["document"] = step_document
+                if phase in (pc.DESIGN, pc.PLAN) and pc.BASE_FACES.get():
+                    kernel_kwargs["base_faces"] = pc.BASE_FACES.get()
                 if phase == pc.PLAN:
                     kernel_kwargs["capture_values"] = True
                 if builds:

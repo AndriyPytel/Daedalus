@@ -19,8 +19,8 @@ def test_design_is_never_a_disk_artifact():
         assert "design" not in row
 
 
-def test_plan_writes_only_the_base_faces_to_disk():
-    assert pc.PHASE_CONTRACT[pc.PLAN] == {"base_faces": pc.RO}
+def test_plan_writes_nothing_to_disk():
+    assert pc.PHASE_CONTRACT[pc.PLAN] == {}
 
 
 def test_execute_sees_plan_and_a_writable_document():
