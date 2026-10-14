@@ -16,7 +16,8 @@ from tests.core.kernel import part_202
 
 pytestmark = pytest.mark.freecad
 
-A_DESIGN = {"features": [{"id": "hub-raise", "length": {"value": 8.0, "flag": "read"}}]}
+A_DESIGN = {"features": [{"id": "hub-raise", "edit": "changed",
+                         "at": ["BSplineSurface bbox x -1..3.1, y 150.4..153.5, z -60.1..-51.7"], "length": {"value": 8.0, "flag": "read"}}]}
 
 STEP = """
 doc.getObject("HubRaise").Length = design["features"]["hub-raise"]["length"]["value"]
