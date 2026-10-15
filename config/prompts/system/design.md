@@ -85,6 +85,11 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
   `axis`, and one that is a profile, an arc or a rounded end carries `plane`;
   both are values like any other, so a direction is checked on the finished
   part the way a distance is.
+  Every feature that opens through the part carries `goes_through: true`, and
+  every feature that is repeated carries its `count` as a whole number, one
+  entry for the whole pattern: the Assertion reads the number of through
+  openings off these two fields, so a hole left unflagged or a pattern without
+  its count is a through count that disagrees with the part.
   A round one — a hole, a counterbore, a circular boss — also carries
   `round_in`, the one view it is drawn round in, the view whose circle gave you
   the direction. Name that view exactly as the reader names it in the list of

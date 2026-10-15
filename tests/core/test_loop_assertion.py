@@ -296,7 +296,7 @@ def test_the_topology_check_names_the_through_count_design_established():
     assert "expected 1 through features" in code
 
 
-def test_a_part_with_no_through_features_at_all_is_checked_against_zero():
+def test_a_part_with_no_through_features_is_not_checked_against_zero():
     from core.loop.assertion import the_topology_measured
 
     no_through = {"features": [{"id": "pad-outer", "kind": "pad", "topology": "blind",
@@ -304,7 +304,7 @@ def test_a_part_with_no_through_features_at_all_is_checked_against_zero():
 
     code = the_topology_measured(no_through)
 
-    assert "b1 == 0" in code
+    assert "b1" not in code.split("assert b0 == 1")[1]
 
 
 _THE_QWEN_GATEWAY_SWEEP_CUTOUT_TOPOLOGY = (
@@ -347,25 +347,66 @@ def test_a_feature_with_the_flag_set_is_counted_whatever_its_prose_says():
     assert "b1 == 1" in code
 
 
-def test_no_through_check_is_appended_when_no_feature_carries_the_flag_at_all():
-    """
-    `goes_through` is new this epic; a model that never emits it anywhere
-    has established nothing, the same as a model asked before the flag
-    existed. Defaulting an absent flag to "not through" would assert
-    b1 == 0 against a part with a real through hole Design simply never
-    flagged -- a false failure the transition must not invent.
-    """
+def test_no_through_check_is_appended_when_no_feature_goes_through_by_flag_or_topology():
     from core.loop.assertion import the_topology_measured
 
-    no_flag_anywhere = {"features": [{"id": "hole-left", "kind": "hole", "topology": "through"},
-                                      {"id": "pad-outer", "kind": "pad", "topology": "blind"}]}
+    nothing_through = {"features": [{"id": "pad-outer", "kind": "pad", "topology": "blind"},
+                                     {"id": "pocket", "kind": "pocket", "topology": "blind"}]}
 
-    code = the_topology_measured(no_flag_anywhere)
+    code = the_topology_measured(nothing_through)
 
     assert "b1" not in code.split("assert b0 == 1")[1]
 
 
-def test_the_through_check_is_appended_and_asks_for_zero_when_every_flagged_feature_is_false():
+def test_holes_listed_with_topology_through_and_no_flag_expect_the_solid_to_have_them():
+    from core.loop.assertion import the_topology_measured
+
+    unflagged = {"features": [
+        {"id": "hole-left", "kind": "hole", "topology": "through"},
+        {"id": "hole-right", "kind": "hole", "topology": "through, front face to rear face"},
+        {"id": "pad-outer", "kind": "pad", "topology": "blind"}]}
+
+    code = the_topology_measured(unflagged)
+
+    assert "b1 == 2" in code
+
+
+def test_a_patterned_hole_with_the_flag_counts_each_instance_beside_a_topology_through_one():
+    from core.loop.assertion import the_topology_measured
+
+    mixed = {"features": [
+        {"id": "hole-4x", "kind": "hole", "topology": "blind", "goes_through": True,
+         "count": {"value": "4", "flag": "read"}},
+        {"id": "bore", "kind": "bore", "topology": "through"}]}
+
+    code = the_topology_measured(mixed)
+
+    assert "b1 == 5" in code
+
+
+def test_a_pattern_of_slots_cannot_be_counted_as_b1_so_no_through_check_is_stated():
+    """The 111 case: 6 slots flagged through, the solid has 54; a pattern that is not of round holes may cross or merge."""
+    from core.loop.assertion import the_topology_measured
+
+    slots = {"features": [
+        {"id": "bore", "kind": "hole", "topology": "through"},
+        {"id": "slot-6x", "kind": "slot", "topology": "through", "goes_through": True, "count": 6}]}
+
+    code = the_topology_measured(slots)
+
+    assert "b0 == 1" in code
+    assert "b1" not in code.split("assert b0 == 1")[1]
+
+
+def test_one_slot_is_still_counted_once():
+    from core.loop.assertion import the_topology_measured
+
+    one = {"features": [{"id": "slot", "kind": "slot", "topology": "through", "count": 1}]}
+
+    assert "b1 == 1" in the_topology_measured(one)
+
+
+def test_no_through_check_when_every_flag_is_false_and_the_solid_has_a_through_hole():
     from core.loop.assertion import the_topology_measured
 
     all_flagged_false = {"features": [{"id": "hole-left", "kind": "hole",
@@ -373,7 +414,7 @@ def test_the_through_check_is_appended_and_asks_for_zero_when_every_flagged_feat
 
     code = the_topology_measured(all_flagged_false)
 
-    assert "b1 == 0" in code
+    assert "b1" not in code.split("assert b0 == 1")[1]
 
 
 def test_the_qwen_gateway_sweep_reading_reconstructed_with_flags_gives_b1_3():

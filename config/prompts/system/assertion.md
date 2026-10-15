@@ -137,6 +137,12 @@ adjacent is worse than no check at all — it passes on the wrong evidence.
 
 If `your_checks_that_raised` is given, those expressions raised: the error is a defect in the check, not in the part. Fix the expression; `acceptance` then holds only those entries.
 
+A count in an expression is the `count` of the feature in `design`, or the
+number of its listed instances; never a number you worked out yourself. The
+through openings of the part are counted from `goes_through` and `count` in
+that list, and when the list does not give a count, answer the entry
+`uncovered`.
+
 The list you are given is only what code could not settle. Plain diameters,
 radii, counts, axes and the three overall sizes were already measured before
 you were asked, and are not in it. Write **one expression per entry**, not a

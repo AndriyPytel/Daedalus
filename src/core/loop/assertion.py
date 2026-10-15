@@ -84,16 +84,29 @@ assert not missing, (
 
 def the_topology_measured(description, base=None):
     """
-    Betti numbers of the finished Document checked against b0 == 1 and, where at least one feature carries the `goes_through` flag, b1 == the instance count of the features whose flag is true (a feature's `count` value, 1 when absent or not a positive integer); unflagged features add nothing and the prose `topology` field is never read.
+    Betti numbers of the finished Document checked against b0 == 1 and, where Design names a through opening (a list that names none states no b1, since the 0 it would expect is something Design never said), b1 == the sum of `_instances` over every feature that makes one: `goes_through` true, or a `topology` that is `through` (alone or followed by a comma).
+    b1 counts independent through openings, so it does not count a pattern of holes that cross each other nor slots cut as one cavity; a through feature that is repeated (`count` above 1) and is not a hole or bore therefore drops the through check, since b1 cannot be made to equal its count.
     With a *base* part only b0 is checked: Design describes the features an edit changes, never the whole part, so its through count is not the part's.
     """
     features = [feature for feature in (description or {}).get("features") or ()
                if isinstance(feature, dict)]
     through_check = ""
-    if not base and any("goes_through" in feature for feature in features):
-        expected = sum(_instances(feature) for feature in features if feature.get("goes_through") is True)
+    through = [feature for feature in features if _makes_through_opening(feature)]
+    countable = all(_instances(feature) == 1 or _is_round_hole(feature) for feature in through)
+    if not base and through and countable:
+        expected = sum(_instances(feature) for feature in through)
         through_check = _THROUGH_FEATURE_CHECK % (expected, expected)
     return _TOPOLOGY_CHECK % through_check
+
+
+def _makes_through_opening(feature):
+    topology = str(feature.get("topology") or "").strip().lower()
+    return feature.get("goes_through") is True or topology == "through" or topology.startswith("through,")
+
+
+def _is_round_hole(feature):
+    kind = str(feature.get("kind") or "").lower()
+    return "hole" in kind or "bore" in kind
 
 
 def _instances(feature):
