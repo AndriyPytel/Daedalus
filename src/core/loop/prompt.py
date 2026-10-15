@@ -92,6 +92,9 @@ _ASKING = re.compile(r"\{\{asking\}\}(.*?)\{\{/asking\}\}", re.DOTALL)
 _NOBODY = re.compile(r"\{\{nobody\}\}(.*?)\{\{/nobody\}\}", re.DOTALL)
 
 
+_EDITING = re.compile(r"\{\{editing\}\}(.*?)\{\{/editing\}\}", re.DOTALL)
+
+
 @contextlib.contextmanager
 def nobody_answering():
     """
@@ -112,10 +115,11 @@ def _typeid_table():
                      for op, typeids in OP_TYPEIDS.items())
 
 
-def prompt(phase, ledger=""):
+def prompt(phase, ledger="", editing=False):
     """
     A phase's system prompt, read from `config/prompts/<phase>.md` and
-    composed with the sections of the shared vocabulary.
+    composed with the sections of the shared vocabulary. `{{editing}}`
+    passages stay only where the run edits a base part.
     """
     body = read_prompt(phase + ".md").strip()
     sections = _language_sections()
@@ -123,6 +127,7 @@ def prompt(phase, ledger=""):
     body = "%s\n\n%s" % (body, vocabulary)
     asking, nobody = (r"", r"\1") if _nobody_answers.get() else (r"\1", r"")
     body = _NOBODY.sub(nobody, _ASKING.sub(asking, body))
+    body = _EDITING.sub(r"\1" if editing else r"", body)
     body = body.replace(_TRAPS_PLACEHOLDER, "\n".join("- " + trap for trap in TRAPS))
     body = body.replace("{{typeids}}", _typeid_table())
     if ledger:

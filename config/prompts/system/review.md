@@ -24,6 +24,12 @@ from it. Two results can carry the same features and the same counts and
 still not be the same part; a feature moved or turned the wrong way passes a
 check for its existence and fails the one that matters.
 
+{{editing}}This is an edit of a base part. After the last Step, re-count on the outcome
+each count and extent the Intent states — how many blades, bores or faces
+changed, and which — and compare them with what the Intent says. Too few or too
+many is a failure, and so is a feature the Intent did not name that changed: a
+fillet, a round or a cut nobody asked for.{{/editing}}
+
 You are deliberately not told how it was produced — no plan, no code, no
 reasoning. Judge the outcome alone.
 

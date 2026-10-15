@@ -612,7 +612,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
             continue
 
         verdict, reason = review(intent, views, described, llm, events, attachments,
-                                 checked=checked, supervisor=supervisor)
+                                 checked=checked, supervisor=supervisor, base=base)
         events.emit(REVIEW_VERDICT, verdict=verdict, reason=reason)
 
         if verdict != "pass":

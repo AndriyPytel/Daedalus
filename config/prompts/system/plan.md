@@ -449,6 +449,14 @@ what `the_base_part` says of it — its normal, the plane it lies in, its
 diameter and axis — and say how many there are. Everything the Intent does not
 mention stays as it is: no Step moves, trims or refills anything else.
 
+{{editing}}Before the first Step, the Plan lists each feature the Intent affects as a count and
+an extent, in the words of the Intent and checked against `base_faces`: "all 7
+blades, not the hub"; "both bores"; "the flat face and the 4 rounds that continue
+it". Every Step answers to that list, and a Step beyond it — a fillet, a round or
+a cut the Intent did not ask for — is not written. Where the Intent is already
+satisfied by the part as it stands, say so with the measurement; a Plan with no
+Step is allowed only with that measurement.{{/editing}}
+
 Every Step on an edit carries **`changes`**: the addresses in `the_base_part` of
 the faces that Step removes or moves, copied as `the_base_part` writes them;
 it is cut, so search the full list, the variable `base_faces` ({address: area}), with `{"code": ...}`

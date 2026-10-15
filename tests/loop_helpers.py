@@ -621,10 +621,10 @@ def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
 
 
 def prompts_of(phase):
-    """The phase's system prompt as a run with a person to ask sends it, and as a batch run does."""
-    asking = prompt(phase)
+    """The phase's system prompt as a run with a person to ask sends it, and as a batch run does, edit or not."""
+    prompts = [prompt(phase), prompt(phase, editing=True)]
     with nobody_answering():
-        return asking, prompt(phase)
+        return tuple(prompts + [prompt(phase), prompt(phase, editing=True)])
 
 
 def _system_messages(llm):

@@ -58,7 +58,7 @@ def review_suspect(intent, views, described, llm, events, attachments=(),
 
 
 def review(intent, views, described, llm, events, attachments=(), checked=None,
-           supervisor=None, kernel=None):
+           supervisor=None, kernel=None, base=None):
     """
     Judge the outcome against the Intent. Not given the Plan, the code,
     or Execute's reasoning -- an independent judgement. This is the
@@ -72,7 +72,7 @@ def review(intent, views, described, llm, events, attachments=(), checked=None,
     
     reply, _ = run_declaring(
         pc.REVIEW, {"intent": intent, "outcome": described}, llm, content, kernel=kernel, supervisor=supervisor,
-        stream=events, system=prompt(REVIEW_PHASE))
+        stream=events, system=prompt(REVIEW_PHASE, editing=bool(base)))
     verdict = str(reply.get("verdict", "")).lower()
     if verdict not in ("pass", "fail"):
         raise PhaseError("Review replied with an unusable verdict: %r" % reply.get("verdict"))
