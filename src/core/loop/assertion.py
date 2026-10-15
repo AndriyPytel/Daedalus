@@ -396,7 +396,11 @@ def _why_the_checks_failed(traceback):
                 "cleanly, so the part is in error before anything could be measured.\n"
                 + traceback)
     return ("The result does not meet its acceptance list. The check that failed says "
-            "which entry:\n" + traceback)
+            "which entry:\n" + traceback
+            + "\nThe unmet entries, to copy as they are:\n"
+            + "\n".join("- " + entry for entry in _unmet_in(traceback))
+            + "\nAnswer every one with a Step that fixes it, or dispute it in "
+              "`disputes` with a measurement of the part that shows the check is wrong.")
 
 
 _GEOMETRY_TOLERANCE = 1e-6

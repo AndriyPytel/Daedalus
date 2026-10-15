@@ -16,6 +16,7 @@ from core.events import (
     ASSERTION,
     ATTACHED,
     COMPLETED,
+    DISPUTED,
     ERROR,
     EventStream,
     FAILED,
@@ -97,7 +98,7 @@ from core.loop.results import LoopResult, Progress, Stopped, _OutOfRevisions
 from core.loop.helpers import (
     _assumed, _still_wrong, _rollback_of, _mark_rolled_back, _also_check,
     _trailing_gap, _tried, _block, _stopped, _aborted, _budget_exhausted,
-    _going_nowhere, _last_kernel_result,
+    _going_nowhere, _last_kernel_result, _disputes_of_unmet,
 )
 from core.loop.prompt import nobody_answering
 from core.loop.review import review, review_suspect
@@ -478,11 +479,25 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                               reason="You asked for: " + approval.feedback)
             continue
 
-        if not steps and not rollback and progress.applied and last_complaint:
+        revising_built_part = bool(progress.applied and last_complaint)
+        disputed = _disputes_of_unmet(planned.disputed, progress.unmet) if revising_built_part else []
+        if disputed:
+            events.emit(DISPUTED, entries=[item["entry"] for item in disputed],
+                        measured=[item["measured"] for item in disputed],
+                        because=[item["because"] for item in disputed])
+        undisputed = [entry for entry in dict.fromkeys(progress.unmet)
+                      if entry not in {item["entry"] for item in disputed}]
+        if not steps and not rollback and revising_built_part:
+            if disputed and not undisputed:
+                return LoopResult(ok=True, steps_applied=progress.applied,
+                                  unmet=list(progress.unmet), disputed=disputed)
             return _block(events, "The revision added no Step to the %d already built, so "
-                                  "what it was asked to fix still stands: %s"
-                          % (progress.applied, last_complaint[0]), progress.tried,
-                          progress.applied)
+                                  "what it was asked to fix still stands: %s%s"
+                          % (progress.applied, last_complaint[0],
+                             ("\nDisputed: %s\nNeither fixed nor disputed: %s"
+                              % ("; ".join(item["entry"] for item in disputed),
+                                 "; ".join(undisputed))) if disputed else ""),
+                          progress.tried, progress.applied)
         if not steps and not rollback:
             return _block(events, "The Plan came back with no Steps, so there is nothing to "
                                   "apply and nothing to review.", progress.tried,

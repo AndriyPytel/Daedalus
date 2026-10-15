@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 from core.events import (
-    APPLIED, ASSERTION, BLOCKED, COST, DESIGN, GATE, PLAN_REVISED, PREFLIGHT_FAILED,
+    APPLIED, ASSERTION, BLOCKED, COST, DESIGN, DISPUTED, GATE, PLAN_REVISED, PREFLIGHT_FAILED,
     QUESTION, REVIEW_VERDICT, STEP_DECLARED, STEP_STARTED, replay,
 )
 
@@ -35,6 +35,7 @@ class Measurement:
     not_defined_count: int = 0
     conflicted_count: int = 0
     preflight_by_gate: dict = field(default_factory=dict)
+    disputed: list = field(default_factory=list)
 
 
 def _fail_rate(events, is_failure) -> float:
@@ -129,6 +130,8 @@ def measure(path: str, score: Optional[float] = None) -> Measurement:
     verdicts = [event for event in events if event.kind == REVIEW_VERDICT]
     blocks = [event for event in events if event.kind == BLOCKED]
     assertions = [event for event in events if event.kind == ASSERTION]
+    disputed = [entry for event in events if event.kind == DISPUTED
+                for entry in event.data.get("entries") or ()]
     the_part = _the_part(events)
     wall_clock_seconds = (events[-1].at - events[0].at) if len(events) >= 2 else 0.0
     gate_wait_seconds = _gate_wait_seconds(events)
@@ -152,6 +155,7 @@ def measure(path: str, score: Optional[float] = None) -> Measurement:
         review_fail_rate=_fail_rate(verdicts, lambda event: event.data.get("verdict") == "fail"),
         question_count=sum(1 for event in events if event.kind == QUESTION),
         score=score,
+        disputed=disputed,
     )
 
 
@@ -209,6 +213,7 @@ _ROWS = (
     ("assertion fail rate", lambda ms: _average(ms, lambda m: m.assertion_fail_rate), "{:.1%}"),
     ("review fail rate", lambda ms: _average(ms, lambda m: m.review_fail_rate), "{:.1%}"),
     ("avg question count", lambda ms: _average(ms, lambda m: m.question_count), "{:.1f}"),
+    ("avg disputes", lambda ms: _average(ms, lambda m: len(m.disputed)), "{:.1f}"),
     ("avg not_defined count", lambda ms: _average(ms, lambda m: m.not_defined_count), "{:.1f}"),
     ("avg conflicted count", lambda ms: _average(ms, lambda m: m.conflicted_count), "{:.1f}"),
     ("avg score", _score_average, "{:.4f}"),

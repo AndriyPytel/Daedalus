@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 from core.events import (
     ABORTED, ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, BUDGET_EXHAUSTED,
-    COMPLETED, ERROR, FAILED, GATE, INTENT, OUTSTANDING, PART, PLAN_REVISED,
+    COMPLETED, DISPUTED, ERROR, FAILED, GATE, INTENT, OUTSTANDING, PART, PLAN_REVISED,
     PREFLIGHT_FAILED, QUESTION, REVIEW_SUSPECTED, REVIEW_VERDICT, ROUTED,
     STEP_DECLARED, STEP_STARTED, STOPPED, TOOL_RESULT, TURN_BUDGET_EXHAUSTED, UNBUILT,
 )
@@ -172,6 +172,12 @@ def narrate(event) -> Narration:
         return Narration(line="⏸  " + data["reason"],
                          title="What was tried (%d)" % len(tried),
                          body=_what_was_tried(tried))
+
+    if kind == DISPUTED:
+        return Narration(line="⚖  Disputed, with a measurement: " + "; ".join(data["entries"]),
+                         title="What the part measures (%d)" % len(data["entries"]),
+                         body="\n".join("• %s — %s (%s)" % item for item in
+                                        zip(data["entries"], data["measured"], data["because"])))
 
     if kind == STOPPED:
         return Narration(line="⏸  " + data["reason"])

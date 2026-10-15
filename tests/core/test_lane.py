@@ -746,3 +746,22 @@ def test_an_attempt_timestamp_survives_freecad_binding_datetime_to_the_class_in_
     monkeypatch.setattr(lane, "datetime", datetime.datetime, raising=False)
 
     assert re.fullmatch(r"\d{8}-\d{6}-\d{6}", lane._attempt_timestamp())
+
+
+def test_a_disputed_end_is_reported_unverified_and_is_not_a_blocked_run(tmp_path):
+    from core.measure import measure
+
+    path = str(tmp_path / "haiku" / "mm25.jsonl")
+    _write_events(path, [
+        (1, "assertion", {"confirmed": [], "unmet": ["bore through-count"]}),
+        (2, "disputed", {"entries": ["bore through-count"], "measured": ["count 2"],
+                         "because": ["wrong"]}),
+    ])
+
+    detail = lane.report(str(tmp_path)).split("## Detail")[1]
+
+    assert measure(path).blocked_reason is None
+    assert measure(path).disputed == ["bore through-count"]
+    assert "unverified" in detail
+    assert "blocked" not in detail
+    assert "bore through-count" in detail

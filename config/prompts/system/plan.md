@@ -428,6 +428,12 @@ When your Steps{{asking}}, or your `question`,{{/asking}} are settled, end the p
 {{/asking}}A revision that rolls part of the History back adds `"rollback": {"to": 3,
 "why": "..."}` beside `"steps"` — never a Step of its own.
 
+A revision answers every unmet entry it was sent with a Step that fixes it or with a
+dispute: `"disputes": [{"entry": "<the unmet entry, as named>", "measured": "<what the
+part measures, with the number>", "because": "<why the check is wrong>"}]` beside
+`"steps"`. `measured` is a value read with the kernel tools (`document` and Snapshot
+values), never an opinion. An entry with neither is why the run stops.
+
 {{asking}}Never declare both `steps` and `question`: a question is not a Plan with a
 caveat.
 

@@ -156,7 +156,7 @@ A_PART = {
 }
 
 
-def plan_reply(*steps, thinking=None, satisfies=None, rollback=None):
+def plan_reply(*steps, thinking=None, satisfies=None, rollback=None, disputes=None):
     """
     One Plan turn. `satisfies` is what the *first* Step cites. `rollback`,
     given as `{"to": K, "why": "..."}`, is the reply's own field for undoing
@@ -174,6 +174,8 @@ def plan_reply(*steps, thinking=None, satisfies=None, rollback=None):
     declared = {"steps": written}
     if rollback is not None:
         declared["rollback"] = rollback
+    if disputes is not None:
+        declared["disputes"] = disputes
     body = json.dumps({"declare": declared})
     return {"reasoning": thinking, "text": body} if thinking else body
 

@@ -139,6 +139,29 @@ def _block(events, reason, tried, applied, said="", verdict=None):
                       tried=list(tried), steps_applied=applied)
 
 
+def _disputes_of_unmet(disputes, unmet) -> list:
+    """
+    The disputes that name an unmet entry, each rewritten to carry that entry as the checks cut it.
+
+    An entry matches ignoring case, spacing and trailing punctuation, or when one is the other's text up to its first full stop: the checks name a whole sentence and a revision tends to write its head.
+    """
+    def plain(text):
+        return " ".join(text.lower().split()).rstrip(".;:, ")
+
+    def head(text):
+        return plain(text.split(".", 1)[0])
+
+    found = []
+    for item in disputes:
+        entry = next((entry for entry in unmet
+                      if plain(item["entry"]) == plain(entry)
+                      or plain(item["entry"]) == head(entry)
+                      or head(item["entry"]) == plain(entry)), None)
+        if entry is not None:
+            found.append(dict(item, entry=entry))
+    return found
+
+
 def _stopped(events, reason, applied):
     """
     A user `Stopped` this run, not a `blocked` one: the loop's own

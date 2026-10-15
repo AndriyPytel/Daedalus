@@ -27,6 +27,7 @@ class LoopResult:
     tried: List[dict] = field(default_factory=list)
     unmet: List[str] = field(default_factory=list)
     the_part_path: str = ""
+    disputed: List[dict] = field(default_factory=list)
 
     @property
     def awaiting_user(self) -> bool:

@@ -416,6 +416,8 @@ def _reason(events, m):
         return _short(verdicts[-1].data.get("reason") or "")
     if m.blocked_reason:
         return _short(m.blocked_reason)
+    if m.disputed:
+        return _short("disputed: " + "; ".join(m.disputed))
     return ""
 
 
@@ -508,6 +510,8 @@ def _verdict(events, m):
         return m.verdict
     if m.blocked_reason:
         return "blocked"
+    if m.disputed:
+        return "unverified"
     return "-"
 
 

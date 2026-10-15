@@ -45,7 +45,8 @@ class Plan:
     `bad_rollback` set instead of it when that field could not be used as
     written. `values` is the frozen name -> number for every value a Step
     named that Plan's own kernel had actually computed, `value_errors`
-    the Steps that named one it had not.
+    the Steps that named one it had not; `disputed` the unmet entries a
+    revision calls wrong, each with its `measured` and `because`.
     """
 
     steps: list
@@ -62,6 +63,7 @@ class Plan:
     look: dict = None
     rollback: dict = None
     bad_rollback: str = ""
+    disputed: list = field(default_factory=list)
 
 
 def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set=None,
@@ -129,7 +131,16 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
     return Plan(steps=steps, satisfies=satisfies, cites=cites, ops=ops, changes=changes,
                 unbuildable=unbuildable, values=values, value_errors=value_errors,
                 acceptance=_acceptance_of(the_part), left_out=_left_out(the_part),
-                rollback=rollback, bad_rollback=bad_rollback)
+                rollback=rollback, bad_rollback=bad_rollback,
+                disputed=_disputes_of(reply.get("disputes")))
+
+
+def _disputes_of(raw) -> list:
+    """The disputes of a Plan reply that name an `entry` and carry a `measured` and a `because`."""
+    keys = ("entry", "measured", "because")
+    return [{key: str(item[key]).strip() for key in keys}
+            for item in (raw if isinstance(raw, list) else [])
+            if isinstance(item, dict) and all(str(item.get(key) or "").strip() for key in keys)]
 
 
 def _steps_of(planned, op_vocabulary=None, known_values=None, changes=None):

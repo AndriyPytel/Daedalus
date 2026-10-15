@@ -16,7 +16,7 @@ the field the wording turns on.
 import pytest
 
 from core.events import (
-    ABORTED, ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, BUDGET_EXHAUSTED,
+    ABORTED, ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, BUDGET_EXHAUSTED, DISPUTED,
     CALL_STARTED, CHANGE_SET, COMPLETED, COST,
     ERROR, FAILED, GATE, INTENT, INVOKE_MARKUP, KINDS,
     OUTSTANDING, PART, PLAN, DESIGN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION,
@@ -53,6 +53,8 @@ SAMPLES = {
     REVIEW_SUSPECTED: {"suspected": ["envelope → across the flats: 13.0 mm (suspected)"]},
     REVIEW_VERDICT: {"verdict": "pass", "reason": "matches the Intent"},
     BLOCKED: {"reason": "The budget is spent.", "tried": []},
+    DISPUTED: {"entries": ["bore through-count"], "measured": ["2 face pairs"],
+               "because": ["the check counts a face per side"]},
     STOPPED: {"reason": "Stopped by you."},
     ABORTED: {"reason": "Aborted. The Step in flight was discarded."},
     BUDGET_EXHAUSTED: {"reason": "Out of revisions.", "tried": []},
