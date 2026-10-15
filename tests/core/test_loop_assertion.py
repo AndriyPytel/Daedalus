@@ -1527,3 +1527,61 @@ def test_an_edit_checks_one_body_and_not_the_through_count_of_the_edited_feature
 
     assert "b0 == 1" in code
     assert "b1 ==" not in code
+
+
+def test_a_patterned_through_feature_counts_once_per_instance():
+    from core.loop.assertion import the_topology_measured
+
+    described = {"features": [
+        {"id": "hole-right", "kind": "hole", "goes_through": True},
+        {"id": "hole-left", "kind": "hole", "goes_through": True},
+        {"id": "hole-outer-4x", "kind": "hole", "goes_through": True,
+         "count": {"flag": "read", "value": "4"}}]}
+
+    code = the_topology_measured(described)
+
+    assert "b1 == 6" in code
+    assert "expected 6 through features" in code
+
+
+@pytest.mark.parametrize("count, counted", [
+    (None, 1), ({"flag": "read", "value": "0"}, 1), ({"flag": "read", "value": "many"}, 1)])
+def test_a_through_feature_without_a_usable_count_counts_one(count, counted):
+    from core.loop.assertion import the_topology_measured
+
+    feature = {"id": "hole-a", "kind": "hole", "goes_through": True}
+    if count:
+        feature["count"] = count
+
+    assert "b1 == %d" % counted in the_topology_measured({"features": [feature]})
+
+
+def test_a_feature_that_does_not_go_through_adds_nothing_whatever_its_count():
+    from core.loop.assertion import the_topology_measured
+
+    described = {"features": [
+        {"id": "hole-a", "kind": "hole", "goes_through": True},
+        {"id": "pocket-4x", "kind": "pocket", "goes_through": False,
+         "count": {"flag": "read", "value": "4"}}]}
+
+    assert "b1 == 1" in the_topology_measured(described)
+
+
+def test_a_base_part_gets_no_through_check_however_many_instances():
+    from core.loop.assertion import the_topology_measured
+
+    described = {"features": [{"id": "hole-4x", "kind": "hole", "goes_through": True,
+                               "count": {"flag": "read", "value": "4"}}]}
+
+    assert "b1 ==" not in the_topology_measured(described, base={"faces": 586})
+
+
+def test_a_bare_integer_count_on_a_through_feature_counts_per_instance():
+    from core.loop.assertion import the_topology_measured
+
+    described = {"features": [
+        {"id": "hole-o40", "kind": "hole", "goes_through": True},
+        {"id": "hole-o28", "kind": "hole", "goes_through": True},
+        {"id": "hole-outer-4x", "kind": "hole", "goes_through": True, "count": 4}]}
+
+    assert "b1 == 6" in the_topology_measured(described)

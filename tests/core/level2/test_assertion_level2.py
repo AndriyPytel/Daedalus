@@ -406,3 +406,40 @@ def test_the_topology_is_measured_on_the_body_and_not_its_largest_feature(worker
     result = worker.check(BORED_BODY + the_topology_measured(described), None)
 
     assert result.ok, result.traceback
+
+
+SIX_HOLE_PAD = """
+pad = doc.addObject('Part::Box', 'Pad')
+pad.Length, pad.Width, pad.Height = 200, 120, 10
+prev = pad
+holes = [(50, 60, 20), (120, 60, 14)] + [(160 + 20 * (i %% 2), 30 + 60 * (i // 2), 6) for i in range(4)]
+for i, (x, y, radius) in enumerate(holes):
+    cyl = doc.addObject('Part::Cylinder', 'Hole%%d' %% i)
+    cyl.Radius = radius
+    cyl.Height = 20
+    cyl.Placement.Base = App.Vector(x, y, -5)
+    cut = doc.addObject('Part::Cut', 'Cut%%d' %% i)
+    cut.Base = prev
+    cut.Tool = cyl
+    prev = cut
+doc.recompute()
+finished_shape = prev.Shape.copy()
+for consumed in list(doc.Objects):
+    doc.removeObject(consumed.Name)
+result = doc.addObject('Part::Feature', 'Result')
+result.Shape = finished_shape
+"""
+
+
+def test_a_pad_with_o40_o28_and_four_o12_through_holes_passes_the_counted_check(worker):
+    from core.loop.assertion import the_topology_measured
+
+    described = {"features": [
+        {"id": "hole-o40", "kind": "hole", "goes_through": True},
+        {"id": "hole-o28", "kind": "hole", "goes_through": True},
+        {"id": "hole-outer-4x", "kind": "hole", "goes_through": True,
+         "count": {"flag": "read", "value": "4"}}]}
+
+    result = worker.check(SIX_HOLE_PAD % () + the_topology_measured(described), None)
+
+    assert result.ok, result.traceback

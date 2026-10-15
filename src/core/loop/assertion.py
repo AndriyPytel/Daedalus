@@ -84,16 +84,27 @@ assert not missing, (
 
 def the_topology_measured(description, base=None):
     """
-    Betti numbers of the finished Document checked against b0 == 1 and, where at least one feature carries the `goes_through` flag, b1 == the count of features whose flag is true; unflagged features add nothing and the prose `topology` field is never read.
+    Betti numbers of the finished Document checked against b0 == 1 and, where at least one feature carries the `goes_through` flag, b1 == the instance count of the features whose flag is true (a feature's `count` value, 1 when absent or not a positive integer); unflagged features add nothing and the prose `topology` field is never read.
     With a *base* part only b0 is checked: Design describes the features an edit changes, never the whole part, so its through count is not the part's.
     """
     features = [feature for feature in (description or {}).get("features") or ()
                if isinstance(feature, dict)]
     through_check = ""
     if not base and any("goes_through" in feature for feature in features):
-        expected = sum(1 for feature in features if feature.get("goes_through") is True)
+        expected = sum(_instances(feature) for feature in features if feature.get("goes_through") is True)
         through_check = _THROUGH_FEATURE_CHECK % (expected, expected)
     return _TOPOLOGY_CHECK % through_check
+
+
+def _instances(feature):
+    """The pattern size of a feature, read from its `count`, a bare integer or a dict with `value`; 1 when that is missing or not a positive integer."""
+    value = feature.get("count")
+    if isinstance(value, dict):
+        value = value.get("value")
+    try:
+        return max(int(value), 1)
+    except (TypeError, ValueError):
+        return 1
 
 
 _TOPOLOGY_CHECK = """
