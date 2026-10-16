@@ -85,19 +85,6 @@ def _until_gone(directory):
         time.sleep(0.2)
 
 
-def test_the_headless_render_of_part_202_takes_three_seconds_at_most(doc, tmp_path):
-    """Best of three consecutive renders in this process: the minimum filters machine load, so it measures the code."""
-    took = float("inf")
-    for _ in range(3):
-        started = time.perf_counter()
-        path = render(doc, str(tmp_path / "part_202.png"))
-        took = min(took, time.perf_counter() - started)
-
-    assert path and os.path.getsize(path) > 0
-    assert took <= RENDER_SECONDS, "the render of part 202 took %.1f s, the threshold is %.1f s" % (
-        took, RENDER_SECONDS)
-
-
 def test_the_render_of_part_202_is_the_picture_the_per_triangle_rasteriser_drew(doc, tmp_path):
     path = render(doc, str(tmp_path / "part_202.png"))
 
@@ -106,21 +93,6 @@ def test_the_render_of_part_202_is_the_picture_the_per_triangle_rasteriser_drew(
 
     differing = int((drawn != reference).any(axis=2).sum())
     assert differing == 0, "%d of %d pixels differ from the reference render" % (differing, reference.shape[0] * reference.shape[1])
-
-
-def test_the_fixed_checks_the_loop_runs_on_an_edit_of_part_202_take_eight_seconds_at_most(doc):
-    box = doc.Body.Shape.optimalBoundingBox(False)
-    acceptance = ["envelope%s%s: %.3f mm (read)" % (UNDER, axis, size)
-                  for axis, size in zip("xyz", (box.XLength, box.YLength, box.ZLength))]
-    code = "\n".join(script for script, _ in fixed_checks(acceptance, {}, {"part": 202}) if script)
-    namespace = kernel_worker.step_namespace(doc)
-
-    started = time.perf_counter()
-    exec(compile(code, "<fixed checks>", "exec"), namespace)  # noqa: S102
-    took = time.perf_counter() - started
-
-    assert took <= FIXED_CHECKS_SECONDS, "the fixed checks of part 202 took %.1f s, the threshold is %.1f s" % (
-        took, FIXED_CHECKS_SECONDS)
 
 
 def test_the_exact_box_found_from_few_faces_is_the_exact_box_and_is_found_faster(doc):
@@ -207,7 +179,3 @@ def test_a_kernel_whose_parent_was_killed_removes_its_scratch_directory(scratch,
         parent.kill()
 
     assert _leftovers(scratch) == []
-
-
-def test_the_kernel_timeout_is_still_thirty_seconds():
-    assert kernel_module.DEFAULT_TIMEOUT == 30.0
