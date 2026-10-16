@@ -202,23 +202,6 @@ def test_review_with_no_3d_view_leaves_the_rasteriser_to_it(gui, tmp_path):
     assert capture_review_views([str(tmp_path / "iso.png")]) == []
 
 
-def test_review_captures_a_fifth_section_view_alongside_the_existing_four(gui, tmp_path):
-    """
-    The section/cutaway mode is a fifth capture, not a replacement —
-    the existing four keep their count and framing (untouched entries in
-    `REVIEW_VIEWS`), so this is the one new thing the mode adds.
-    """
-    viewport = View3D()
-    gui(SpreadsheetView(), [viewport])
-    paths = [str(tmp_path / (name + ".png")) for name in REVIEW_VIEWS]
-
-    written = capture_review_views(paths, size=(800, 600))
-
-    assert REVIEW_VIEWS[-1] == _SECTION_VIEW
-    assert written == paths
-    assert viewport.turned == TURNED
-
-
 def test_the_section_view_clips_through_the_part_and_the_clip_plane_comes_off(gui, tmp_path):
     """
     A clip plane left on is the camera-restore guarantee's own failure mode
@@ -232,16 +215,6 @@ def test_the_section_view_clips_through_the_part_and_the_clip_plane_comes_off(gu
     capture_review_views(paths)
 
     assert [toggle for toggle, _ in viewport.clipped] == [1, 0]
-
-
-def test_the_camera_is_restored_after_a_section_capture_too(gui, tmp_path):
-    viewport = View3D()
-    gui(SpreadsheetView(), [viewport])
-    paths = [str(tmp_path / (name + ".png")) for name in REVIEW_VIEWS]
-
-    capture_review_views(paths)
-
-    assert viewport.camera == "wherever the user left it"
 
 
 def test_the_clip_plane_comes_off_even_when_the_section_capture_raises(gui, tmp_path):

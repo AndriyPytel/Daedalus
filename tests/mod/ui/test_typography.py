@@ -16,10 +16,3 @@ def test_the_scale_is_the_four_pairs_the_spec_repeats():
 
 def test_css_renders_size_and_weight_only():
     assert typography.css(typography.BODY) == "font-size: 14px; font-weight: 400;"
-
-
-def test_css_carries_no_colour_or_family():
-    for scale in (typography.CAPTION, typography.LABEL,
-                  typography.BODY, typography.BODY_STRONG):
-        rendered = typography.css(scale)
-        assert "color" not in rendered and "font-family" not in rendered

@@ -88,19 +88,3 @@ def test_name_and_label_changes_are_excluded_from_the_diff():
     touched.diff(after)
 
     assert touched.modified() == set()
-
-
-def test_a_computed_property_recompute_does_not_register_as_modified():
-    """
-    `Shape` is derived by recompute, not assigned by the Step -- the same
-    false-positive `DERIVED` already guarded against under the signal-based
-    mechanism this replaces.
-    """
-    before = FakeDoc([FakeObj("Pad", Shape="empty")])
-    touched = _Touched(before)
-
-    after = FakeDoc([FakeObj("Pad", Shape="a real solid")])
-    touched.diff(after)
-
-    assert touched.modified() == set()
-

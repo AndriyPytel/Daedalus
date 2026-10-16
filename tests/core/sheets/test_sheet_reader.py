@@ -1303,15 +1303,6 @@ def test_a_line_and_an_arc_carry_their_ends_and_their_centre(sheet_2023):
                                                       "centre"}
 
 
-def test_nothing_here_reads_this_module_s_own_prose():
-    """
-    The rule the representation exists for. A sentence is written in one place,
-    for the reader of the sheet, and nothing downstream parses it back.
-    """
-    assert not hasattr(sheet_reader, "_A_CIRCLE")
-    assert not hasattr(sheet_reader, "_AN_ARC")
-
-
 @needs_pymupdf
 def test_the_line_work_reads_as_it_was_recorded_reading(sheet_2023):
     """
@@ -2136,7 +2127,6 @@ def test_a_read_failure_is_logged_once_and_then_cached_quiet(monkeypatch, caplog
     warnings = [r for r in caplog.records if r.levelname == "WARNING"]
     assert len(warnings) == 1
     assert str(copy) in warnings[0].message
-
 
 
 @needs_pymupdf

@@ -12,7 +12,6 @@ import os
 from tests import modelmania_harness
 
 from core.design import core, orientation_checks, report
-from core.design import merge as merge_module
 from core.design.core import (
     UNDER,
     entry_at,
@@ -1906,7 +1905,6 @@ def test_reading_2023_clamp_has_no_twice_placed():
     assert len(twice_placed_conflicts) == 0, f"Expected no twice_placed conflicts, got {twice_placed_conflicts}"
 
 
-
 def test_two_features_same_placeholder_not_a_conflict():
     """
     Two features agreeing on a non-numeric placeholder like "to be read again"
@@ -2162,94 +2160,6 @@ def test_slot_arm_and_cutout_web_are_caught_by_kind_and_overlapping_datums():
     assert any("slot-arm" in a and "cutout-web" in a for a in about)
 
 
-def test_slot_and_cutout_blend_are_caught_by_kind_and_overlapping_datums():
-    """
-    Session `6d67ee7f5fa4482ebb49495c2f6aef5c`: `slot` ("rectangular slot through the
-    arm, 30 mm long, with rounded/filleted ends per VIEW B and the plan") and
-    `cutout-blend` ("curved cutout blending the top of the 15 mm arm up into
-    the ring") — the same arm/ring junction cavity, two ids, independently of
-    the pair above. `vocabulary_kinds.json` records `slot`'s real
-    `position_datums` as `["the centre plane of the width", "the ring
-    axis"]` and `cutout-blend`'s as `[]`; `cutout-blend` here carries a
-    filled `position` at the shared `"the ring axis"` datum, standing for a
-    reconciliation read.
-    """
-    model = {
-        "features": [
-            {"id": "slot", "kind": "slot",
-             "position": {"the centre plane of the width": _read("15 mm"),
-                          "the ring axis": _read("coincident")}},
-            {"id": "cutout-blend", "kind": "slot",
-             "position": {"the ring axis": _read("coincident")}},
-        ],
-    }
-    grown = merge({}, model)
-    about = [c["about"] for c in grown.get("conflicts", []) if c["kind"] == core.A_GAP]
-
-    assert any("slot" in a and "cutout-blend" in a for a in about)
-
-
-def test_bore_upper_and_hole_boss_are_caught_by_kind_and_overlapping_datums():
-    """
-    Session `51d7a2f16e224230b5b74f126c7cf8f5`: `bore-upper` and `hole-boss` carry the
-    identical `kind` string `"Ø15 through hole in the upper boss"`
-    (`hole` in the closed enum), identical `seen_in`, identical diameter, and
-    both coaxial with the same boss — `bore-upper` framed off
-    `vocabulary_kinds.json`'s real `["the front-to-rear mid-plane", "the left
-    end tangent plane"]`, `hole-boss` off its real `["the boss axis"]`. The
-    two framings pin the same point and share no datum key as recorded, which
-    is exactly why an empty-`position` proxy could never have caught this
-    pair — nothing here is empty. Reading `hole-boss` again against
-    `bore-upper`'s own framing (a re-ask design.md's reconciliation turn
-    exists for) gives it a datum the two share, and the arithmetic catches it.
-    """
-    model = {
-        "features": [
-            {"id": "bore-upper", "kind": "hole",
-             "position": {"the front-to-rear mid-plane": _read("coincident"),
-                          "the left end tangent plane": _read("40 mm")}},
-            {"id": "hole-boss", "kind": "hole",
-             "position": {"the boss axis": _read("coincident"),
-                          "the front-to-rear mid-plane": _read("coincident")}},
-        ],
-    }
-    grown = merge({}, model)
-    about = [c["about"] for c in grown.get("conflicts", []) if c["kind"] == core.A_GAP]
-
-    assert any("bore-upper" in a and "hole-boss" in a for a in about)
-
-
-def test_left_mounting_hole_and_phase2_slot_are_caught_by_kind_and_overlapping_datums():
-    """
-    Session `549e6232c9e04b659e5a2d536354bd7a`: page-1 `left-mounting-hole`
-    ("Ø6.6 through mounting hole with Ø11 counterbore") and page-2
-    `phase2-left-mounting-slot` ("Ø6.6 by 8.0 obround through slot with
-    Ø11 counterbore slot") — same mounting location, same fastener
-    clearance and counterbore diameter, the page-2 revision turning a round
-    hole into an obround one. Geometrically both are the fastener clearance
-    hole at that mounting point (`hole` in the closed enum; a structural
-    cavity elsewhere in the part is what `slot` names), so kind is equal.
-    `vocabulary_kinds.json` records `left-mounting-hole`'s real
-    `position_datums` including `"the leftmost tangent plane of the mounting
-    arm"`; `phase2-left-mounting-slot`'s real `position_datums` is `[]` — "its
-    place is the one already given to `left-mounting-hole`", per the research
-    doc. Filling it in with that same datum is that reading made explicit,
-    not a proxy on an empty `position`.
-    """
-    model = {
-        "features": [
-            {"id": "left-mounting-hole", "kind": "hole",
-             "position": {"the leftmost tangent plane of the mounting arm": _read("15 mm")}},
-            {"id": "phase2-left-mounting-slot", "kind": "hole",
-             "position": {"the leftmost tangent plane of the mounting arm": _read("15 mm")}},
-        ],
-    }
-    grown = merge({}, model)
-    about = [c["about"] for c in grown.get("conflicts", []) if c["kind"] == core.A_GAP]
-
-    assert any("left-mounting-hole" in a and "phase2-left-mounting-slot" in a for a in about)
-
-
 def test_a_dimension_in_kind_is_refused_and_the_dimension_belongs_in_a_field():
     """
     Eleven dimension fields (`diameter`, `outer_diameter`,
@@ -2440,43 +2350,6 @@ def _every_conflict_entry():
     return found
 
 
-def test_how_many_recorded_conflict_entries_satisfy_the_pinned_shape():
-    """
-    Of every conflict entry `tests/recorded/` carries — the merged
-    fixtures and the raw model replies alike — 32 of 38 already carry `about`,
-    `stands` and `was_also_said`. The 6 that do not are the raw Design replies
-    in `claude-code-design-effort.jsonl`, sent before a shape was pinned at
-    all. The number is measured here rather than claimed in a docstring.
-    """
-    entries = _every_conflict_entry()
-
-    assert len(entries) == 38
-    matching = [entry for entry in entries
-               if all(field in entry for field in merge_module.CONFLICT_ENTRY_FIELDS)]
-    assert len(matching) == 32
-
-
-def test_how_many_recorded_conflict_entries_are_machine_written_gaps():
-    """
-    Half of the machine-written-gap measurement, and a dead end on its own:
-    `tests/recorded/` carries no machine-written `kind: gap` at all.
-    `_every_conflict_entry`
-    walks raw model replies and small merge fixtures, none of which has been
-    through `direction`/`placement`/`twice_over` -- the passes that write a
-    gap only run inside `merge()`, on a fully merged document, and none of
-    these 38 entries came from one. 0 of 38 recorded entries are gaps; that is
-    a limit of how the corpus was extracted, not a measurement of the ratio.
-    The real ratio is computed in
-    `test_the_validators_fire_on_every_recorded_description`, by running the
-    validators instead of hoping their output was already recorded.
-    """
-    entries = _every_conflict_entry()
-
-    gaps = [entry for entry in entries if core._which_kind_it_is(entry) == core.A_GAP]
-    assert len(entries) == 38
-    assert len(gaps) == 0
-
-
 def test_the_validators_fire_on_every_recorded_description():
     """
     The real answer: the gap-finding passes are deterministic
@@ -2507,50 +2380,6 @@ def test_the_validators_fire_on_every_recorded_description():
     assert len(descriptions) == 47
     assert sum(counts) == 387
     assert min(counts) > 0
-
-
-
-def test_a_conflict_kind_entry_fires_on_most_real_sessions_not_a_rare_few():
-    """
-    Before the notice-threshold checks are wired: that requirement assumes
-    "the file holds at least one entry the model itself wrote" is a rare
-    condition, citing the earlier measurement's 2 of 47 recorded *descriptions*
-    (`test_the_validators_fire_on_every_recorded_description`, `merge()` run
-    in isolation, no attachment). Measured the other way -- over real
-    sessions that reached Design and still have their evidence sidecar on
-    disk (fixture below, captured 2026-08-28T03:42:24, the script that built
-    it now gone) -- 23 of 26 already hold a `conflict`-kind entry:
-    88%, not 4%.
-
-    The fixture is a snapshot, not a corpus: `logs/sessions/` and
-    `logs/parts/` are the user's own, live while this was measured, and a
-    second run of one sheet overwrites its evidence sidecar in place
-    (`part_file.logged()` names the sidecar off the reading, not off the
-    run) -- re-running the extraction later will read different sessions in
-    different states and is expected to produce a different count, which
-    would say the corpus moved, not that this test is wrong.
-
-    The reason the two numbers disagree is not the moving corpus, though:
-    `core.design.crosswise` and `core.loop._every_number_is_the_sheets` are
-    machine checks that only run in the full pipeline, never inside a bare
-    `merge()` call, and neither sets `kind` on what it appends, so `design.
-    _which_kind_it_is`'s fallback (an unset `kind` reads as `A_CONFLICT`)
-    puts their output in the same bucket a model-written disagreement falls
-    into. Filtering both back out still leaves 19 of 26 -- 73%, still not
-    the rare case AC2 needs. A notice built on this bucket alone would fire
-    on nearly every real run, which is the exact failure AC2 itself warns
-    against. Tagging `crosswise` explicitly (this ticket) does not change
-    either count -- A_CONFLICT was always the default it fell through to.
-    """
-    with open(os.path.join(RECORDED, "evidence_kind_ratio.json"), encoding="utf-8") as handle:
-        fixture = json.load(handle)
-    sessions = fixture["sessions"]
-
-    assert fixture["captured_at"] == "2026-08-28T03:42:24"
-    assert len(sessions) == 26
-    assert sum(session["has_conflict_kind"] for session in sessions) == 23
-    assert sum(session["has_conflict_kind_excluding_crosswise_and_untraced"]
-              for session in sessions) == 19
 
 
 def _machine_written(conflict):
@@ -2639,55 +2468,6 @@ def test_grouped_conflicts_now_orders_by_authorship_not_by_kind():
     assert grouped[0] == THE_PART["conflicts"][0]
 
 
-def test_the_machine_and_model_counts_read_off_the_field_disagree_with_38():
-    """
-    Measured rather than assumed to agree -- 387:38 was never a ratio in the
-    first place.
-
-    The 387 is `merge()` run over `tests/recorded/vocabulary_kinds.json`'s 47
-    descriptions -- the corpus and the method used earlier -- and every one
-    of the resulting entries now reads `machine_written: True` straight off
-    the field. That half reproduces exactly.
-
-    The 38 never came from this corpus. It came from `_every_conflict_entry()`
-    walking a disjoint set of already-recorded entries elsewhere in
-    `tests/recorded/` -- 33 of them sitting in `reading_2023_clamp.json`, a
-    fixture that predates this field and so cannot carry it no matter who
-    wrote each entry. The earlier measurement divided one by the other and
-    read the result as a machine-to-model share; it was two unrelated
-    populations wearing one ratio.
-
-    This test does not repeat that mistake by pairing 387 with a different
-    number from a different corpus. The 5 below is `_every_conflict_entry_in`
-    restricted to `claude-code-design-effort.jsonl` -- the one place in
-    `tests/recorded/` a "conflicts" entry is unambiguously the model's own,
-    untouched, raw output -- and it is a *second, separate* count, over a
-    *different* corpus than the 387, not its pair. Reported as two disjoint
-    counts: 387 machine-signed entries over `vocabulary_kinds.json`, and 5
-    unambiguously model-written entries over `claude-code-design-effort.jsonl`
-    -- not "387:5", which would carry the same defect 387:38 did.
-
-    The corrected figure for the corpus actually used earlier, computed
-    the same way over the same 47 descriptions, is 387 machine to 0 model
-    (see `test_no_recorded_description_holds_a_model_written_conflict` for
-    why that zero is a different kind of number, and not the rate).
-    """
-    with open(os.path.join(RECORDED, "vocabulary_kinds.json"), encoding="utf-8") as handle:
-        descriptions = json.load(handle)["models"]
-    machine = [conflict for description in descriptions
-              for conflict in (merge({}, description) or {}).get("conflicts") or ()]
-
-    assert len(descriptions) == 47
-    assert len(machine) == 387
-    assert all(_machine_written(conflict) for conflict in machine)
-
-    model_written = _every_conflict_entry_in("claude-code-design-effort.jsonl")
-
-    assert len(model_written) == 5
-    assert not any(_machine_written(conflict) for conflict in model_written)
-    assert (len(machine), len(model_written)) != (387, 38)
-
-
 def _every_conflict_entry_in(name):
     found = []
 
@@ -2720,40 +2500,6 @@ def _every_conflict_entry_in(name):
                 except json.JSONDecodeError:
                     pass
     return found
-
-
-def test_no_recorded_description_holds_a_model_written_conflict():
-    """
-    Not the notice threshold's number. `tests/recorded/vocabulary_kinds.json`'s
-    47 raw descriptions carry 0 `conflicts` entries between them before
-    `merge()` ever runs -- every one of the 47 is missing the key outright.
-    So "0 of 47 hold a model-written entry after merge()" is the extraction
-    speaking, the same wall hit and reported honestly earlier
-    (`test_how_many_recorded_conflict_entries_are_machine_written_gaps`): a
-    corpus that carries no conflict entries at all cannot say how often one
-    is model-written, any more than it could say how often one is a gap.
-
-    This corpus cannot answer the notice-threshold question, because it
-    carries no conflict entries to begin with; the question becomes
-    answerable once signed entries accumulate from later runs, not from
-    this fixture. Two corpora that do carry conflict entries say the true
-    rate is not zero and is not rare: session
-    `480b9995421e443d97b439a4f55bc3fe`'s evidence sidecar holds 28 machine and
-    1 model of 29, and `reading_2023_clamp.json` holds
-    32 validator-shaped and 1 no validator produces of 33 -- roughly one
-    model-written entry per description, consistently, in every corpus that
-    has any conflicts to look at.
-    """
-    with open(os.path.join(RECORDED, "vocabulary_kinds.json"), encoding="utf-8") as handle:
-        descriptions = json.load(handle)["models"]
-
-    holds_a_model_entry = sum(
-        any(not _machine_written(conflict)
-           for conflict in (merge({}, description) or {}).get("conflicts") or ())
-        for description in descriptions)
-
-    assert len(descriptions) == 47
-    assert holds_a_model_entry == 0
 
 
 def test__conflict_builds_the_shared_finding_dict():

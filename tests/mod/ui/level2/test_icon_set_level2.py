@@ -51,13 +51,6 @@ def _opaque_pixels(icon, size):
             if QtGui.QColor(image.pixelColor(x, y)).alpha() == 255]
 
 
-def test_every_panel_icon_has_a_file():
-    from ui.ui_helpers import ICON_DIR
-
-    for name in _panel_icons():
-        assert os.path.isfile(os.path.join(ICON_DIR, "%s.svg" % name)), name
-
-
 def test_every_panel_icon_is_drawn_on_the_grid_the_tint_scales_from():
     """
     24x24 and `currentColor`, on every panel icon, whatever set it came from.

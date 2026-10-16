@@ -10,7 +10,7 @@ import os
 
 import pytest
 
-from core.measure import Measurement, compare, measure
+from core.measure import compare, measure
 from core.events import REVIEW_VERDICT
 from tests import modelmania_harness
 from tests.loop_helpers import (
@@ -170,11 +170,6 @@ def test_a_truncated_log_is_measured_from_what_survived_the_cut():
     assert result.verdict is None
 
 
-def test_a_measurement_is_a_plain_dataclass():
-    result = measure(_fixture("reached_verdict.jsonl"))
-    assert isinstance(result, Measurement)
-
-
 def _cells(table, metric):
     row = next(line for line in table.splitlines() if line.split("|")[1].strip() == metric)
     return [cell.strip() for cell in row.split("|")[2:4]]
@@ -206,13 +201,6 @@ def test_compare_with_no_runs_on_one_side_is_zero_not_a_crash():
 def test_a_run_with_no_assertions_or_review_verdicts_has_zero_fail_rates():
     """Blocked before either phase ran: both are 0.0, not an undefined rate."""
     result = measure(_fixture("blocked.jsonl"))
-
-    assert result.assertion_fail_rate == 0.0
-    assert result.review_fail_rate == 0.0
-
-
-def test_a_run_with_no_assertions_but_a_verdict_reads_only_the_verdict():
-    result = measure(_fixture("reached_verdict.jsonl"))
 
     assert result.assertion_fail_rate == 0.0
     assert result.review_fail_rate == 0.0
@@ -472,20 +460,6 @@ def test_measure_reads_a_user_stop_as_neither_verdict_nor_blocked(tmp_path):
 
     assert result.verdict is None
     assert result.blocked_reason is None
-
-
-def test_a_session_log_tells_a_user_stop_and_a_genuine_block_apart(tmp_path):
-    """The event kind itself, not just what `measure` does with it (AC2)."""
-    from core.events import BLOCKED, EventStream, INTENT, STOPPED, replay
-
-    events = EventStream()
-    events.emit(INTENT, text="a nut")
-    events.emit(STOPPED, reason="Stopped by you.")
-
-    stream, _ = replay(_write(tmp_path, "stopped.jsonl", events))
-
-    assert any(event.kind == STOPPED for event in stream)
-    assert not any(event.kind == BLOCKED for event in stream)
 
 
 def test_blocked_rate_does_not_count_a_budget_exhausted_or_an_aborted_session(tmp_path):

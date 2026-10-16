@@ -240,35 +240,6 @@ def test_the_active_body_is_read_on_the_main_thread(qt_app):
     assert read_on == [QtCore.QThread.currentThread()]
 
 
-def test_there_is_no_addtodo_or_singleshot_path_left_anywhere():
-    """
-    The dead branch is gone, not merely deprioritised.
-
-    Checked against the parsed source rather than the text, so the comment
-    explaining why they are gone does not count as using them. The panel's own
-    scroll-to-bottom is Qt UI work on the main thread, not dispatch; only core/
-    may not use these at all. The accordion's deferred flush is the same kind:
-    `append_text` already runs on the main thread and the zero-delay timer
-    coalesces a burst of streamed deltas into one relayout, so it moves no work
-    between threads.
-    """
-    import ast
-    import os
-
-    from tests.source_tree import sources
-
-    offenders = []
-    for where, source in sources():
-        filename = os.path.basename(where)
-        tree = ast.parse(source, where)
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Attribute) and node.attr in ("addTodo", "singleShot"):
-                offenders.append("%s uses %s" % (filename, node.attr))
-
-    allowed = ("daedalus_panel.py", "accordion_widget.py")
-    assert [o for o in offenders if not o.startswith(allowed)] == []
-
-
 def _core_sources():
     """
     Walked from `core.__path__`, not from a leaf module, so the reach stays

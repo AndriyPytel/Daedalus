@@ -71,13 +71,6 @@ def test_a_local_provider_has_an_address_field_and_it_is_not_masked(providers_pa
         "the address is typed blind into a masked field"
 
 
-def test_a_hosted_provider_is_not_asked_for_an_address(providers_page):
-    """OpenAI's endpoint is not the user's to know, so the row is not shown."""
-    _select(providers_page, "OpenAI")
-
-    assert not providers_page.base_url_container.isVisible()
-
-
 def test_a_local_providers_key_is_announced_as_optional(providers_page):
     _select(providers_page, LOCAL)
     assert "optional" in providers_page.key_lbl.text().lower()

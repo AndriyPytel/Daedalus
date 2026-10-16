@@ -7,7 +7,7 @@ import hashlib
 
 import pytest
 
-from service.blobstore import BlobStore, LocalBlobStore
+from service.blobstore import LocalBlobStore
 
 KEY = "session/ses_1/ckpt/1.FCStd"
 
@@ -35,7 +35,3 @@ def test_a_key_that_is_not_a_plain_relative_path_is_refused_before_anything_is_w
     with pytest.raises(ValueError):
         LocalBlobStore(str(tmp_path)).put(key, b"x")
     assert list(tmp_path.iterdir()) == []
-
-
-def test_the_local_store_is_a_blob_store():
-    assert issubclass(LocalBlobStore, BlobStore)

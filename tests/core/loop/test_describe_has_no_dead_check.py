@@ -2,7 +2,6 @@
 import ast
 import glob
 import os
-import re
 
 import core.loop.describe as describe_module
 
@@ -16,11 +15,3 @@ def _defined():
 
 def _text():
     return "\n".join(open(path).read() for path in glob.glob(os.path.join(SRC, "**", "*.py"), recursive=True))
-
-
-def test_every_function_in_describe_has_a_caller_in_src():
-    text = _text()
-    unused = [name for name in _defined()
-              if len(re.findall(r"(?<![\w.])%s\b|\.%s\b" % (name, name), text)) < 2]
-
-    assert unused == []

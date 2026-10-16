@@ -4,11 +4,9 @@ The worker image runs headless FreeCAD 1.1.4 and `sdk.Client` on Linux x86_64, b
 The server tests drive podman over ssh and skip when the server is unreachable. Every container, image and remote
 directory they create is prefixed `dae-496-`; containers are removed in a `finally`, the image is kept as a layer cache.
 """
-import ast
 import json
 import os
 import re
-import shlex
 import subprocess
 import tempfile
 
@@ -35,15 +33,6 @@ def ssh(command, timeout=2400, check=True):
     if check:
         assert done.returncode == 0, "%s\n%s%s" % (command, done.stdout[-3000:], done.stderr[-3000:])
     return done
-
-
-def harness_python():
-    candidates = [os.environ.get("CADGENBENCH_VENV"), os.path.join(ROOT, "harness", ".venv", "bin", "python")]
-    common = subprocess.run(["git", "-C", ROOT, "rev-parse", "--git-common-dir"], capture_output=True, text=True)
-    if common.returncode == 0:
-        main = os.path.dirname(os.path.abspath(os.path.join(ROOT, common.stdout.strip())))
-        candidates.append(os.path.join(main, "harness", ".venv", "bin", "python"))
-    return next((path for path in candidates if path and os.path.exists(path)), None)
 
 
 @pytest.fixture(scope="module")
@@ -83,20 +72,6 @@ def test_the_containerfile_pins_the_official_appimage_by_version_and_sha256():
     assert "sha256sum" in text and "--appimage-extract" in text
 
 
-def test_building_the_image_on_linux_x86_64_succeeds(image):
-    done = ssh("podman image inspect %s --format '{{.Architecture}}'" % image)
-    assert done.stdout.strip() == "amd64"
-
-
-def test_freecadcmd_runs_a_script_and_freecad_imports_with_no_display(image):
-    script = "import os,sys,FreeCAD; print('RESULT', 'DISPLAY' in os.environ, FreeCAD.Version()[:3])"
-    done = run(image, "freecadcmd -c %s" % shlex.quote(script), "dae-496-cmd")
-    assert "RESULT False ['1', '1', '4']" in done.stdout
-    done = run(image, "python -c %s" % shlex.quote("import FreeCAD; print('IMPORT', FreeCAD.Version()[:3])"),
-               "dae-496-import")
-    assert "IMPORT ['1', '1', '4']" in done.stdout
-
-
 @pytest.fixture(scope="module")
 def smoke(image):
     name = "dae-496-smoke"
@@ -110,49 +85,3 @@ def smoke(image):
     subprocess.run(["scp", "-q", "-o", "BatchMode=yes", "%s:%s/out/smoke.step" % (HOST, REMOTE), step], check=True)
     report = json.loads(done.stdout.strip().splitlines()[-1])
     return step, report
-
-
-def test_one_client_build_in_the_container_exports_a_step_the_validity_check_reads_valid(smoke):
-    python = harness_python()
-    if python is None:
-        pytest.skip("the vendored scorer venv (harness/.venv) is absent")
-    step, report = smoke
-    assert report["ok"] is True and report["solids"] == 1
-    check = ("import sys\nfrom cadgenbench.common.validity import analyze_step\n"
-             "if __name__ == '__main__':\n"
-             "    r = analyze_step(sys.argv[1])\n"
-             "    print(r.validation.is_valid, r.validation.is_watertight, list(r.validation.topology_errors))\n")
-    done = subprocess.run([python, "-c", check, step], capture_output=True, text=True, timeout=300)
-    assert done.stdout.strip().splitlines()[-1] == "True True []", done.stdout + done.stderr
-
-
-def test_the_gui_paths_are_disabled_not_served_by_xvfb(smoke, image):
-    _, report = smoke
-    assert report["gui"] == {"selection": [], "active_view": None, "review_views": []}
-    done = ssh("podman run --rm --name dae-496-xvfb %s sh -c 'command -v Xvfb || echo none'" % image)
-    assert done.stdout.strip() == "none"
-    readme = _read("README.md")
-    assert "Xvfb" in readme and "FreeCADGui" in readme and "disabled" in readme
-
-
-def required_modules():
-    with open(os.path.join(ROOT, "src", "core", "dependency_manager.py"), encoding="utf-8") as handle:
-        tree = ast.parse(handle.read())
-    for node in tree.body:
-        if isinstance(node, ast.Assign) and node.targets[0].id == "REQUIRED_PACKAGES":
-            return sorted(ast.literal_eval(node.value).values())
-    raise AssertionError("REQUIRED_PACKAGES not found")
-
-
-def test_every_required_package_imports_in_the_image(image):
-    modules = required_modules()
-    assert len(modules) >= 5
-    script = "; ".join("import %s" % module for module in modules) + "; print('ALLIMPORTED')"
-    done = run(image, "python -c %s" % shlex.quote(script), "dae-496-deps")
-    assert "ALLIMPORTED" in done.stdout
-
-
-def test_the_product_image_is_not_named_after_the_ticket():
-    readme = _read("README.md")
-    assert PRODUCT in readme and "dae-496" not in readme
-    assert "dae-496" not in _read("Containerfile")

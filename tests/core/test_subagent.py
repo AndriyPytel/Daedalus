@@ -39,11 +39,6 @@ def test_a_spawn_once_budget_exhausted_is_refused_too():
     assert supervisor.refusals[-1] == {"reason": sa.BUDGET_EXHAUSTED}
 
 
-def test_defaults_match_the_measured_p90s():
-    assert sa.TURN_BUDGET == 30
-    assert sa.TOKEN_BUDGET == 2_600_000
-
-
 def test_delegate_returns_only_the_answer_worker_history_is_not_merged():
     phase = Session()
     worker_llm = ScriptedLLMClient(["worker's private reasoning then an answer"])

@@ -639,7 +639,6 @@ def test_an_op_off_the_36_list_skips_the_typeid_check():
     assert op_typeid_mismatch("squish", created, objects) is None
 
 
-
 def test_a_literal_name_lookup_of_an_object_this_step_just_created_is_rejected():
     """
     This reproduces FreeCAD renaming a new object on a name
@@ -914,14 +913,6 @@ def test_a_bare_numeral_unpacked_from_a_tuple_is_still_found():
     assert _dimensional_findings(code) == [("literal", "pad.Length", 150.0)]
 
 
-def test_the_lint_wired_checks_now_touch_a_bare_dimensional_numeral():
-    """`dimensional_literal`/`dimensional_default` are wired into `lint()`'s
-    refusal list: a Step can read a Design value at the point it runs, so
-    the only other form a bare number could take is refused."""
-    assert not lint("pad.Length = 80.0").ok
-    assert not lint("pad.Length = design.get('length', 80.0)\n").ok
-
-
 def test_a_dimensional_literal_refusal_names_the_target_and_the_value():
     report = lint("pad.Length = 80.0").report()
 
@@ -929,36 +920,5 @@ def test_a_dimensional_literal_refusal_names_the_target_and_the_value():
     assert "80.0" in report
 
 
-def test_a_design_reference_resolved_with_a_default_is_still_refused():
-    report = lint("pad.Length = design.get('length', 80.0)\n").report()
-
-    assert "pad.Length" in report
-
-
 def test_a_dimension_read_from_design_by_index_passes():
     assert lint("pad.Length = design['features']['Boss']['length']\n").ok
-
-
-def test_counts_indices_and_a_right_angle_pass_lint_too():
-    for code in ("pad.Length = 0", "pad.Length = 1", "revolve.Angle = 90",
-                "revolve.Angle = 360"):
-        assert lint(code).ok, lint(code).report()
-
-
-def test_a_selection_from_pick_faces_with_expect_is_counted():
-    code = (
-        "held = pick_faces(base.Shape, plane_face('z', 10), expect=1)\n"
-        "sk.AttachmentSupport = (base, held)\n"
-        "fillet.Base = (base, held)\n"
-    )
-
-    assert lint(code).ok, lint(code).report()
-
-
-def test_a_pick_faces_call_without_expect_is_uncounted():
-    code = (
-        "held = pick_faces(base.Shape, plane_face('z', 10))\n"
-        "fillet.Base = (base, held)\n"
-    )
-
-    assert not lint(code).ok

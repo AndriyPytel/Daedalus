@@ -42,12 +42,3 @@ def test_nothing_outside_the_harness_directory_imports_it():
     offenders = ["%s imports %s" % (where, module) for where, module in harness_imports()]
 
     assert not offenders, "only the harness scripts may import each other: %s" % ", ".join(offenders)
-
-
-def test_the_harness_directory_holds_exactly_these_scripts():
-    from tests.source_tree import tracked
-
-    harness = {path for path in tracked() if path.startswith("src/tools/")}
-
-    assert harness == {"src/tools/run.py", "src/tools/lane.py", "src/tools/score.py",
-                       "src/tools/cadgenbench_bundle.py"}

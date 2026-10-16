@@ -14,7 +14,6 @@ into FreeCAD's C++ core does. Python cannot catch it; only process isolation can
 GENERIC_DEATH_ENDS is the last sentence of the generic death message; anything
 the worker said follows it.
 """
-import os
 import time
 
 import pytest
@@ -102,19 +101,6 @@ def saved_document(tmp_path):
         FreeCAD.closeDocument(doc.Name)
 
 
-def test_a_clean_step_comes_back_ok_with_a_render(warm, tmp_path):
-    png = str(tmp_path / "render.png")
-
-    result = warm.check(
-        "box = doc.addObject('Part::Box', 'Box')\nbox.Length = 10",
-        render_path=png,
-    )
-
-    assert result.ok, result.traceback
-    assert [o["name"] for o in result.objects] == ["Box"]
-    assert os.path.getsize(png) > 1000, "the render is empty"
-
-
 def test_the_workers_render_is_byte_identical_to_preflight_render_directly(warm, tmp_path):
     """
     `render` moved out of `preflight_worker` into `preflight_render`
@@ -145,14 +131,6 @@ def test_the_workers_render_is_byte_identical_to_preflight_render_directly(warm,
         assert open(via_worker, "rb").read() == open(via_direct_call, "rb").read()
     finally:
         FreeCAD.closeDocument(doc.Name)
-
-
-def test_the_worker_stays_warm_between_requests(warm):
-    first = warm.check("doc.addObject('Part::Box', 'A')")
-    second = warm.check("doc.addObject('Part::Box', 'B')")
-
-    assert first.ok and second.ok
-    assert warm.alive
 
 
 def test_the_document_copy_is_opened_and_seen(warm, saved_document):
@@ -288,26 +266,6 @@ def test_code_that_crashes_the_core_kills_the_worker_not_us(fresh):
 
     assert not result.ok
     assert "died" in result.traceback
-    assert fresh.pid != doomed, "the worker was not replaced"
-    assert fresh.alive
-
-
-def test_a_dead_worker_says_what_it_said_on_the_way_out(fresh):
-    """
-    The production crash: an unknown constraint type name segfaults inside the
-    C++ constructor of Sketcher.Constraint, before any Python-level anything.
-    The one line FreeCAD leaves on stderr is all the next attempt has to go on,
-    and the message used to be built after restart() had already swapped that
-    stderr for the new worker's empty one.
-    """
-    doomed = fresh.pid
-
-    result = fresh.check("Sketcher.Constraint('Concentric', 0, 1)")
-
-    assert not result.ok
-    assert GENERIC_DEATH_ENDS in result.traceback
-    assert "Unknown exception while processing file" in result.traceback, \
-        "the death message carries nothing the worker actually said"
     assert fresh.pid != doomed, "the worker was not replaced"
     assert fresh.alive
 

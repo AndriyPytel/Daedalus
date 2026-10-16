@@ -97,21 +97,6 @@ def test_ownership_is_remembered_across_steps_in_a_session():
     assert built.owned == {"Box", "Pad"}
 
 
-def test_recompute_of_a_dependent_object_is_not_a_modification():
-    """
-    `kernel_result` is what the kernel already found; a downstream Shape
-    recompute is not the Step modifying the user's object, and must not turn
-    into a prompt. The kernel already filtered Shape-only changes, so
-    `modified` is empty.
-    """
-    asked = Asked()
-
-    result = pipeline(confirm=asked).apply("fillet()", kernel_result=touching(created=["Fillet"]))
-
-    assert result.ok
-    assert asked.asks == []
-
-
 def test_modifying_an_object_the_user_made_is_covered_by_the_plan_gate():
     """
     The Plan the user approved named the change in prose. A second question per

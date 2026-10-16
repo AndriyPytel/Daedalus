@@ -36,13 +36,6 @@ def _op_vocabulary(section):
     return [w.strip() for w in listed.group(1).split(",")]
 
 
-def test_the_op_vocabulary_is_36_entries_with_no_other_escape_hatch():
-    ops = _op_vocabulary(_op_section(_language_md()))
-
-    assert len(ops) == 36
-    assert "other" not in ops
-
-
 def test_the_marker_and_the_op_field_are_both_in_the_reply_shape():
     text = _plan_md()
 

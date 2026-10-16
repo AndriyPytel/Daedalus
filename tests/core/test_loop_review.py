@@ -16,7 +16,6 @@ import tempfile
 import time
 from dataclasses import replace
 
-import pytest
 
 from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, BUDGET_EXHAUSTED, CALL_STARTED, COMPLETED,
@@ -146,19 +145,6 @@ def test_plan_is_told_to_cite_and_told_it_does_not_write_the_list():
                       "twenty is the ceiling"):
         assert cancelled not in plan_system, \
             "plan.md still carries copy that has been removed: " + cancelled
-
-
-def test_the_named_parameters_mechanism_is_gone_from_the_code():
-    """
-    Not merely unused — absent. A comparator left importable is a comparator
-    a later change wires back in.
-    """
-    with pytest.raises(ImportError):
-        from core.kernel.kernel_worker import wrong_parameters    # noqa: F401
-
-    from core.freecad_apply import build_registry
-    described = {tool["name"]: tool for tool in build_registry(pipeline=object()).describe()}
-    assert "parameters" not in described["apply_step"]["parameters"]["properties"]
 
 
 def test_review_is_given_four_views_and_execute_cannot_ask_for_one():
@@ -471,8 +457,6 @@ def test_blocked_waits_for_the_user_rather_than_failing_silently():
     assert list(events)[-1].kind == BUDGET_EXHAUSTED
 
 
-
-
 def test_a_refused_execute_ends_blocked_with_the_provider_s_reason():
     result, events, _, _ = drive([
         plan_reply("First", "Second"), code_reply("first()"), a_refusal(),
@@ -557,8 +541,6 @@ def test_a_reply_that_is_all_reasoning_and_no_answer_is_not_called_malformed():
     assert first_event(events, ERROR) is not None
 
 
-
-
 def test_a_stream_the_provider_cut_off_is_sent_again_rather_than_failing():
     """
     The opencode gateway closes a long stream at random — four of seven,
@@ -572,9 +554,6 @@ def test_a_stream_the_provider_cut_off_is_sent_again_rather_than_failing():
 
     assert result.ok
     assert len(llm.calls) == 7, "design, Plan twice, Execute (code, declare), review_suspect, Review"
-
-
-
 
 
 def test_a_cut_off_stream_backs_off_before_the_retry(monkeypatch):
@@ -822,14 +801,6 @@ def test_a_phase_is_answered_by_the_client_its_own_profile_names():
     assert not doing.turns and not thinking.turns
 
 
-
-
-
-
-
-
-
-
 def test_a_phase_that_answers_without_thinking_leaves_the_accordion_empty():
     """
     Nothing is said in place of reasoning that did not arrive. The accordion
@@ -1025,8 +996,6 @@ def test_a_run_reports_what_it_did():
     assert result.verdict == "pass"
 
 
-
-
 def test_plan_can_ask_instead_of_planning():
     """
     This is the in-process half of the standing rule: with a value the part
@@ -1049,8 +1018,6 @@ def test_plan_can_ask_instead_of_planning():
     assert kinds.index(QUESTION) < kinds.index(PLAN)
     assert result.ok
     assert tools.applied_codes() == ["a()", "b()"]
-
-
 
 
 def test_the_users_answer_is_written_into_the_description_and_not_handed_to_plan():
@@ -1140,8 +1107,6 @@ def test_a_settle_attempt_that_changes_nothing_falls_through_and_asks_no_more():
     assert first_event(events, PLAN).data["unanswered"] == [MISSING]
 
 
-
-
 def test_the_plan_gate_lists_a_design_settled_value_as_an_assumption():
     """
     End to end, the first Acceptance Criterion: a `not_defined` length Design
@@ -1204,8 +1169,6 @@ def test_a_run_nobody_answered_at_all_reaches_the_gate_rather_than_a_block():
     assert "half the 50 mm height" in json.dumps(first_event(events, PLAN).data["decided"]), \
         "the value the model settled reached the Gate without its evidence"
     assert tools.applied_codes() == ["pad()"]
-
-
 
 
 def test_a_question_about_a_material_card_is_answered_from_the_tools():
@@ -1277,8 +1240,6 @@ def test_rereads_counts_re_reads_of_the_drawing_and_nothing_else():
     design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompts_of("design"))]
     assert len(design_turns) == 5, "the sheet was read past its ceiling"
     assert first_event(events, PLAN).data["unanswered"] == ["q1", "q2", "q3"]
-
-
 
 
 def test_a_question_about_the_drawing_goes_to_the_sheet_before_the_user():

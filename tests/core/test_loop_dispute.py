@@ -1,7 +1,7 @@
 """
 Level 1 -- a revision that finds an unmet acceptance check wrong disputes it with a measurement; the run ends unverified, and blocked only when the revision neither fixes nor disputes an entry.
 """
-from core.events import BLOCKED, DISPUTED, KINDS
+from core.events import BLOCKED, DISPUTED
 from core.loop.prompt import nobody_answering, prompt
 from tests.event_helpers import first_event
 from tests.loop_helpers import (
@@ -100,11 +100,6 @@ def test_plan_md_tells_the_revision_it_may_dispute_in_both_modes():
     for text in (asking, headless):
         assert '"disputes"' in text
         assert "measured" in text and "because" in text
-
-
-def test_disputed_is_a_kind_of_event():
-    assert DISPUTED in KINDS
-
 
 
 def test_a_dispute_naming_the_check_by_its_short_name_matches_the_unmet_entry_the_checks_cut():

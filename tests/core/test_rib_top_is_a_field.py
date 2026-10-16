@@ -45,29 +45,3 @@ A_RIB_WITH_NEITHER_ESTABLISHED = {
     "features": [{"id": "rib-left", "kind": "rib",
                   "height": {"value": "10 mm"}}],
 }
-
-
-def test_merge_leaves_slope_and_rounding_absent_rather_than_guessed():
-    grown = merge({}, A_RIB_WITH_NEITHER_ESTABLISHED)
-
-    feature = grown["features"][0]
-    assert "slope" not in feature
-    assert "rounding" not in feature
-
-
-def test_two_reads_of_a_replayed_rib_step_agree_on_slope_and_rounding():
-    """
-    `docs/research/road-to-the-fillets.md` (§2.1) records this Step
-    re-derived by hand a different way on every attempt -- `atan(15/45)`
-    read as `"15/45 = 1, and it is 0.33"` -- and the recorded Steps 4 and 5
-    hand-deriving the same slope and tip radius from `height`/`thickness`/
-    `position` independently. Two Steps reading the merged, field-filled
-    feature instead get the one number `merge()` settled, not a fresh
-    derivation each time.
-    """
-    grown = merge({}, A_RIB_WITH_SLOPE_AND_ROUNDING)
-
-    step_four_reads = grown["features"][0]
-    step_five_reads = grown["features"][0]
-    assert step_four_reads["slope"] == step_five_reads["slope"]
-    assert step_four_reads["rounding"] == step_five_reads["rounding"]

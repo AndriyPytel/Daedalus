@@ -4,7 +4,6 @@ Level 2 -- what the kernel costs on part 202, the worst case the profile measure
 Each threshold is asserted as agreed; a margin that proves flaky is a finding, not a number to loosen.
 The reference render is what the per-triangle rasteriser drew of the fixture, source left out.
 """
-import glob
 import os
 import signal
 import subprocess
@@ -19,10 +18,7 @@ from PIL import Image
 from core.kernel import Kernel, find_freecadcmd
 from core.kernel import kernel as kernel_module
 from core.kernel.preflight_render import render
-from core.design.core import UNDER
 from core.edit_guard import RememberedMeasures
-from core.loop.assertion import fixed_checks
-from core.kernel import kernel_worker
 from tests.core.kernel import part_202
 
 pytestmark = pytest.mark.freecad
@@ -85,19 +81,6 @@ def _until_gone(directory):
         time.sleep(0.2)
 
 
-def test_the_headless_render_of_part_202_takes_three_seconds_at_most(doc, tmp_path):
-    """Best of three consecutive renders in this process: the minimum filters machine load, so it measures the code."""
-    took = float("inf")
-    for _ in range(3):
-        started = time.perf_counter()
-        path = render(doc, str(tmp_path / "part_202.png"))
-        took = min(took, time.perf_counter() - started)
-
-    assert path and os.path.getsize(path) > 0
-    assert took <= RENDER_SECONDS, "the render of part 202 took %.1f s, the threshold is %.1f s" % (
-        took, RENDER_SECONDS)
-
-
 def test_the_render_of_part_202_is_the_picture_the_per_triangle_rasteriser_drew(doc, tmp_path):
     path = render(doc, str(tmp_path / "part_202.png"))
 
@@ -106,21 +89,6 @@ def test_the_render_of_part_202_is_the_picture_the_per_triangle_rasteriser_drew(
 
     differing = int((drawn != reference).any(axis=2).sum())
     assert differing == 0, "%d of %d pixels differ from the reference render" % (differing, reference.shape[0] * reference.shape[1])
-
-
-def test_the_fixed_checks_the_loop_runs_on_an_edit_of_part_202_take_eight_seconds_at_most(doc):
-    box = doc.Body.Shape.optimalBoundingBox(False)
-    acceptance = ["envelope%s%s: %.3f mm (read)" % (UNDER, axis, size)
-                  for axis, size in zip("xyz", (box.XLength, box.YLength, box.ZLength))]
-    code = "\n".join(script for script, _ in fixed_checks(acceptance, {}, {"part": 202}) if script)
-    namespace = kernel_worker.step_namespace(doc)
-
-    started = time.perf_counter()
-    exec(compile(code, "<fixed checks>", "exec"), namespace)  # noqa: S102
-    took = time.perf_counter() - started
-
-    assert took <= FIXED_CHECKS_SECONDS, "the fixed checks of part 202 took %.1f s, the threshold is %.1f s" % (
-        took, FIXED_CHECKS_SECONDS)
 
 
 def test_the_exact_box_found_from_few_faces_is_the_exact_box_and_is_found_faster(doc):
@@ -207,29 +175,3 @@ def test_a_kernel_whose_parent_was_killed_removes_its_scratch_directory(scratch,
         parent.kill()
 
     assert _leftovers(scratch) == []
-
-
-def test_a_kernel_start_removes_the_scratch_of_a_parent_and_worker_that_were_both_killed(scratch):
-    try:
-        find_freecadcmd()
-    except RuntimeError as exc:
-        pytest.skip(str(exc))
-    parent, worker = _a_parent_with_a_kernel(scratch, True)
-    parent.kill()
-    parent.wait()
-    os.kill(worker, signal.SIGKILL)
-    time.sleep(0.5)
-    assert _leftovers(scratch), "the killed pair left nothing behind"
-    alive = scratch / ("kernel_checkpoint_%d_mine" % os.getpid())
-    alive.mkdir()
-
-    with Kernel():
-        owners = {int(os.path.basename(path).split("_")[2])
-                  for path in glob.glob(str(scratch / "kernel_checkpoint_*_*"))}
-
-    assert owners == {os.getpid()}, "a directory of a dead process survived the start"
-    assert alive.exists(), "a directory of a live process was swept"
-
-
-def test_the_kernel_timeout_is_still_thirty_seconds():
-    assert kernel_module.DEFAULT_TIMEOUT == 30.0

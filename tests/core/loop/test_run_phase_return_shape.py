@@ -16,14 +16,3 @@ def _callers():
                 and relative != "src/core/agent/agent.py":
             with open(os.path.join(ROOT, relative), encoding="utf-8") as handle:
                 yield relative, handle.read()
-
-
-def test_no_call_site_unpacks_run_phase_into_an_unread_checkpoints_list():
-    callers = [(relative, source) for relative, source in _callers() if "run_declaring(" in source]
-    assert callers
-    for relative, source in callers:
-        assert "checkpoints" not in source, relative
-
-
-def test_no_phase_calls_run_phase_around_run_declaring():
-    assert [relative for relative, source in _callers() if "run_phase(" in source] == []

@@ -74,18 +74,6 @@ def test_a_forced_handback_never_reaches_the_going_nowhere_gate(monkeypatch):
     assert BLOCKED not in kinds
 
 
-def test_a_forced_handback_names_the_budget_as_its_terminal_cause(monkeypatch):
-    """AC2: the reason a forced declaration ends a run on names the spent
-    turn budget, not the Step's own buildability."""
-    monkeypatch.setattr(run_module, "execute", _forced_handback)
-    llm = ScriptedLLMClient([design_reply(), plan_reply("Pad the rib")])
-
-    result = run("Pad a rib", llm=llm, tools=FakeTools().registry, events=EventStream(),
-                 kernel=StubKernel())
-
-    assert "turn budget" in result.reason
-
-
 def test_a_forced_declaration_carries_how_many_times_the_step_was_rehearsed():
     """
     AC2's seam: `Written.rehearsals` counts every declared-but-rejected

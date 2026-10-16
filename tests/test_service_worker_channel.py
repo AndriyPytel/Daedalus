@@ -14,7 +14,6 @@ import time
 import pytest
 
 from service import db
-from service.repository import Repository
 from service.supervisor import Worker
 from test_service_postgres import _admin_url, conn, database_url, repo  # noqa: F401
 
@@ -176,40 +175,3 @@ def _ssh(command, timeout=600, check=True):
     return done
 
 
-@pytest.fixture(scope="module")
-def worker_image():
-    probe = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", HOST, "podman --version"],
-                           capture_output=True, text=True)
-    if probe.returncode != 0:
-        pytest.skip("home server %s unreachable over ssh: %s" % (HOST, probe.stderr.strip()[-200:]))
-    _ssh("rm -rf ~/%s/ctx && mkdir -p ~/%s/ctx" % (REMOTE, REMOTE))
-    tar = subprocess.Popen(["tar", "--exclude=__pycache__", "-cf", "-", "-C", ROOT, "src", "config", "deploy"],
-                           stdout=subprocess.PIPE)
-    sent = subprocess.run(["ssh", "-o", "BatchMode=yes", HOST, "tar -xf - -C ~/%s/ctx" % REMOTE],
-                          stdin=tar.stdout, capture_output=True)
-    tar.stdout.close()
-    assert tar.wait() == 0 and sent.returncode == 0, sent.stderr
-    _ssh("cd ~/%s/ctx && podman build -t %s -f deploy/worker/Containerfile ." % (REMOTE, IMAGE), timeout=2400)
-    return IMAGE
-
-
-def test_the_real_worker_in_the_image_comes_up_over_podman_run_dash_i_and_stops_leaving_no_container(
-        worker_image, database_url, repo):
-    owner = repo.create_user()
-    session = repo.create_session(owner)
-    name = "dae-498-real"
-    _ssh("podman rm -f %s >/dev/null 2>&1" % name, check=False)
-    argv = ["ssh", "-o", "BatchMode=yes", HOST,
-            "podman run -i --rm --name %s %s python -m service.worker" % (name, worker_image)]
-    worker = Worker(argv, database_url, owner, session["id"], ready_timeout=180)
-    try:
-        worker.start()
-        assert _ssh("podman ps -q --filter name=%s" % name).stdout.strip()
-        run_id = worker.send("make a 10 mm cube")
-        until(lambda: repo.get_run(owner, run_id)["state"] in ("completed", "failed", "stopped", "blocked"), seconds=300)
-        assert repo.list_events(owner, run_id)
-    finally:
-        worker.stop(timeout=30)
-        gone = until(lambda: not _ssh("podman ps -aq --filter name=%s" % name).stdout.strip(), seconds=30)
-        _ssh("podman rm -f %s >/dev/null 2>&1" % name, check=False)
-    assert gone

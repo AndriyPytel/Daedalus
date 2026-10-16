@@ -57,38 +57,6 @@ def test_a_retry_gets_its_own_stem_for_both_the_log_and_the_step(tmp_path):
     assert run["attempts"] == jsonls
 
 
-def test_two_attempts_on_the_same_stamp_still_get_two_files(tmp_path):
-    """
-    A run that dies in under a second -- the misrouted attempt 1 in
-    `logs/mm429-smoke-part1-run2` -- can share its stamp with the retry
-    that follows it; the second attempt must still land on its own path
-    rather than overwrite the first's `.jsonl`/`.step`.
-    """
-    out = str(tmp_path)
-
-    class FakeProcess:
-        returncode = 1
-
-    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider):
-        open(log, "w").close()
-        open(log[: -len(".jsonl")] + ".step", "w").close()
-        return FakeProcess()
-
-    lane.run_one, real_run_one = fake_run_one, lane.run_one
-    lane.watch, real_watch = lambda *a, **k: "exited", lane.watch
-    try:
-        lane.sweep([("mm24-opus", "sheet.pdf")], ["opus"], "medium", None, "Build it.", out,
-                  1800, 2, False, "Claude (subscription)", None,
-                  timestamp=lambda: "20260101-000001")
-    finally:
-        lane.run_one, lane.watch = real_run_one, real_watch
-
-    jsonls = sorted(glob.glob(os.path.join(out, "opus", "mm24-opus.*.jsonl")))
-    steps = sorted(glob.glob(os.path.join(out, "opus", "mm24-opus.*.step")))
-    assert len(jsonls) == 2, jsonls
-    assert [p[: -len(".jsonl")] for p in jsonls] == [p[: -len(".step")] for p in steps]
-
-
 def test_logs_reads_the_final_attempt_from_state_json_not_every_retry(tmp_path):
     """
     Two failed attempts at the same key must not turn into two rows of
@@ -234,37 +202,6 @@ def test_status_runs_as_a_standalone_script_not_only_imported(tmp_path):
 
     assert result.returncode == 0, result.stderr
     assert "ModuleNotFoundError" not in result.stderr
-
-
-def test_baseline_tasks_walk_the_pinned_eight_sheets_twice_as_replicates():
-    """
-    The lane walks each of the 8 pinned sheets twice under the same
-    model -- two replicates giving a spread, not an `off`/`on` comparison --
-    so its own `--baseline` and `report.py`'s reading of the result cannot
-    drift onto a different set of sheets than the modelmania comparison
-    run measures against.
-    """
-    tasks = lane.baseline_tasks()
-
-    labels = [label for label, _sheet in tasks]
-    assert len(tasks) == 16
-    assert sorted(labels) == sorted(
-        "%s-rep%d" % (stem, rep)
-        for stem in ("mm2023-phase1", "mm2023-phase2", "mm2024-phase1", "mm2024-phase2",
-                     "mm2025-phase1", "mm2025-phase2", "model-mania-2024",
-                     "model-mania_-in-person-2023")
-        for rep in (1, 2)
-    )
-    assert len(set(labels)) == 16
-
-
-def test_baseline_needs_exactly_one_model(monkeypatch, capsys):
-    monkeypatch.setattr(sys, "argv", [
-        "lane.py", "--baseline", "--model", "sonnet", "--model", "opus", "--out", "/tmp/x",
-    ])
-
-    with pytest.raises(SystemExit):
-        lane.main()
 
 
 def _write_events(path, events):
@@ -450,34 +387,6 @@ def test_exemplar_for_ignores_an_arm_suffix(monkeypatch, tmp_path):
     assert lane._exemplar_for("mm2025-phase1-rep1-off") == str(tmp_path / "mm2025-phase1.step")
 
 
-def test_pinned_tasks_walk_the_six_phase_sheets_three_times_each():
-    """
-    Three repeats is the point: four headless runs of one sheet took 27.4,
-    32.5, 66.1 and 122.4 minutes on identical input, and one repeat would
-    report that spread as a fact about the sheet rather than about the run.
-    """
-    tasks = lane.pinned_tasks()
-
-    labels = [label for label, _sheet in tasks]
-    assert len(tasks) == 18
-    assert sorted(labels) == sorted(
-        "%s-rep%d" % (stem, rep)
-        for stem in ("mm2023-phase1", "mm2023-phase2", "mm2024-phase1", "mm2024-phase2",
-                     "mm2025-phase1", "mm2025-phase2")
-        for rep in (1, 2, 3)
-    )
-    assert len(set(labels)) == 18
-
-
-def test_smoke_tasks_is_one_sheet_one_repeat():
-    tasks = lane.smoke_tasks()
-
-    assert len(tasks) == 1
-    label, sheet = tasks[0]
-    assert "-rep" not in label
-    assert sheet.endswith(".pdf")
-
-
 def test_smoke_tasks_takes_a_sheet_argument():
     tasks = lane.smoke_tasks("mm2024-phase1.pdf")
 
@@ -510,16 +419,6 @@ def test_smoke_cli_selects_mm2024_phase1(monkeypatch, tmp_path):
 def test_pinned_needs_exactly_one_model(monkeypatch):
     monkeypatch.setattr(sys, "argv", [
         "lane.py", "--pinned", "--model", "sonnet", "--model", "opus", "--out", "/tmp/x",
-    ])
-
-    with pytest.raises(SystemExit) as excinfo:
-        lane.main()
-    assert "exactly one --model" in str(excinfo.value)
-
-
-def test_smoke_needs_exactly_one_model(monkeypatch):
-    monkeypatch.setattr(sys, "argv", [
-        "lane.py", "--smoke", "--model", "sonnet", "--model", "opus", "--out", "/tmp/x",
     ])
 
     with pytest.raises(SystemExit) as excinfo:

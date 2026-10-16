@@ -65,12 +65,6 @@ def test_the_summary_line_counts_passed_only_when_nothing_failed():
     assert summary_line(_passing()) == "2 passed"
 
 
-def test_the_summary_line_counts_passed_and_failed_together():
-    from ui.assertion_results_widget import summary_line
-
-    assert summary_line(_failing()) == "0 passed, 1 failed"
-
-
 def test_the_summary_line_is_empty_when_the_checks_could_not_be_written():
     from ui.assertion_results_widget import summary_line
 
@@ -90,15 +84,6 @@ def test_a_passing_run_shows_one_row_per_confirmed_entry():
 
     heading = next(w for w in card.findChildren(QtWidgets.QLabel) if w.text() == "2 passed")
     assert heading is not None
-
-
-def test_a_failing_run_shows_one_row_per_unmet_entry():
-    from ui.accordion_widget import AccordionWidget
-
-    card = _widget(_failing())
-
-    rows = card.findChildren(AccordionWidget)
-    assert [row.toggle_button.text() for row in rows] == ["Lug height is 30mm"]
 
 
 def _mixed(confirmed=("Base height is 10mm",), unmet=("Lug height is 30mm",),

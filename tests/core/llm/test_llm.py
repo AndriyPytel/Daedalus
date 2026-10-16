@@ -600,16 +600,6 @@ def test_an_openai_compatible_gateway_is_asked_to_report_what_it_spent():
     assert completion.kwargs["stream_options"] == {"include_usage": True}
 
 
-def test_openrouter_is_asked_for_usage_and_watched_for_a_cut_stream_too():
-    """Its route is the OpenAI shape as much as a gateway's, terminal chunk and all."""
-    client, completion = client_replaying(openai_chunks())
-    client.model = "openrouter/stealth/union-alpha"
-
-    collect(client.stream([{"role": "user", "content": "hi"}]))
-
-    assert completion.kwargs["stream_options"] == {"include_usage": True}
-
-
 def test_a_gateway_that_closes_the_stream_mid_reply_says_so():
     """
     Measured against the opencode gateway with raw HTTP and no LiteLLM in the

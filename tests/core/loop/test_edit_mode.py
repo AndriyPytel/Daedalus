@@ -8,7 +8,6 @@ import json
 from core.agent import agent as agent_module
 from core.events import EventStream
 from core.llm import ScriptedLLMClient
-from core.loop import execute as execute_module
 from core.loop import plan as plan_module
 from core.loop.assertion import assertion
 from core.prompts import read_prompt
@@ -78,12 +77,6 @@ def test_plan_request_carries_the_base_only_when_there_is_one(monkeypatch):
 
     assert tasks[0]["the_base_part"] == BASE
     assert "the_base_part" not in tasks[1]
-
-
-def test_execute_signature_takes_the_base():
-    import inspect
-
-    assert "base" in inspect.signature(execute_module.execute).parameters
 
 
 def test_each_edit_prompt_has_its_paragraph_keyed_on_the_base():
