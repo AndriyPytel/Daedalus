@@ -159,6 +159,6 @@ def test_plan_and_execute_are_told_how_a_bend_is_built_and_design_is_not_charged
     """
     for phase in (PLAN_PHASE, EXECUTE_PHASE):
         composed = prompt(phase)
-        assert "Revolve" in composed and "bend allowance" in composed, phase
+        assert "`revolve`" in composed and "bend allowance" in composed, phase
         assert "own plane" in composed, phase
     assert "bend allowance" not in prompt(DESIGN_PHASE)

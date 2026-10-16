@@ -62,6 +62,13 @@ a `pad` where the material stands proud of the neighbouring face and a
 the step the material is on, never on the word "step" itself, which this
 Plan already uses for something else.
 
+A bent sheet part is built from its walls and its bends. Each wall is a `pad`
+of the sheet thickness in its own plane, placed where the fold puts it, not in
+the flat pattern's plane. Each bend between two walls is a `revolve` of the
+sheet-thickness section (inner radius R, outer R + thickness) by the bend
+angle about the bend axis. Flat-pattern lengths are developed lengths: a
+wall's own length is its flat length minus its share of the bend allowance.
+
 ## A Step is one sentence
 
 A Step names one operation. It is phrased as an instruction, not the outcome
