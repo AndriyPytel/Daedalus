@@ -394,9 +394,10 @@ in `question` if nothing can be built without it. Asking again instead of
 planning around it ends the run with no Plan at all.{{/asking}}
 {{nobody}}Nobody answers anything in this run: no person reads a question and no phase
 answers one. Do not plan with a number nobody gave you without saying so. Where
-the part cannot be built without a value the description does not carry, pick
-the value yourself, put it in the Step's prose, and say in that Step that you
-chose it and what you chose it from.{{/nobody}}
+the part cannot be built without a value the description does not carry, the
+drawing has already been gone back to for it: pick the value yourself, put it in
+the Step's prose, and say in that Step that you chose it and what you chose it
+from.{{/nobody}}
 
 ## How you work
 

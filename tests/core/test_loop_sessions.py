@@ -726,8 +726,9 @@ def test_an_attachment_reaches_the_design_phase_as_a_picture():
     user showed the assistant a photo it never saw. The phase that
     receives it is the Design phase; Plan never sees a picture.
     """
-    llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
-                             code_reply("box()"), suspect_reply(), verdict_reply("pass")])
+    llm = scripted([design_reply(A_DATUM), plan_reply("Only"),
+                    code_reply("box()"), suspect_reply(), verdict_reply("pass")],
+                   [RENDER_PNG])
 
     run("Build this bracket", llm=llm, tools=FakeTools().registry, attachments=[RENDER_PNG])
 

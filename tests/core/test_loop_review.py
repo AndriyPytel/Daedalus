@@ -650,7 +650,7 @@ def test_the_event_stream_of_a_clean_run_with_acceptance():
 
     assert [e.kind for e in events] == [
         INTENT, ATTACHED,
-        CALL_STARTED, WRITING, COST, DESIGN, PART,
+        CALL_STARTED, WRITING, COST, CALL_STARTED, WRITING, COST, DESIGN, PART,
         CALL_STARTED, WRITING, COST, PLAN, GATE, GATE,
         CALL_STARTED, WRITING, COST, TOOL_CALL, STEP_DECLARED,
         TOOL_CALL, TOOL_RESULT, APPLIED, TOOL_RESULT,

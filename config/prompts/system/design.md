@@ -719,10 +719,17 @@ of it, and what the run is expected to leave behind.
 - **A value never redraws a shape you read.** A missing number goes onto
   that shape as `assumed`; a number that cannot fit it is a `conflicts` entry.
 
+## Settling a value yourself
+
+Settle a value yourself only for what the drawing does not give. Before you
+call a value missing, measure it and cross-check the views; the drawing is
+rarely ambiguous. Put in `because` what you measured and why the drawing gives
+no more.
+
 {{asking}}## Asking for yourself
 
-Where your own description has a gap the part cannot be described without, ask —
-`question`, beside whatever `design` you have. Ask for all of it at once, name
+Ask only after the second pass at the drawing has left a gap the part cannot be
+described without — `question`, beside whatever `design` you have. Ask for all of it at once, name
 each thing, and say what it is for. Ask only about what nobody has supplied:
 never about anything the views show, anything the Intent already gave you, or
 anything that concerns how the part is built rather than what it is.
@@ -735,9 +742,10 @@ fatal: settle it yourself, `assumed`, with `because`.
 A printed count you cannot find all of (`8x R8.00`, four drawn) is a question.{{/asking}}{{nobody}}## Nobody answers
 
 Nobody answers anything in this run: no person reads what you leave open and no
-phase answers it. Where your description has a gap the part cannot be described
-without, settle it yourself: choose the value, flag it `assumed`, and say in
-`because` what you read the choice off.{{/nobody}}
+phase answers it. Where your description still has a gap after you have gone back
+to the drawing and measured, settle it yourself: choose the value, flag it
+`assumed`, and say in `because` what you measured and what you read the choice
+off.{{/nobody}}
 
 ## How you work
 

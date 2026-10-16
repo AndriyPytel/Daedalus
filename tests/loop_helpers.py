@@ -64,6 +64,7 @@ from core.loop.describe import _round_evidence, _the_directions_are_the_drawings
 from core.design import part_file
 from core.sheets import sheet_reader
 from core.freecad_apply import TRAPS
+from core.llm.scripted import _replay
 from core.llm import REASONING, TEXT, Chunk, ProviderRefused, ScriptedLLMClient, StreamCutOff
 from core.design.core import (
     UNDER,
@@ -482,6 +483,23 @@ def drifted(traceback):
     return {"status": "failed", "traceback": traceback, "drift": True}
 
 
+class _SecondPass(str):
+    """A scripted Design turn that is the run's own second pass, so none is added ahead of it."""
+
+
+def second_pass_reply(model=None):
+    return _SecondPass(design_reply(model))
+
+
+def _asks_a_question(turn):
+    """Whether a scripted Design turn declares a `question` for a person."""
+    body = turn.get("text") if isinstance(turn, dict) else turn
+    try:
+        return bool(json.loads(body)["declare"].get("question"))
+    except (TypeError, ValueError, KeyError, AttributeError):
+        return False
+
+
 def _describes_a_part(turn):
     """Whether a scripted turn is a Design turn — the phase every run opens with."""
     body = turn.get("text") if isinstance(turn, dict) else turn
@@ -572,6 +590,33 @@ def _flattened(turns):
     return flat
 
 
+def _is_the_second_pass(call):
+    content = call[-1]["content"]
+    return isinstance(content, list) and "Answer from the drawing: measure" in content[-1].get("text", "")
+
+
+class _Provider(ScriptedLLMClient):
+    """
+    The scripted provider, whose `calls` leave out the second Design pass every
+    run with a drawing makes: a test that counts or indexes turns is about the
+    phase it names. `all_calls` has them all.
+    """
+
+    def __init__(self, turns=()):
+        super().__init__(turns)
+        self.all_calls = []
+
+    def stream(self, messages, **overrides):
+        self.all_calls.append(messages)
+        if _is_the_second_pass(messages):
+            with self._lock:
+                if not self.turns:
+                    raise AssertionError("ScriptedLLMClient ran out of turns on the second pass")
+                turn = self.turns.pop(0)
+            return _replay(turn, len(self.all_calls))
+        return super().stream(messages, **overrides)
+
+
 def scripted(turns, attachments=(), resuming=False):
     """
     The provider, turn by turn, with the Design turn every run opens with.
@@ -584,13 +629,19 @@ def scripted(turns, attachments=(), resuming=False):
     and is left alone, because a Design reply in the wrong shape — the case
     those tests are about — is not one this could recognise.
 
+    A run with a drawing goes back to it once after the first pass, so a script
+    that opens with a Design turn and no question is given an empty second one.
+
     `resuming` is a run given a prior Part and no new attachment:
     Design does not run at all, so nothing is inserted ahead of the script.
     """
     turns = _flattened(turns)
     if turns and not attachments and not resuming and not _describes_a_part(turns[0]):
         turns.insert(0, design_reply())
-    return ScriptedLLMClient(turns)
+    if (turns and attachments and _describes_a_part(turns[0]) and not _asks_a_question(turns[0])
+            and not any(isinstance(turn, _SecondPass) for turn in turns)):
+        turns.insert(1, design_reply())
+    return _Provider(turns)
 
 
 def needs_drawing(*paths):
@@ -889,7 +940,7 @@ def _asked_of_design(llm):
     and the body is the last of them — the evidence goes out first, so it is a
     stable prefix a repeated Design turn can cache (`core/loop.py :: design`).
     """
-    return [json.loads(call[-1]["content"][-1]["text"]) for call in llm.calls
+    return [json.loads(call[-1]["content"][-1]["text"]) for call in llm.all_calls
             if call[0]["content"].startswith(prompts_of("design"))]
 
 
@@ -1183,7 +1234,7 @@ def gate_that(*answers):
 
 
 def driven_through(gate, turns, **kwargs):
-    llm = scripted(turns)
+    llm = scripted(turns, kwargs.get("attachments", ()))
     tools = FakeTools(kwargs.pop("applies", ()), views=kwargs.pop("views", None),
                       checks=kwargs.pop("checks", ()))
     events = EventStream()

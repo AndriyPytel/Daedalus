@@ -21,6 +21,7 @@ from core.design.merge import (
     corrected,
     merge,
 )
+from core.design.gaps import decided_for_you
 from core.design.citation_checks import fabricated_citation
 from core.design.presence_checks import nobody_carries_the_outside, nothing_changed, unplaced_changes
 from core.design.orientation_checks import (
@@ -114,33 +115,52 @@ def _settle_it(question):
             "they can correct.")
 
 
+def _from_the_drawing(the_part, question):
+    """
+    What the second Design pass is asked: the first pass's own question, if
+    it raised one, and every value still settled by nobody or in dispute.
+    The drawing is rarely ambiguous, so the model measures before it settles.
+    """
+    gaps = decided_for_you(the_part) + [
+        "%s: %s, but also %s" % (conflict.get("about"), conflict.get("stands"),
+                                 conflict.get("was_also_said"))
+        for conflict in the_part.get("conflicts") or () if isinstance(conflict, dict)]
+    return " ".join(filter(None, [
+        question,
+        "The description still has these gaps: %s." % "; ".join(gaps) if gaps else "",
+        "Answer from the drawing: measure, cross-check the views, and settle a value "
+        "yourself only for what the drawing does not give. Reply with those fields only."]))
+
+
 def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments, base=None):
     """
-    The part as Design has it, before anything is planned. A first-pass
-    question goes back to the sheet once before it goes to a person, and
-    only what the sheet cannot settle reaches the Gate unanswered.
+    The part as Design has it, before anything is planned. The part goes back
+    to the sheet once whether or not the first pass asked anything, and a
+    first-pass question reaches a person only if the sheet settled nothing.
     """
     the_part, question, grouped = _first_pass(intent, llm, events, attachments, cancelled,
                                                budgets.readings, budgets.record_conflicts, base)
     the_part = merge({}, the_part, budgets.record_conflicts)
 
-    if question:
-        if cancelled():
-            raise Stopped()
-        events.emit(QUESTION, text=question)
+    try:
+        if question:
+            events.emit(QUESTION, text=question)
         grew = {}
         if budgets.rereads and _pictures(attachments):
+            if cancelled():
+                raise Stopped()
             grew, _ = design({"intent": intent, "the_part_as_you_described_it": the_part,
-                              "the_question": question}, llm, events, attachments)
-        if grew:
-            the_part = merge(the_part, grew, budgets.record_conflicts)
-            events.emit(ANSWER, text=render(grew), by="drawing")
-        else:
+                              "the_question": _from_the_drawing(the_part, question)},
+                             llm, events, attachments)
+            if grew:
+                the_part = merge(the_part, grew, budgets.record_conflicts)
+                events.emit(ANSWER, text=render(grew), by="drawing")
+        if question and not grew:
+            if cancelled():
+                raise Stopped()
             the_part, _ = _written_in(the_part, intent, question,
                                       _answered(question, ask, events), llm, events,
                                       attachments, budgets.record_conflicts)
-
-    try:
         if grouped:
             if cancelled():
                 raise Stopped()

@@ -74,6 +74,7 @@ from tests.loop_helpers import (
     FakeTools,
     failed,
     drive,
+    scripted,
     _turns_of,
     obsolete_reply,
     _cut_off,
@@ -126,7 +127,7 @@ def test_designs_own_first_pass_question_goes_back_to_the_sheet_before_a_person(
     assert events_of(events, ANSWER)[0].data["by"] == "drawing"
 
     re_read = _asked_of_design(llm)[1]
-    assert re_read["the_question"] == "Where are the Ø40 and Ø35 hole axes?"
+    assert re_read["the_question"].startswith("Where are the Ø40 and Ø35 hole axes?")
     assert "the_answer_you_were_given" not in re_read
 
 
@@ -706,7 +707,7 @@ def test_stop_during_the_checks_does_not_wait_out_three_provider_calls():
     Stop is a decision, not a request. Three attempts at writing the checks is
     long enough that a run which ignored it there would feel hung.
     """
-    llm = ScriptedLLMClient([
+    llm = scripted([
         design_reply(A_NUT),
         planning_the_nut("Make it"),
         *code_reply("make()"),
@@ -715,7 +716,7 @@ def test_stop_during_the_checks_does_not_wait_out_three_provider_calls():
         assertion_reply(),
         assertion_reply(),
         verdict_reply("pass"),
-    ])
+    ], [RENDER_PNG])
     tools = FakeTools(checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": CHECK_IS_BROKEN}] * 3)
     events = EventStream()
 

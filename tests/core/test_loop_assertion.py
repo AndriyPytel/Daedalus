@@ -873,7 +873,9 @@ def test_looking_again_stops_when_it_stops_finding_anything():
 def test_the_second_look_is_bounded_by_the_re_read_ceiling():
     """
     Design finding one more callout every time and never all of them would
-    otherwise loop for as long as the sheet has numbers on it.
+    otherwise loop for as long as the sheet has numbers on it. The turns that
+    count are the first pass (two calls), the one pass back to the drawing every
+    run makes, and `rereads` re-looks.
     """
     llm = ScriptedLLMClient(
         _first_pass_turns({"envelope": {"length": read("150 mm")}}, [MODEL_MANIA], readings=1)
@@ -885,7 +887,7 @@ def test_the_second_look_is_bounded_by_the_re_read_ceiling():
         budgets=Budgets(rereads=2, readings=1), attachments=[MODEL_MANIA])
 
     design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompts_of("design"))]
-    assert len(design_turns) <= 4, "the re-look ran past its ceiling"
+    assert len(design_turns) <= 2 + 1 + 2, "the re-look ran past its ceiling"
 
 
 
@@ -1050,8 +1052,9 @@ def test_a_pdf_rides_into_review_beside_the_render():
     step.
     """
     drawing = _a_real_pdf()
-    llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
-                             *code_reply("box()"), suspect_reply(), verdict_reply("pass")])
+    llm = scripted([design_reply(A_DATUM), plan_reply("Only"),
+                    *code_reply("box()"), suspect_reply(), verdict_reply("pass")],
+                   [drawing])
 
     result = run("Build this", llm=llm, tools=FakeTools(views=[RENDER_PNG]).registry,
                  attachments=[drawing], kernel=StubKernel())
@@ -1087,8 +1090,9 @@ def test_an_intent_with_no_attachments_sends_what_it_always_did():
 
 
 def test_an_attachment_that_has_been_moved_is_dropped_not_fatal():
-    llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
-                             *code_reply("box()"), suspect_reply(), verdict_reply("pass")])
+    llm = scripted([design_reply(A_DATUM), plan_reply("Only"),
+                    *code_reply("box()"), suspect_reply(), verdict_reply("pass")],
+                   [RENDER_PNG])
 
     result = run("Build this", llm=llm, tools=FakeTools().registry,
                  attachments=["/nowhere/gone.png", RENDER_PNG], kernel=StubKernel())
@@ -1322,8 +1326,9 @@ def test_review_is_shown_the_drawing_beside_the_render():
     Review compared a render against a sentence: the picture never reached it,
     so "does this resemble what I was shown" was not a question it could ask.
     """
-    llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
-                             *code_reply("box()"), suspect_reply(), verdict_reply("pass")])
+    llm = scripted([design_reply(A_DATUM), plan_reply("Only"),
+                    *code_reply("box()"), suspect_reply(), verdict_reply("pass")],
+                   [RENDER_PNG])
 
     run("Build this bracket", llm=llm, tools=FakeTools(views=[RENDER_PNG]).registry,
         attachments=[RENDER_PNG], kernel=StubKernel())

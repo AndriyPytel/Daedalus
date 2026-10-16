@@ -109,6 +109,8 @@ address there and a feature by the face it sits on. 311 characters, cut from
 a 620-character draft (153 tokens); it takes the ratio to 1.81, the 2024
 sheet's first pass crossing the 1.80 ceiling by 131 tokens. What it buys is one name for one plane
 across the pages, which are read apart, so the merge can unify them.
+
+`BASELINE`'s input_tokens moved up by 137 on every call: 65 from the `design.md` rules on counting features, 72 from the rule to settle only what the drawing does not give. It takes the ratio to 1.83, the 2024 sheet's first pass crossing 1.81 by 413 tokens. What it buys is counts taken from Design's own feature list and a value measured off the drawing before it is decided.
 """
 import json
 import os
@@ -138,24 +140,24 @@ SINGLE_CALL_BASELINE = {
     "model-mania-2024.pdf": 39970,
 }
 
-FIRST_PASS_CEILING_RATIO = 1.81
+FIRST_PASS_CEILING_RATIO = 1.83
 
 BASELINE = {
     "model-mania_-in-person-2023.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 7195, "input_tokens": 25373},
-            {"label": "page 2", "pictures": 14, "total_chars": 6999, "input_tokens": 26111},
+            {"label": "page 1", "pictures": 15, "total_chars": 7195, "input_tokens": 25510},
+            {"label": "page 2", "pictures": 14, "total_chars": 6999, "input_tokens": 26248},
         ],
-        "reconcile": {"total_chars": 40545, "input_tokens": 21840},
-        "total": 73324,
+        "reconcile": {"total_chars": 40545, "input_tokens": 21977},
+        "total": 73735,
     },
     "model-mania-2024.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 8636, "input_tokens": 23708},
-            {"label": "page 2", "pictures": 15, "total_chars": 8539, "input_tokens": 26592},
+            {"label": "page 1", "pictures": 15, "total_chars": 8636, "input_tokens": 23845},
+            {"label": "page 2", "pictures": 15, "total_chars": 8539, "input_tokens": 26729},
         ],
-        "reconcile": {"total_chars": 41375, "input_tokens": 22047},
-        "total": 72347,
+        "reconcile": {"total_chars": 41375, "input_tokens": 22184},
+        "total": 72758,
     },
 }
 
