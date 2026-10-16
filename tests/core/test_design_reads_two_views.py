@@ -1,5 +1,5 @@
 """
-Design reads each dimension from two views and keeps a dimension, value, view table, in a headless and in an interactive run.
+Design reads each dimension from two views and names both views and their values in its description, in a headless and in an interactive run.
 """
 from core.loop.prompt import nobody_answering, prompt
 
@@ -19,11 +19,12 @@ def test_both_design_prompts_say_to_read_each_dimension_from_a_second_view():
         assert "a section for a depth" in said
 
 
-def test_both_design_prompts_keep_a_dimension_value_view_table():
+def test_both_design_prompts_put_both_readings_in_the_description():
     for headless in (True, False):
         said = _said(headless)
-        assert "table of dimension, value and view" in said
-        assert "read in one view only is marked as such" in said
+        assert "names both views it was read in with the value from each" in said
+        assert "front view 120; top view 120" in said
+        assert "a value seen in one view only says so there" in said
 
 
 def test_both_design_prompts_settle_a_disagreement_by_measurement_and_record_it_under_conflicts():
