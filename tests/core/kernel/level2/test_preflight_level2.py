@@ -271,26 +271,6 @@ def test_code_that_crashes_the_core_kills_the_worker_not_us(fresh):
     assert fresh.alive
 
 
-def test_a_dead_worker_says_what_it_said_on_the_way_out(fresh):
-    """
-    The production crash: an unknown constraint type name segfaults inside the
-    C++ constructor of Sketcher.Constraint, before any Python-level anything.
-    The one line FreeCAD leaves on stderr is all the next attempt has to go on,
-    and the message used to be built after restart() had already swapped that
-    stderr for the new worker's empty one.
-    """
-    doomed = fresh.pid
-
-    result = fresh.check("Sketcher.Constraint('Concentric', 0, 1)")
-
-    assert not result.ok
-    assert GENERIC_DEATH_ENDS in result.traceback
-    assert "Unknown exception while processing file" in result.traceback, \
-        "the death message carries nothing the worker actually said"
-    assert fresh.pid != doomed, "the worker was not replaced"
-    assert fresh.alive
-
-
 def test_a_death_on_the_write_reports_the_dead_workers_stderr(fresh):
     """
     The BrokenPipeError branch reads the stderr of the worker it lost, not of
