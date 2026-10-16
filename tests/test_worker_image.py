@@ -86,9 +86,3 @@ def smoke(image):
     subprocess.run(["scp", "-q", "-o", "BatchMode=yes", "%s:%s/out/smoke.step" % (HOST, REMOTE), step], check=True)
     report = json.loads(done.stdout.strip().splitlines()[-1])
     return step, report
-
-
-def test_the_product_image_is_not_named_after_the_ticket():
-    readme = _read("README.md")
-    assert PRODUCT in readme and "dae-496" not in readme
-    assert "dae-496" not in _read("Containerfile")

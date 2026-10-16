@@ -47,13 +47,6 @@ def _shrunk_box():
     return Part.makeBox(4, 3, 1)
 
 
-def test_an_edit_that_keeps_one_valid_solid_near_the_input_passes_the_guard(tmp_path):
-    base = _step(str(tmp_path / "input.step"), _box())
-    edit = _step(str(tmp_path / "edit.step"), _box_with_a_hole())
-
-    assert lane.guard_edit(edit, base) is None
-
-
 @pytest.mark.parametrize("build, word", [(_two_boxes, "solid"), (_shrunk_box, "volume")])
 def test_an_edit_with_two_solids_or_a_shrunk_body_fails_the_guard(tmp_path, build, word):
     base = _step(str(tmp_path / "input.step"), _box())

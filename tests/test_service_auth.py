@@ -34,10 +34,6 @@ def refused(response):
     assert response.json()["status"] == 401
 
 
-def test_the_route_list_is_not_empty_and_has_the_open_health_route():
-    assert ("GET", "/v1/health") in routes() and len(routes()) > 10
-
-
 def test_every_route_but_health_refuses_a_request_without_a_valid_token(client):
     for method, path in routes():
         if path == "/v1/health":

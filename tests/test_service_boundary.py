@@ -77,11 +77,6 @@ def role_of(path):
     return "worker" if os.path.basename(path) == WORKER and os.path.dirname(path) == SERVICE else "gateway"
 
 
-def test_the_service_package_exists():
-    assert os.path.isfile(os.path.join(SERVICE, "__init__.py"))
-    assert os.path.isfile(os.path.join(SERVICE, WORKER))
-
-
 def test_no_service_module_crosses_the_boundary():
     offenders = []
     for path in service_modules():

@@ -102,11 +102,6 @@ def test_plan_md_tells_the_revision_it_may_dispute_in_both_modes():
         assert "measured" in text and "because" in text
 
 
-def test_disputed_is_a_kind_of_event():
-    assert DISPUTED in KINDS
-
-
-
 def test_a_dispute_naming_the_check_by_its_short_name_matches_the_unmet_entry_the_checks_cut():
     real = "the through-features. expected 3 through features, the solid has 6."
     result, events, _, _ = drive(

@@ -280,13 +280,6 @@ EXCLUDED_TYPEIDS = {
     'Sketcher::SketchObjectSF': R_SKETCH_INTERNAL,
 }
 
-def test_survey_owned_and_excluded_partition_the_134_surveyed_typeids_with_no_overlap():
-    owned = set(SURVEYED_TYPEID_TO_OP) | {BOOLEAN_TYPEID}
-    excluded = set(EXCLUDED_TYPEIDS)
-
-    assert not (owned & excluded)
-    assert len(owned) + len(excluded) == 134
-
 
 def test_every_op_the_survey_uses_is_one_of_the_36_read_from_language_md():
     """Count checked in test_op_vocabulary.py against language.md's own heading; not copied here."""

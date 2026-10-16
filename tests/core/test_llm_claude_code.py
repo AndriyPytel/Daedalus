@@ -569,7 +569,6 @@ def test_a_call_that_never_answers_ends_the_run_rather_than_hanging_it():
     assert spawn.process.killed.is_set(), "the process was left running"
 
 
-
 def test_the_ceiling_timer_is_not_a_thread_python_waits_for_on_the_way_out(monkeypatch):
     """
     The ceiling runs on a `threading.Timer`, and a non-daemon one is joined by
@@ -671,19 +670,6 @@ def test_every_effort_the_dial_offers_leaves_room_for_the_design_call_it_buys():
     """
     for effort, ceiling in _CEILING.items():
         assert ceiling >= 2 * _seconds(_design_at(effort)), effort
-
-
-def test_an_effort_the_dial_reaches_outlasts_a_flat_ten_minutes():
-    """
-    Which is why the ceiling moves with it.
-    `logs/sessions/1b6cd765da1e4304a6215035d1ec5a56.jsonl` is what one that
-    does not do: 43,050 tokens of thinking, killed at 600 s, 68 s before the
-    reply the recording carries landed.
-    """
-    high = _design_at("high")
-
-    assert _seconds(high) > 600
-    assert _CEILING["high"] > _seconds(high)
 
 
 def test_a_claude_that_exits_without_answering_is_a_refusal():

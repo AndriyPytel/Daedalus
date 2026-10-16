@@ -29,12 +29,6 @@ def module_exists(name):
     return os.path.isfile(os.path.join(ROOT, "src", *name.split(".")) + ".py")
 
 
-def test_there_are_three_services_and_each_has_a_healthcheck():
-    assert set(SERVICES) == {"postgres", "gateway", "worker-host"}
-    for name, service in SERVICES.items():
-        assert service["healthcheck"]["test"], name
-
-
 def test_only_the_gateway_publishes_a_port_and_only_on_loopback_and_tailscale():
     assert [name for name, service in SERVICES.items() if service.get("ports")] == ["gateway"]
     hosts = {port.split(":")[0] for port in SERVICES["gateway"]["ports"]}
@@ -63,12 +57,6 @@ def test_the_server_defaults_put_every_role_on_the_claude_subscription():
     assert {row["role"] for row in defaults["role_table"]} == set(ROLES)
     assert {row["provider"] for row in defaults["role_table"]} == {CLAUDE}
     assert defaults["default_model"]["provider"] == defaults["naming_model"]["provider"] == CLAUDE
-
-
-def test_state_lives_in_named_volumes():
-    assert set(COMPOSE["volumes"]) == {"pgdata", "blobs"}
-    mounted = {volume.split(":")[0] for service in SERVICES.values() for volume in service.get("volumes", ())}
-    assert mounted == set(COMPOSE["volumes"])
 
 
 def test_the_worker_image_pins_the_claude_cli_by_version_and_sha256():

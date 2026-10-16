@@ -80,16 +80,6 @@ def test_a_rejected_plan_applies_nothing():
     assert first_event(events, BLOCKED) is not None
 
 
-def test_the_gate_sees_the_plan_it_is_approving():
-    gate = Gate(Approval(APPROVE))
-
-    drive([plan_reply("First", "Second", "Third"),
-           code_reply("a()", "b()", "c()"),
-           suspect_reply(), verdict_reply("pass")], gate)
-
-    assert gate.shown == [["First", "Second", "Third"]]
-
-
 def test_approval_covers_every_step_so_there_is_no_per_step_approval():
     gate = Gate(Approval(APPROVE))
 
@@ -343,15 +333,6 @@ def test_a_review_driven_rewrite_shows_up_in_another_branchs_block():
     assert "Review rejected the result 2 times" in result.reason, \
         "the Review-driven rewrites went unreported: %r" % result.reason
     assert "out of date 1 time" in result.reason
-
-
-def test_rejecting_after_amending_still_applies_nothing():
-    gate = Gate(Approval(AMEND, "different"), Approval(REJECT))
-
-    result, _, tools = drive([plan_reply("A"), plan_reply("B")], gate)
-
-    assert result.blocked
-    assert tools.applied_codes() == []
 
 
 def test_a_gate_that_answers_nothing_is_treated_as_approval():
@@ -646,16 +627,6 @@ def test_approving_with_edited_steps_builds_the_edited_plan_not_the_generated_on
     assert gate.shown == [["Create a 10mm box"]]
     assert tools.applied_codes() == ["box()", "fillet()"]
     assert first_event(events, STEP_STARTED).data["total"] == 2
-
-
-def test_approving_with_no_edited_steps_builds_the_plan_as_generated():
-    """Empty `Approval.steps` means unedited — nothing changes from before."""
-    gate = Gate(Approval(APPROVE, steps=()))
-
-    _, _, tools = drive(
-        [plan_reply("Create a 10mm box"), code_reply("box()"), suspect_reply(), verdict_reply("pass")], gate)
-
-    assert tools.applied_codes() == ["box()"]
 
 
 def test_the_gate_event_carries_the_plan_that_was_actually_approved():

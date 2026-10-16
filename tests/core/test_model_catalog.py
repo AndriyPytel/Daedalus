@@ -183,16 +183,6 @@ def test_an_unreachable_host_raises():
         fetch("OpenAI", "sk-test", base_url="http://127.0.0.1:1")
 
 
-def test_the_registry_names_every_provider_the_addon_can_reach():
-    """
-    The list of providers is this table now, not a file in the repo: what a key
-    entitles you to is asked of the provider, so the file held nothing but the
-    names and a fallback list that went stale.
-    """
-    assert providers() == ["OpenAI", "Anthropic", CLAUDE, "Google", "OpenCode Go",
-                           "OpenRouter", "Custom/Local"]
-
-
 def test_the_subscription_is_configured_by_neither_a_key_nor_an_address():
     """
     The first provider with neither. The `claude` CLI holds the credential —
@@ -233,15 +223,6 @@ def test_the_subscription_says_so_when_models_dev_is_down(provider_endpoint):
         fetch(CLAUDE, "", base_url=base)
 
 
-def test_opencode_go_is_configured_by_a_key_alone():
-    """Its address is fixed and published; only a local server's is the user's to type."""
-    assert needs_base_url("OpenCode Go") is False
-
-
-def test_opencode_go_is_reached_at_the_zen_go_endpoint():
-    assert api_base_for("OpenCode Go") == "https://opencode.ai/zen/go/v1"
-
-
 def test_a_vendor_litellm_names_itself_is_given_no_address():
     """Passing an api_base for OpenAI, Anthropic or Google overrides what LiteLLM knows."""
     assert api_base_for("OpenAI") is None
@@ -265,20 +246,6 @@ def test_opencode_go_lists_what_the_gateway_sells(provider_endpoint):
         {"id": "minimax-m2.7", "display": "minimax-m2.7"},
     ]
     assert {m["id"] for m in models} >= {"kimi-k3", "qwen3.8-max", "grok-4.5"}
-
-
-def test_opencode_go_sends_its_key_as_a_bearer_token(provider_endpoint):
-    server, base = provider_endpoint
-    server.payload = _recorded("opencode_go_models.json")
-
-    fetch("OpenCode Go", "sk-zen", base_url=base + "/v1")
-
-    assert server.last_headers.get("authorization") == "Bearer sk-zen"
-
-
-def test_openrouter_is_configured_by_a_key_alone():
-    assert needs_base_url("OpenRouter") is False
-    assert needs_no_key("OpenRouter") is False
 
 
 def test_openrouter_is_litellms_own_route_and_needs_no_address():

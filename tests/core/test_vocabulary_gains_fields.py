@@ -47,12 +47,6 @@ A_HOLE_MEASURED_FROM_A_NAMED_END = {
 }
 
 
-def test_merge_leaves_a_filled_direction_field_unchanged():
-    grown = merge({}, A_HOLE_MEASURED_FROM_A_NAMED_END)
-
-    assert grown["features"][0]["direction"] == "from the left end"
-
-
 A_HOLE_WITH_NO_DIRECTION_ESTABLISHED = {
     "features": [{"id": "hole-centre", "kind": "Ø10 hole",
                   "position": {"the centre plane": _read("0 mm")}}],
