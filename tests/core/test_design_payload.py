@@ -115,6 +115,10 @@ across the pages, which are read apart, so the merge can unify them.
 `BASELINE`'s input_tokens moved up by 221 on every call when `design.md` gained the rule to state each view's axes and each feature's face and axis and to cross-check the views. 220 tokens in the prompt, 3 passes per sheet: the totals move up by 663, which takes the ratio to 1.84, the 2024 sheet's first pass crossing 1.83 by 276 tokens. What it buys is a part not built mirrored, turned or on the wrong face.
 
 `BASELINE`'s input_tokens moved up by 170 more on every call when `design.md` gained the rule to read each dimension from two views and write both readings in the description's `from` or `because`. 690 characters, 170 tokens on every call the first pass makes. It takes the ratio to 1.85, the 2024 sheet's first pass crossing 1.84 by 386 tokens. What it buys is a misread dimension or position caught from a second view before Plan.
+
+`BASELINE`'s input_tokens moved up by 48 more on every call when `design.md` gained the rule that the isometric view shows the finished part and a flat pattern only shows how the sheet is cut. 192 characters, 48 tokens on every call the first pass makes. It takes the ratio to 1.86, the 2024 sheet's first pass crossing 1.85 by 131 tokens. What it buys is a bent sheet-metal part not built as the flat plate its flat pattern draws.
+
+`BASELINE`'s input_tokens moved up by 51 more on every call when `design.md` gained the rule that the envelope is the extents of the finished part and an intermediate state's values describe features. 204 characters, 51 tokens on every call the first pass makes. The ratio stays 1.86, the 2024 sheet's first pass at 1.857. What it buys is a flat blank's extents not written as the envelope of a bent part.
 """
 import json
 import os
@@ -144,24 +148,24 @@ SINGLE_CALL_BASELINE = {
     "model-mania-2024.pdf": 39970,
 }
 
-FIRST_PASS_CEILING_RATIO = 1.85
+FIRST_PASS_CEILING_RATIO = 1.86
 
 BASELINE = {
     "model-mania_-in-person-2023.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 7195, "input_tokens": 25901},
-            {"label": "page 2", "pictures": 14, "total_chars": 6999, "input_tokens": 26639},
+            {"label": "page 1", "pictures": 15, "total_chars": 7195, "input_tokens": 26000},
+            {"label": "page 2", "pictures": 14, "total_chars": 6999, "input_tokens": 26738},
         ],
-        "reconcile": {"total_chars": 40545, "input_tokens": 22368},
-        "total": 74908,
+        "reconcile": {"total_chars": 40545, "input_tokens": 22467},
+        "total": 75205,
     },
     "model-mania-2024.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 8636, "input_tokens": 24236},
-            {"label": "page 2", "pictures": 15, "total_chars": 8539, "input_tokens": 27120},
+            {"label": "page 1", "pictures": 15, "total_chars": 8636, "input_tokens": 24335},
+            {"label": "page 2", "pictures": 15, "total_chars": 8539, "input_tokens": 27219},
         ],
-        "reconcile": {"total_chars": 41375, "input_tokens": 22575},
-        "total": 73931,
+        "reconcile": {"total_chars": 41375, "input_tokens": 22674},
+        "total": 74228,
     },
 }
 

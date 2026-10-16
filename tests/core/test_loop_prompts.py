@@ -298,7 +298,7 @@ def test_plan_is_told_each_joins_entry_is_its_own_step():
 
     assert "Each `joins` entry is its own Step, never a predicate over a set" \
         in plan_system
-    assert "A Step a phase refuses to build is a `conflict`, " \
+    assert "A Step a phase refuses to build is a `conflict` or a `question`, " \
         "never prose folded into another Step" in plan_system
 
 

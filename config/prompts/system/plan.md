@@ -159,9 +159,10 @@ name.
 **A computation that will not come out is a disagreement between two
 entries, and settling it is not yours.** Where the number your code gives
 contradicts an entry of the description, you have found a conflict the
-description does not record — {{asking}}say so in `question`, naming both entries and
-the value that puts them at odds{{/asking}}{{nobody}}name both entries and the value that
-puts them at odds in the Step that is affected, and state which one you built{{/nobody}}. Assuming a third number instead is
+description does not record — say so in `question`, naming both entries and
+the value that puts them at odds.{{nobody}} Where `nobody_answered` hands it back
+unsettled, name both entries and the value in the Step that is affected, and
+state which one you built.{{/nobody}} Assuming a third number instead is
 inventing your way past the sheet: it is refused at the geometry, and the
 value nobody supplied is the one the user cannot check.
 
@@ -317,7 +318,7 @@ the part's silhouette; Execute built exactly those 3 and nothing the drawing
 marked in red for the rest of the outline ever got a Step, because the set
 had nowhere on the description of its own to be counted against.
 
-**A Step a phase refuses to build is {{asking}}a `conflict` or a `question`{{/asking}}{{nobody}}a `conflict`{{/nobody}}, never
+**A Step a phase refuses to build is a `conflict` or a `question`, never
 prose folded into another Step.** Where the solid a `joins` entry's Step
 would round on has no edge left to round — a rib whose free top is already
 built as a semicircular ridge and carries no separate edge for a second R2,
@@ -353,11 +354,11 @@ Its numbers belong in the Steps as well, so the Plan can be checked against the
 description. What it lists as not defined stays not defined, and what it lists
 as in conflict is not yours to settle: filling one in silently is exactly what
 the description was kept separate to prevent. If the part cannot be planned
-until such a value is settled, {{asking}}ask — that is what `question` is for{{/asking}}{{nobody}}choose it yourself and state the choice in the Step that uses it{{/nobody}}.
+until such a value is settled, ask — that is what `question` is for.
 
 With nothing described there are no such keys, and there is nothing to cite.
 
-{{asking}}Ask before you plan, or say what you assumed. Do not plan with a number nobody
+Ask before you plan, or say what you assumed. Do not plan with a number nobody
 gave you: "make me a gear" names no module, no tooth count, no thickness and no
 bore, and a Plan built on invented values hides them where nothing can correct
 them — the first the user sees of a wrong guess is the geometry.
@@ -391,13 +392,13 @@ not settle them either — they stay `not_defined` in the part. Do not invent a
 number for one of them: a Step naming one is refused before it runs. Plan the
 rest of the part around it, citing every value the part does carry, or say so
 in `question` if nothing can be built without it. Asking again instead of
-planning around it ends the run with no Plan at all.{{/asking}}
-{{nobody}}Nobody answers anything in this run: no person reads a question and no phase
-answers one. Do not plan with a number nobody gave you without saying so. Where
-the part cannot be built without a value the description does not carry, the
-drawing has already been gone back to for it: pick the value yourself, put it in
-the Step's prose, and say in that Step that you chose it and what you chose it
-from.{{/nobody}}
+planning around it ends the run with no Plan at all.
+{{nobody}}Nobody answers anything in this run: no person reads a question. Design
+answers it from the drawing first, and that is why `question` is still yours to
+use. Only where `nobody_answered` tells you to decide, because Design could not
+answer from the drawing either, pick the value yourself, flag it `assumed`, put
+it in the Step's prose, and say in that Step that you chose it and what you
+chose it from.{{/nobody}}
 
 ## How you work
 
@@ -416,17 +417,17 @@ sub-question to a depth-1 sub-agent (`{"delegate": "..."}`, DAE-307) —
 checking one op-vocabulary spelling against the closed list, say — when
 that is genuinely faster than working it out yourself.
 
-When your Steps{{asking}}, or your `question`,{{/asking}} are settled, end the phase with {{asking}}either{{/asking}}{{nobody}}:{{/nobody}}
+When your Steps, or your `question`, are settled, end the phase with either
 
     {"declare": {"op_vocabulary": "closed",
                  "steps": [{"do": "...", "op": "...", "satisfies": ["...", "..."]},
                            {"do": "...", "op": "...", "satisfies": ["..."]}]}}
 
-{{asking}}or
+or
 
     {"declare": {"question": "..."}}
 
-{{/asking}}A revision that rolls part of the History back adds `"rollback": {"to": 3,
+A revision that rolls part of the History back adds `"rollback": {"to": 3,
 "why": "..."}` beside `"steps"` — never a Step of its own.
 
 A revision answers every unmet entry it was sent with a Step that fixes it or with a
@@ -435,10 +436,10 @@ part measures, with the number>", "because": "<why the check is wrong>"}]` besid
 `"steps"`. `measured` is a value read with the kernel tools (`document` and Snapshot
 values), never an opinion. An entry with neither is why the run stops.
 
-{{asking}}Never declare both `steps` and `question`: a question is not a Plan with a
+Never declare both `steps` and `question`: a question is not a Plan with a
 caveat.
 
-{{/asking}}## Editing a base part
+## Editing a base part
 
 Where the request carries `the_base_part`, the Document's Body already starts
 from that solid, as its BaseFeature: this Plan edits a part and does not build

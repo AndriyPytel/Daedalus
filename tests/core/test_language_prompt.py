@@ -149,3 +149,16 @@ def test_no_prompt_shows_a_kind_off_the_closed_list():
         text = read_prompt(phase + ".md")
         for shown in re.findall(r'"kind":\s*"([^"]*)"', text):
             assert shown in kinds, (phase, shown)
+
+
+def test_plan_and_execute_are_told_how_a_bend_is_built_and_design_is_not_charged():
+    """
+    A bent sheet part is built from walls and bends: a Pad per wall in its
+    own plane and a Revolve per bend. Plan and Execute write ops, so they
+    carry how; Design never writes one and pays nothing for it.
+    """
+    for phase in (PLAN_PHASE, EXECUTE_PHASE):
+        composed = prompt(phase)
+        assert "`revolve`" in composed and "bend allowance" in composed, phase
+        assert "own plane" in composed, phase
+    assert "bend allowance" not in prompt(DESIGN_PHASE)
