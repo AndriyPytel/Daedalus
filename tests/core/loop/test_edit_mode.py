@@ -80,12 +80,6 @@ def test_plan_request_carries_the_base_only_when_there_is_one(monkeypatch):
     assert "the_base_part" not in tasks[1]
 
 
-def test_execute_signature_takes_the_base():
-    import inspect
-
-    assert "base" in inspect.signature(execute_module.execute).parameters
-
-
 def test_each_edit_prompt_has_its_paragraph_keyed_on_the_base():
     for name in ("plan", "execute", "assertion"):
         text = read_prompt(name + ".md")

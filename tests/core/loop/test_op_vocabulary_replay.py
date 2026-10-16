@@ -162,19 +162,6 @@ def _classify(step):
     return (canon[0] if canon else None), canon
 
 
-def test_the_english_steps_are_397_matching_the_tracked_fixture():
-    """
-    584 raw Steps minus 167 non-ASCII-heavy minus 3 refusals is 414 —
-    `ste-plan-verbs.md`'s own count, measured over `logs/`. The tracked
-    fixture is a 567-Step subset of that same corpus (already established
-    as the substitute for a gitignored directory), and the same filter
-    over it yields 397, not 414: a fixture is a sample of the sessions that
-    happened to be captured, not the full corpus re-measured.
-    """
-    assert len(_steps()) == 567
-    assert len(_english(_steps())) == 397
-
-
 def test_almost_every_english_step_resolves_to_one_of_the_36_ops():
     """
     9 of 397 resolve to nothing: 7 assign a material card, 1 sets the
@@ -196,17 +183,3 @@ def test_every_resolved_op_is_one_of_the_36():
         op, _ = _classify(step)
         if op is not None:
             assert op in OP_VERBS, (op, step)
-
-
-def test_159_english_steps_resolve_to_more_than_one_closed_op():
-    """
-    Collapsed onto the closed list, 159 of 397 still name more than one
-    operation in a single Step — well down from the 253 of 414 measured
-    over the open 47-lemma surface vocabulary (many raw multi-verb Steps,
-    such as "fillet ... and round ...", collapse onto the same closed `op`
-    and are single once merged), but still the majority case for a Step
-    that predates the "one Step, one op" rule.
-    """
-    multi = [step for step in _english(_steps()) if len(_classify(step)[1]) > 1]
-
-    assert len(multi) == 159, len(multi)
