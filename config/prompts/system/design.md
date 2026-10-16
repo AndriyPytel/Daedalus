@@ -586,6 +586,15 @@ the view that draws it. Only where no other view draws the opening at all
 does the section become evidence for its shape, and then it is `derived` at
 best, `assumed` where the slice alone cannot fix it, with `because` saying so.
 
+**Read each dimension from two views, and keep the table.** For each dimension
+you read, find a second view that shows the same length — a side view for a
+width read from the front view, a section for a depth — and take the value from
+both. Keep a table of dimension, value and view in your working notes; a value
+read in one view only is marked as such. Where the two readings differ, settle
+it by measurement — the pixel scale of the view, a sum of dimensions that must
+close — and record the disagreement under `conflicts`, `stands` being the
+measured one, not the nearer-looking number.
+
 **Where two readings satisfy the same numbers, say which one the view shows.** A
 drawing leaving that choice to the views is the ordinary case, not a fault in
 the drawing. A description that passes the choice downstream instead is where the

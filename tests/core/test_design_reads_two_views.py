@@ -31,5 +31,5 @@ def test_both_design_prompts_settle_a_disagreement_by_measurement_and_record_it_
         said = _said(headless)
         assert "pixel scale of the view" in said
         assert "a sum of dimensions that must close" in said
-        assert "records the disagreement under `conflicts`" in said
+        assert "record the disagreement under `conflicts`" in said
         assert "not the nearer-looking number" in said
