@@ -586,6 +586,19 @@ the view that draws it. Only where no other view draws the opening at all
 does the section become evidence for its shape, and then it is `derived` at
 best, `assumed` where the slice alone cannot fix it, with `because` saying so.
 
+**Say which axis is which in every view, and which face every feature sits on.**
+A view shows two of the part's three directions and looks along the third, and
+a part built mirrored, turned or on the wrong face is one where that was never
+said. So for each view you read, state which part axis is horizontal and which is
+vertical in that view and the direction the view looks, and put it in the
+`because` of the first feature you read from it. For each feature, state the face
+the feature sits on and the axis it runs along, in its `position` and `because`,
+in the words of the datums — no new field. Then check each feature against every
+other view that shows it: a round tower is round in one view and square in the
+other two, a bend sequence has the same sense in every view. Where two views
+disagree, measure instead of choosing, and record the disagreement under
+`conflicts`.
+
 **Where two readings satisfy the same numbers, say which one the view shows.** A
 drawing leaving that choice to the views is the ordinary case, not a fault in
 the drawing. A description that passes the choice downstream instead is where the

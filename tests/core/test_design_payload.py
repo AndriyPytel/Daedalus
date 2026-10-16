@@ -111,6 +111,8 @@ sheet's first pass crossing the 1.80 ceiling by 131 tokens. What it buys is one 
 across the pages, which are read apart, so the merge can unify them.
 
 `BASELINE`'s input_tokens moved up by 137 on every call: 65 from the `design.md` rules on counting features, 72 from the rule to settle only what the drawing does not give. It takes the ratio to 1.83, the 2024 sheet's first pass crossing 1.81 by 413 tokens. What it buys is counts taken from Design's own feature list and a value measured off the drawing before it is decided.
+
+`BASELINE`'s input_tokens moved up by 221 on every call when `design.md` gained the rule to state each view's axes and each feature's face and axis and to cross-check the views. 220 tokens in the prompt, 3 passes per sheet: the totals move up by 663, which takes the ratio to 1.84, the 2024 sheet's first pass crossing 1.83 by 276 tokens. What it buys is a part not built mirrored, turned or on the wrong face.
 """
 import json
 import os
@@ -140,24 +142,24 @@ SINGLE_CALL_BASELINE = {
     "model-mania-2024.pdf": 39970,
 }
 
-FIRST_PASS_CEILING_RATIO = 1.83
+FIRST_PASS_CEILING_RATIO = 1.84
 
 BASELINE = {
     "model-mania_-in-person-2023.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 7195, "input_tokens": 25510},
-            {"label": "page 2", "pictures": 14, "total_chars": 6999, "input_tokens": 26248},
+            {"label": "page 1", "pictures": 15, "total_chars": 7195, "input_tokens": 25731},
+            {"label": "page 2", "pictures": 14, "total_chars": 6999, "input_tokens": 26469},
         ],
-        "reconcile": {"total_chars": 40545, "input_tokens": 21977},
-        "total": 73735,
+        "reconcile": {"total_chars": 40545, "input_tokens": 22198},
+        "total": 74398,
     },
     "model-mania-2024.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 8636, "input_tokens": 23845},
-            {"label": "page 2", "pictures": 15, "total_chars": 8539, "input_tokens": 26729},
+            {"label": "page 1", "pictures": 15, "total_chars": 8636, "input_tokens": 24066},
+            {"label": "page 2", "pictures": 15, "total_chars": 8539, "input_tokens": 26950},
         ],
-        "reconcile": {"total_chars": 41375, "input_tokens": 22184},
-        "total": 72758,
+        "reconcile": {"total_chars": 41375, "input_tokens": 22405},
+        "total": 73421,
     },
 }
 
