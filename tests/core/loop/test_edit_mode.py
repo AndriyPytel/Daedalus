@@ -8,7 +8,6 @@ import json
 from core.agent import agent as agent_module
 from core.events import EventStream
 from core.llm import ScriptedLLMClient
-from core.loop import execute as execute_module
 from core.loop import plan as plan_module
 from core.loop.assertion import assertion
 from core.prompts import read_prompt

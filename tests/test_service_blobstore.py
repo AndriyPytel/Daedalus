@@ -7,7 +7,7 @@ import hashlib
 
 import pytest
 
-from service.blobstore import BlobStore, LocalBlobStore
+from service.blobstore import LocalBlobStore
 
 KEY = "session/ses_1/ckpt/1.FCStd"
 

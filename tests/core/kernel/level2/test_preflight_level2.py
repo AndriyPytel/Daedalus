@@ -14,7 +14,6 @@ into FreeCAD's C++ core does. Python cannot catch it; only process isolation can
 GENERIC_DEATH_ENDS is the last sentence of the generic death message; anything
 the worker said follows it.
 """
-import os
 import time
 
 import pytest

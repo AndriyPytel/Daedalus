@@ -10,7 +10,7 @@ import math
 
 import pytest
 
-from core.freecad_apply import TRAPS, build_registry, description, fit_view
+from core.freecad_apply import build_registry, description, fit_view
 from core.tools import ToolError
 
 pytestmark = pytest.mark.freecad

@@ -6,7 +6,6 @@ end-to-end test builds a cube through the real worker in the `dae-499-worker` im
 LLM, and skips when the server is unreachable.
 """
 import json
-import subprocess
 import sys
 
 import pytest
@@ -16,7 +15,7 @@ from service import db
 from service.app import app
 from service.owner import current_owner
 from test_service_postgres import _admin_url, conn, database_url, repo  # noqa: F401
-from test_service_worker_channel import FAKE, HOST, ROOT, _ssh, until
+from test_service_worker_channel import FAKE, until
 
 IMAGE = "dae-499-worker"
 REMOTE = "dae-499-build"

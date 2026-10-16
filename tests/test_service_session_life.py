@@ -7,7 +7,6 @@ The respawn tests with the scripted worker on the real kernel skip when FreeCAD 
 import hashlib
 import json
 import os
-import subprocess
 import sys
 import time
 
@@ -21,7 +20,7 @@ from service.blobstore import LocalBlobStore
 from service.repository import Repository
 from test_service_postgres import _admin_url, conn, database_url, repo  # noqa: F401
 from test_service_runs import AUTH, FINAL, TOKEN, final, start
-from test_service_worker_channel import FAKE, HOST, ROOT, _ssh, alive, until
+from test_service_worker_channel import FAKE, alive, until
 
 TTL = "1.5"
 

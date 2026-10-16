@@ -5,7 +5,7 @@ Level 1 -- the role-to-model table every run is built from.
 phase is answered by the row that names it, and a role with no row of its own
 by the caller.
 """
-from core.llm import ROLES, RoleClient, ScriptedLLMClient
+from core.llm import RoleClient, ScriptedLLMClient
 
 
 def test_for_phase_answers_from_the_row_that_names_the_phase():

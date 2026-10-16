@@ -16,7 +16,6 @@ import tempfile
 import time
 from dataclasses import replace
 
-import pytest
 
 from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, BUDGET_EXHAUSTED, CALL_STARTED, COMPLETED,

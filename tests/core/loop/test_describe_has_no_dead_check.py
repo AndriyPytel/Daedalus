@@ -2,7 +2,6 @@
 import ast
 import glob
 import os
-import re
 
 import core.loop.describe as describe_module
 

@@ -7,7 +7,6 @@ with a scripted LLM in the worker image on the home server over ssh, and skips w
 """
 import hashlib
 import json
-import subprocess
 
 import pytest
 from fastapi.testclient import TestClient
@@ -18,7 +17,7 @@ from service.blobstore import LocalBlobStore
 from service.owner import current_owner
 from service.supervisor import Worker
 from test_service_postgres import _admin_url, conn, database_url, repo  # noqa: F401
-from test_service_worker_channel import FAKE, ROOT, _ssh, until
+from test_service_worker_channel import FAKE, until
 
 STEP = b"ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n"
 FCSTD = b"PK\x03\x04" + bytes(range(256)) * 20

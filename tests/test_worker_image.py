@@ -4,7 +4,6 @@ The worker image runs headless FreeCAD 1.1.4 and `sdk.Client` on Linux x86_64, b
 The server tests drive podman over ssh and skip when the server is unreachable. Every container, image and remote
 directory they create is prefixed `dae-496-`; containers are removed in a `finally`, the image is kept as a layer cache.
 """
-import ast
 import json
 import os
 import re

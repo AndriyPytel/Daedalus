@@ -55,7 +55,6 @@ from core.loop.run import run
 import core.loop.describe as loop_describe
 import core.loop.design as loop_design
 import core.loop.prompt as loop_prompt
-import core.loop.execute as loop_execute
 from core.loop.results import Progress
 from core.loop.run import Standing, Part, LastPass
 from core.tools import ToolError, ToolRegistry
@@ -63,7 +62,6 @@ from tests import modelmania_harness
 from core import kernel
 from core.loop.design import _the_groups, _split_to_budget, _A_GROUP_BUDGET
 from core.loop.describe import _round_evidence, _the_directions_are_the_drawings, _the_geometry_disagrees, _a_freecad_of_our_own, _every_number_is_the_sheets, _off_the_sheet, _the_sweep_is_the_sheets, _the_tracing_governs
-from core.loop.execute import Looks, TYPE_CACHE_PATH
 from core.loop.prompt import _pieces_of
 from core.design.core import A_CONFLICT
 from tests.loop_helpers import (

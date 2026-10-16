@@ -10,7 +10,7 @@ import os
 
 import pytest
 
-from core.measure import Measurement, compare, measure
+from core.measure import compare, measure
 from core.events import REVIEW_VERDICT
 from tests import modelmania_harness
 from tests.loop_helpers import (

@@ -12,7 +12,6 @@ import os
 from tests import modelmania_harness
 
 from core.design import core, orientation_checks, report
-from core.design import merge as merge_module
 from core.design.core import (
     UNDER,
     entry_at,

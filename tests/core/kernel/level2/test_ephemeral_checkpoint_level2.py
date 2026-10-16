@@ -6,7 +6,6 @@ no checkpoint file, and costs less than the same fresh handoff without
 `ephemeral=True` to the same document.
 """
 import os
-import time
 
 import pytest
 

@@ -4,7 +4,6 @@ Level 2 -- what the kernel costs on part 202, the worst case the profile measure
 Each threshold is asserted as agreed; a margin that proves flaky is a finding, not a number to loosen.
 The reference render is what the per-triangle rasteriser drew of the fixture, source left out.
 """
-import glob
 import os
 import signal
 import subprocess
@@ -19,10 +18,7 @@ from PIL import Image
 from core.kernel import Kernel, find_freecadcmd
 from core.kernel import kernel as kernel_module
 from core.kernel.preflight_render import render
-from core.design.core import UNDER
 from core.edit_guard import RememberedMeasures
-from core.loop.assertion import fixed_checks
-from core.kernel import kernel_worker
 from tests.core.kernel import part_202
 
 pytestmark = pytest.mark.freecad
