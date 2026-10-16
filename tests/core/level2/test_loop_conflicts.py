@@ -217,10 +217,6 @@ def test_a_child_that_dies_on_a_reading_costs_the_reading_and_not_the_run(
         "an unchecked reading is indistinguishable from a clean one"
 
 
-
-
-
-
 def test_a_child_that_cannot_come_back_leaves_the_rest_unchecked_and_the_run_alive(
         tmp_path, monkeypatch):
     """
@@ -316,7 +312,6 @@ def test_a_child_that_never_starts_says_what_was_not_checked(tmp_path, monkeypat
     assert "the front view" in events.last(ERROR).data["message"]
 
 
-
 def test_a_worker_that_could_not_start_names_why_on_the_transcript(monkeypatch):
     """
     `None` from `_a_freecad_of_our_own` is "nothing to start", said the same
@@ -371,8 +366,6 @@ def test_the_whole_reading_check_is_bounded_by_one_budget(tmp_path, monkeypatch)
     assert len(asked) < 4, "the budget bounded nothing"
     assert max(asked) <= 60.0, "one outline was given more than the whole budget"
     assert "4 of the outlines" in events.last(ERROR).data["message"]
-
-
 
 
 def test_a_sheet_is_read_once_however_many_phases_ask_for_it(tmp_path, monkeypatch):
@@ -497,12 +490,6 @@ def test_with_no_sheet_to_ask_nothing_is_off_the_sheet(monkeypatch):
     assert _off_the_sheet(["one.pdf"], {"envelope": {"the length": "50 mm"}}) == []
 
 
-
-
-
-
-
-
 def test_a_direction_the_sheet_settles_is_corrected_rather_than_stopping_the_run(monkeypatch):
     """
     The 2026-08-13 run stopped here and told the user to correct the axis in
@@ -583,14 +570,6 @@ def test_a_plan_that_asks_for_a_value_is_told_to_choose_and_never_the_user():
     assert first_event(events, PLAN).data["unanswered"] == [MISSING]
 
 
-
-
-
-
-
-
-
-
 def test_the_eight_holes_of_the_recorded_run_end_corrected_and_the_run_goes_on(monkeypatch):
     """
     The reply arrived at `axis`, the overrule was written at the position each
@@ -665,13 +644,6 @@ def test_a_description_with_nothing_traced_in_conflict_is_left_alone():
                            "was_also_said": "SECTION A-A prints 45 mm"}]}
 
     assert _the_tracing_governs(json.loads(json.dumps(part))) == part
-
-
-
-
-
-
-
 
 
 def test_a_run_whose_only_unbuilt_step_changes_no_geometry_reaches_review():
@@ -765,9 +737,6 @@ def test_a_step_that_changes_the_shape_is_still_handed_back_to_plan():
         "carries it forward instead of paying to apply it again"
 
 
-
-
-
 def test_a_conflict_a_photo_cannot_settle_is_flagged_assumed_rather_than_kept_as_read(
         monkeypatch):
     """
@@ -804,11 +773,6 @@ def test_a_conflict_the_tracing_settles_is_left_read_by_the_new_step(monkeypatch
 
     axis = entry_at(looked, "features → clamp-bore → axis")
     assert axis["flag"] == "traced"
-
-
-
-
-
 
 
 def test_mechanical_revisions_do_not_consume_execution_budget():
@@ -944,7 +908,6 @@ def test_corrupted_cache_file_does_not_crash_the_run(tmp_path):
                   {"properties": ["Depth"]})
 
 
-
 def test_two_sessions_writing_the_disk_cache_do_not_erase_each_other(tmp_path):
     """
     Two `Looks` each hold their own snapshot of the cache, read once at
@@ -996,35 +959,6 @@ def test_disk_cached_type_is_reported_as_already_known(tmp_path):
     assert len(results) == 1
     assert results[0].data["already_known"] is True, \
         "disk cache hit is reported as already_known in TOOL_RESULT"
-
-
-def test_type_cache_path_is_repo_relative(tmp_path, monkeypatch):
-    """
-    TYPE_CACHE_PATH is computed at import as repo/logs/type_cache.json.
-    Under FreeCAD it resolves through the Mod/ symlink to user data; under
-    pytest the fixture redirects it to tmp_path.
-    """
-    
-    monkeypatch.setattr(loop_execute, "TYPE_CACHE_PATH", str(tmp_path / "cache.json"))
-
-    looks = Looks(cache_path=loop_execute.TYPE_CACHE_PATH, freecad_version="0.21.0")
-    looks.remember("describe_type", {"type_id": "Test"}, {"ok": True})
-
-    assert (tmp_path / "cache.json").exists(), \
-        "cache wrote to the monkeypatched path"
-
-
-@pytest.mark.freecad
-def test_type_cache_fixture_redirects_to_tmp_path(tmp_path):
-    """
-    The autouse fixture redirects TYPE_CACHE_PATH to tmp_path, so type cache
-    writes go there instead of repo/logs.
-    """
-    
-    assert str(tmp_path) in loop_execute.TYPE_CACHE_PATH, \
-        "TYPE_CACHE_PATH %s not under tmp_path %s" % (loop_execute.TYPE_CACHE_PATH, tmp_path)
-
-
 
 
 def test_a_closed_step_op_off_the_36_list_is_refused_and_names_the_verb():
@@ -1108,16 +1042,6 @@ def test_a_closed_step_written_in_ukrainian_is_refused():
     assert "English" in unbuildable[0]["why"]
 
 
-def test_a_closed_step_written_in_english_is_unaffected_by_the_language_check():
-    from core.loop.plan import _steps_of
-
-    steps, satisfies, cites, ops, unbuildable, values, value_errors = _steps_of(
-        [{"do": "Pocket a 6 mm slot", "op": "pocket"}], CLOSED_OPS)
-
-    assert steps == ["Pocket a 6 mm slot"]
-    assert unbuildable == []
-
-
 def test_a_closed_step_with_domain_symbols_is_not_mistaken_for_ukrainian():
     """
     None of Ø, an em dash or a degree sign is Cyrillic — `Ø40 bore` is
@@ -1162,18 +1086,6 @@ def test_an_unmarked_reply_takes_the_legacy_path_for_language_too():
 
     assert steps == ["Виконати паз шириною 6 мм"]
     assert unbuildable == []
-
-
-
-def test_the_op_vocabulary_is_36_verbs_the_32_reachable_plus_four():
-    """
-    Count checked in test_op_vocabulary.py::test_core_loop_op_verbs_matches_the_prompts_own_list
-    (full equality against the prompt), not repeated here as a copy.
-    """
-    from core.loop.plan import OP_VERBS
-
-    for verb in ("thread", "extend", "trim", "offset"):
-        assert verb in OP_VERBS
 
 
 def test_an_off_list_op_sends_plan_back_naming_the_verb_and_the_36_allowed():

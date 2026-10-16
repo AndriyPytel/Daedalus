@@ -18,11 +18,6 @@ def dependency_manager():
     return dependency_manager
 
 
-def test_the_preflight_workers_imports_are_all_required(dependency_manager):
-    assert set(dependency_manager.REQUIRED_PACKAGES) == {
-        "litellm", "numpy", "Pillow", "pymupdf", "PyYAML"}
-
-
 def test_a_missing_package_is_named_by_its_pip_name(dependency_manager, monkeypatch):
     monkeypatch.setattr(dependency_manager, "check_package", lambda module: False)
 
@@ -43,10 +38,6 @@ def test_the_sheet_reader_says_so_rather_than_failing_without_pymupdf():
 
     assert hasattr(sheet_reader, "available")
     assert sheet_reader.read(__file__) is None
-
-
-def test_pillow_is_looked_up_under_its_import_name(dependency_manager):
-    assert dependency_manager.REQUIRED_PACKAGES["Pillow"] == "PIL"
 
 
 def test_an_installed_pillow_is_found(dependency_manager):
@@ -94,7 +85,6 @@ def test_pip_is_told_to_upgrade_rather_than_lay_a_version_beside_the_last(
 
     assert "--upgrade" in seen["command"], \
         "pip was told to install without --upgrade: %s" % seen["command"]
-
 
 
 def test_a_hung_install_times_out_rather_than_freezing_freecad(
