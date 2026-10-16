@@ -69,6 +69,10 @@ A number in an Acceptance Criterion is produced by a test, from the sheets in
 a docstring or a commit message is a claim: the next change moves it and
 nothing says so.
 
+Such a test lives while its ticket is open. When the ticket closes, the test is
+deleted and its number goes into the ticket: a closed ticket's sessions never
+change, and a test over them guards no code.
+
 ## Tests
 
 Before adding a test, read the tests that already cover what is being changed.
