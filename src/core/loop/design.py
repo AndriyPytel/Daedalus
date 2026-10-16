@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from core.design.core import A_CHECK_HAZARD
 from core.design.merge import merge
 from core.events import ERROR
+from core.prompts import read_prompt
 from core.llm import ProviderRefused, StreamCutOff, cache_control_supported
 from core.sheets import sheet_reader
 
@@ -133,8 +134,11 @@ def _body(intent, base):
     """What Design is asked about: the intent, and the base part's inventory where the run edits one."""
     if not base:
         return {"intent": intent}
-    return {"intent": intent, "the_base_part": base,
+    return {"intent": intent, "the_base_part": base, "locate_the_edit": _LOCATE_THE_EDIT,
             "describe": "the part as it is after the intent is applied to the_base_part"}
+
+
+_LOCATE_THE_EDIT = read_prompt("locate_the_edit.md")
 
 
 def _asked_about_a_group(label, views, intent, llm, events, attachments, readings=1,
