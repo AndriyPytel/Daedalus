@@ -327,7 +327,10 @@ way any other disagreement is: named on its own, not folded as a sentence
 inside a Step that builds something else. A Plan that drops the entry
 silently, or that explains in another Step's prose why it did not build,
 leaves nothing for Assertion to check and nothing for the user to see at the
-Gate.
+Gate. A feature of the description is never deferred to a later phase: there is
+no later phase. One you cannot build, or that contradicts another entry — bends
+on a part whose every value is a flat blank — is a conflict that goes back to
+Design the way any other does.
 
 **A Step handed back changes how it is built, never what it builds.** The
 plane it is drawn in, the direction it is cut, the feature it is cut from, the

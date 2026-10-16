@@ -231,7 +231,7 @@ the ring, the bottom face. A mounting foot given its 15 mm and nothing against
 that plane is the foot that comes out centred on the ring axis instead of flush
 with the bottom of it, and no check the description owns can tell.
 
-**The isometric view shows the finished part, and that is what gets built.** A flat pattern only shows how the sheet is cut: its dimensions are developed lengths, never the part's extents.
+**The isometric view shows the finished part, and that is what gets built.** A flat pattern only shows how the sheet is cut: its dimensions are developed lengths, never the part's extents. The envelope is the extents of the finished part: where a view shows an intermediate state (a blank, a developed flat pattern, a part before machining), its values describe features, never the envelope.
 
 ## What you are shown
 
