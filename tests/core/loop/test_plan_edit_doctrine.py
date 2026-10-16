@@ -1,6 +1,6 @@
 """
 An edit's first Plan prompt carries the edit doctrine and the verb-to-TypeId table the
-op_mismatch gate reads, and a run nobody answers is told so and not offered `question`.
+op_mismatch gate reads, and a run nobody answers is told so, while Plan keeps `question` and Design loses it.
 """
 import json
 import os
@@ -55,15 +55,36 @@ def test_the_first_plan_prompt_of_an_edit_steers_to_features_on_the_base_part(mo
     assert "give the reason" in system
 
 
-def test_a_run_nobody_answers_says_so_and_does_not_offer_question(monkeypatch):
+def test_a_run_nobody_answers_says_so_and_design_is_not_offered_question(monkeypatch):
     with prompts.nobody_answering():
-        system = _system_of_the_first_plan(monkeypatch)
         designing = prompt(DESIGN_PHASE)
 
-    for text in (system, designing):
-        assert "Nobody answers" in text
-        assert "`question`" not in text
-        assert '"question"' not in text
+    assert "Nobody answers" in designing
+    assert "`question`" not in designing
+    assert '"question"' not in designing
+
+
+def test_a_run_nobody_answers_still_offers_plan_question_which_goes_back_to_design(monkeypatch):
+    with prompts.nobody_answering():
+        system = " ".join(_system_of_the_first_plan(monkeypatch).split())
+
+    assert "Nobody answers" in system
+    assert '{"declare": {"question": "..."}}' in system
+    assert "reply with a `question` instead of `steps`" in system
+    assert "Your question does not reach the user" in system
+    assert "It goes back to the phase that owns the description" in system
+    assert "Never ask about anything the drawing shows" in system
+    assert "say so in `question`, naming both entries" in system
+    assert "is a `conflict` or a `question`" in system
+
+
+def test_a_run_nobody_answers_plans_with_a_flagged_assumption_only_as_the_last_resort(monkeypatch):
+    with prompts.nobody_answering():
+        system = " ".join(_system_of_the_first_plan(monkeypatch).split())
+
+    assert "Only where `nobody_answered` tells you to decide, because Design could not answer from the drawing either" in system
+    assert "pick the value yourself, flag it `assumed`" in system
+    assert "say in that Step that you chose it and what you chose it from" in system
 
 
 def test_an_interactive_run_still_offers_question(monkeypatch):
