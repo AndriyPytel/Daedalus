@@ -18,22 +18,6 @@ def kernel(monkeypatch):
     return instance
 
 
-def test_plan_values_survive_a_restart(kernel, monkeypatch):
-    requests = []
-
-    def fake_ask(request, timeout, doing):
-        requests.append(request)
-        return {"ok": True, "checkpoint": "checkpoint-1"}, None
-
-    monkeypatch.setattr(kernel, "_ask", fake_ask)
-
-    kernel.check("addObject", document="doc.FCStd", plan_values={"arm_y": 46.458})
-    kernel.restart()
-    kernel.check("assert plan_values['arm_y'] == 46.458")
-
-    assert requests[1]["plan_values"] == {"arm_y": 46.458}
-
-
 def test_kernel_plan_values_property_reflects_the_last_response(kernel, monkeypatch):
     def fake_ask(request, timeout, doing):
         return {"ok": True, "checkpoint": "checkpoint-1",

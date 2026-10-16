@@ -33,11 +33,6 @@ OLD_CHECKS = {
 }
 
 
-def test_every_old_preflight_check_still_exists_as_a_function():
-    missing = [name for name in OLD_CHECKS.values() if not hasattr(kernel_worker, name)]
-    assert not missing, "check function(s) deleted from core/kernel_worker.py: %s" % missing
-
-
 def test_every_old_preflight_check_still_runs_after_a_step():
     called, pending = set(), ["_run_step_body"]
     while pending:

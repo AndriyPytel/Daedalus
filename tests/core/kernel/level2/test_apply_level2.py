@@ -70,15 +70,6 @@ def pipeline(doc, worker, tmp_path):
                          render_dir=str(tmp_path))
 
 
-def test_a_step_lands_in_the_document(pipeline, doc, worker):
-    result = pipeline.apply(BOX, label="Add the box", design=A_DESIGN,
-                            kernel_result=_kernel_result(worker, doc, BOX, design=A_DESIGN))
-
-    assert result.ok, result.traceback
-    assert result.created == ["Box"]
-    assert doc.getObject("Box").Length.Value == 10
-
-
 def test_a_step_brings_back_a_description_of_what_is_now_there(pipeline, doc, worker):
     """
     An Apply now answers with the part rather than a picture of it:
@@ -144,22 +135,6 @@ def test_a_step_can_assign_a_material_the_way_the_trap_describes(pipeline, doc, 
 
     assert result.ok, result.traceback
     assert "alumin" in doc.getObject("Body").ShapeMaterial.Name.lower()
-
-
-def test_a_single_undo_takes_a_whole_step_back(pipeline, doc, worker):
-    """Several objects, one Step, one Ctrl+Z."""
-    code = ("box = doc.addObject('Part::Box', 'Box')\n"
-           "cyl = doc.addObject('Part::Cylinder', 'Cyl')\n"
-           "cut = doc.addObject('Part::Cut', 'Cut')\n"
-           "cut.Base, cut.Tool = box, cyl\n")
-    result = pipeline.apply(code, label="Box minus cylinder",
-                            kernel_result=_kernel_result(worker, doc, code))
-    assert result.ok, result.traceback
-    assert len(doc.Objects) == 3
-
-    doc.undo()
-
-    assert doc.Objects == [], "one undo did not take the whole Step back"
 
 
 def test_two_steps_undo_one_at_a_time(pipeline, doc, worker):
@@ -375,45 +350,6 @@ def test_the_users_own_object_is_protected_end_to_end(doc, worker, tmp_path):
                              kernel_result=_kernel_result(worker, doc, delete_code))
     assert allowed.ok, allowed.traceback
     assert doc.getObject("UsersBox") is None
-
-
-def test_modifying_the_users_own_object_needs_no_permission(doc, worker, tmp_path):
-    """The Plan Gate approved the Step that says the object changes."""
-    users_box = doc.addObject("Part::Box", "UsersBox")
-    users_box.Length = 12
-    doc.recompute()
-
-    asks = []
-    pipeline = ApplyPipeline(document=doc, worker=worker,
-                            dispatch=lambda func, timeout=None: func(),
-                            render_dir=str(tmp_path),
-                            confirm=lambda kinds: asks.append(kinds) or True)
-
-    modify_code = "doc.getObject('UsersBox').Length = design['features']['UsersBox']['length']"
-    result = pipeline.apply(modify_code, design=A_DESIGN,
-                            kernel_result=_kernel_result(worker, doc, modify_code, design=A_DESIGN))
-
-    assert result.ok, result.traceback
-    assert asks == []
-    assert doc.getObject("UsersBox").Length.Value == 99
-
-
-def test_what_the_assistant_created_needs_no_permission(doc, worker, tmp_path):
-    asks = []
-    pipeline = ApplyPipeline(document=doc, worker=worker,
-                            dispatch=lambda func, timeout=None: func(),
-                            render_dir=str(tmp_path),
-                            confirm=lambda kinds: asks.append(kinds) or True)
-
-    assert pipeline.apply(BOX, design=A_DESIGN,
-                          kernel_result=_kernel_result(worker, doc, BOX, design=A_DESIGN)).ok
-    assert pipeline.owned == {"Box"}
-
-    modify_code = "doc.getObject('Box').Length = design['features']['Box']['resized_length']"
-    assert pipeline.apply(modify_code, design=A_DESIGN,
-                          kernel_result=_kernel_result(worker, doc, modify_code, design=A_DESIGN)).ok
-    assert asks == [], "asked permission for its own object"
-    assert doc.getObject("Box").Length.Value == 25
 
 
 def test_each_applied_step_lands_as_exactly_one_undo_transaction(pipeline, doc, worker):

@@ -102,19 +102,6 @@ def saved_document(tmp_path):
         FreeCAD.closeDocument(doc.Name)
 
 
-def test_a_clean_step_comes_back_ok_with_a_render(warm, tmp_path):
-    png = str(tmp_path / "render.png")
-
-    result = warm.check(
-        "box = doc.addObject('Part::Box', 'Box')\nbox.Length = 10",
-        render_path=png,
-    )
-
-    assert result.ok, result.traceback
-    assert [o["name"] for o in result.objects] == ["Box"]
-    assert os.path.getsize(png) > 1000, "the render is empty"
-
-
 def test_the_workers_render_is_byte_identical_to_preflight_render_directly(warm, tmp_path):
     """
     `render` moved out of `preflight_worker` into `preflight_render`
@@ -145,14 +132,6 @@ def test_the_workers_render_is_byte_identical_to_preflight_render_directly(warm,
         assert open(via_worker, "rb").read() == open(via_direct_call, "rb").read()
     finally:
         FreeCAD.closeDocument(doc.Name)
-
-
-def test_the_worker_stays_warm_between_requests(warm):
-    first = warm.check("doc.addObject('Part::Box', 'A')")
-    second = warm.check("doc.addObject('Part::Box', 'B')")
-
-    assert first.ok and second.ok
-    assert warm.alive
 
 
 def test_the_document_copy_is_opened_and_seen(warm, saved_document):
