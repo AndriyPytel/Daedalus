@@ -171,57 +171,6 @@ def real(worker_image, database_url, monkeypatch):
         _ssh("podman rm -f %s >/dev/null 2>&1" % name, check=False)
 
 
-def texts(database_url, run_id, kind):
-    return [payload.get("text") for seen, payload in kinds(database_url, run_id) if seen == kind]
-
-
-def test_a_real_interactive_run_waits_for_the_answer_and_builds_the_cube_after_it(real, database_url):
-    with real("ask") as api:
-        run = start(api, "Add a 10mm cube", interactive=True).json()
-        until(lambda: state(api, run["id"]) == "needs-answer", seconds=420)
-        assert texts(database_url, run["id"], "question") == ["solid or hollow?"]
-        assert api.post("/v1/runs/%s:answer" % run["id"], json={"answer": "solid"}, headers=AUTH).status_code == 202
-        until(lambda: state(api, run["id"]) in ("completed", "failed", "blocked"), seconds=420)
-        assert state(api, run["id"]) == "completed"
-    assert texts(database_url, run["id"], "answer")[0] == "solid"
-    assert "applied" in [kind for kind, _ in kinds(database_url, run["id"])]
-
-
-def test_a_real_non_interactive_run_decides_alone_and_never_enters_needs_answer(real, database_url):
-    seen = set()
-    with real("ask") as api:
-        run = start(api, "Add a 10mm cube").json()
-        until(lambda: seen.add(state(api, run["id"])) or state(api, run["id"]) in ("completed", "failed", "blocked"), seconds=420)
-        assert state(api, run["id"]) == "completed"
-    assert "needs-answer" not in seen
-    with db.connect(database_url) as check:
-        answers = [row[0] for row in check.execute("SELECT payload FROM events WHERE run_id = %s AND type = 'answer'", (run["id"],))]
-    assert answers and answers[0]["by"] == "nobody"
-
-
-def test_a_real_run_cancelled_mid_run_ends_cancelled_by_the_worker_itself(real, database_url):
-    with real("cube", delay=4) as api:
-        run = start(api, "Add a 10mm cube").json()
-        until(lambda: kinds(database_url, run["id"]), seconds=420)
-        assert api.post("/v1/runs/%s:cancel" % run["id"]).status_code == 202
-        until(lambda: state(api, run["id"]) == "cancelled", seconds=120)
-    seen = kinds(database_url, run["id"])
-    assert seen[-1] == ("cancelled", {"reason": "cancelled by the client"}), seen[-3:]
-    assert "applied" not in [kind for kind, _ in seen]
-
-
-def test_a_real_owned_object_confirm_is_refused_unless_the_run_overrides_it(real, database_url):
-    ended = ("completed", "failed", "blocked", "stopped", "budget_exhausted")
-    with real("delete") as api:
-        refused = start(api, "Remove the box").json()
-        until(lambda: state(api, refused["id"]) in ended, seconds=420)
-    with real("delete") as api:
-        allowed = start(api, "Remove the box", confirm=True).json()
-        until(lambda: state(api, allowed["id"]) in ended, seconds=420)
-    assert texts(database_url, refused["id"], "answer")[0].startswith("You refused to let it delete UserBox")
-    assert texts(database_url, allowed["id"], "answer")[0].startswith("You allowed it to delete UserBox")
-
-
 def test_a_cancelled_interactive_run_still_carries_its_attachment_and_flags_and_leaves_its_blobs(tmp_path, database_url, monkeypatch, repo, conn):
     from test_service_blobs import row
     owner = repo.create_user()

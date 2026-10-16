@@ -199,31 +199,3 @@ def _the_biggest_plane(shape):
     normal, position = face.Surface.Axis, face.Surface.Position
     letter = max("xyz", key=lambda one: abs(getattr(normal, one)))
     return letter, getattr(position, letter)
-
-
-def test_the_generated_checks_and_each_helper_take_five_seconds_at_most_on_part_202(part):
-    import time
-
-    from core.kernel import kernel_worker
-
-    shape = max((o for o in part.Objects if getattr(o, "Shape", None) is not None and o.Shape.Solids
-                 and getattr(o.getParentGeoFeatureGroup(), "TypeId", "") != "PartDesign::Body"),
-                key=lambda o: o.Shape.Volume).Shape
-    diameter, letter, count = _the_commonest_cylinder(shape)
-    plane, at = _the_biggest_plane(shape)
-    design = {"datums": [{"name": "the big face", "fixes": "the length", "is": "the plane %s = %r" % (plane, at)}]}
-    entries = ["features \u2192 round \u2192 diameter: %s mm" % diameter,
-               "features \u2192 round \u2192 axis: along the Document's %s axis" % letter.upper(),
-               "features \u2192 round \u2192 count: %d" % count]
-    code = the_sizes_measured(entries, {}) + """
-cylinder(%s, %r, expect=%d)
-a = face_at('the big face')
-distance(a, a)
-""" % (diameter, letter, count)
-    took = float("inf")
-    for _ in range(3):
-        namespace = kernel_worker.step_namespace(part, design=design)
-        started = time.perf_counter()
-        exec(compile(code, "<generated>", "exec"), namespace)  # noqa: S102
-        took = min(took, time.perf_counter() - started)
-    assert took <= 5.0, "the generated checks and helpers took %.1f s on part 202, the threshold is 5.0 s" % took

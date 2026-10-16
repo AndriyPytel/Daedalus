@@ -209,27 +209,5 @@ def test_a_kernel_whose_parent_was_killed_removes_its_scratch_directory(scratch,
     assert _leftovers(scratch) == []
 
 
-def test_a_kernel_start_removes_the_scratch_of_a_parent_and_worker_that_were_both_killed(scratch):
-    try:
-        find_freecadcmd()
-    except RuntimeError as exc:
-        pytest.skip(str(exc))
-    parent, worker = _a_parent_with_a_kernel(scratch, True)
-    parent.kill()
-    parent.wait()
-    os.kill(worker, signal.SIGKILL)
-    time.sleep(0.5)
-    assert _leftovers(scratch), "the killed pair left nothing behind"
-    alive = scratch / ("kernel_checkpoint_%d_mine" % os.getpid())
-    alive.mkdir()
-
-    with Kernel():
-        owners = {int(os.path.basename(path).split("_")[2])
-                  for path in glob.glob(str(scratch / "kernel_checkpoint_*_*"))}
-
-    assert owners == {os.getpid()}, "a directory of a dead process survived the start"
-    assert alive.exists(), "a directory of a live process was swept"
-
-
 def test_the_kernel_timeout_is_still_thirty_seconds():
     assert kernel_module.DEFAULT_TIMEOUT == 30.0

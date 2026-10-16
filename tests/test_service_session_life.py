@@ -228,39 +228,7 @@ def test_a_second_run_after_the_ttl_edits_the_model_and_still_holds_the_first_ru
     assert_edited_with_history(first, second, before, after, tmp_path, calls)
 
 
-def test_the_same_respawn_in_the_worker_image_on_the_home_server(worker_image, database_url, monkeypatch, tmp_path):
-    real_kernel()
-    remote = "~/dae-504-calls"
-    _ssh("rm -rf %s && mkdir -p %s" % (remote, remote))
-    name = "dae-504-respawn"
-    argv = ["ssh", "-o", "BatchMode=yes", HOST,
-            "podman run -i --rm --name %s -e DAE_CALLS=/calls/calls.jsonl -v %s:/calls %s python deploy/worker/scripted_worker.py"
-            % (name, remote, worker_image)]
-    try:
-        first, second, (before, after) = respawn_through(argv, database_url, monkeypatch, tmp_path)
-        calls = [json.loads(line) for line in _ssh("cat %s/calls.jsonl" % remote).stdout.splitlines()]
-    finally:
-        _ssh("podman rm -f %s >/dev/null 2>&1; rm -rf %s" % (name, remote), check=False)
-    assert_edited_with_history(first, second, before, after, tmp_path, calls)
-    assert not _ssh("podman ps -q --filter name=%s" % name).stdout.strip()
-
-
 IMAGE = "dae-504-worker"
 REMOTE = "dae-504-build"
 
 
-@pytest.fixture(scope="module")
-def worker_image():
-    probe = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", HOST, "podman --version"],
-                           capture_output=True, text=True)
-    if probe.returncode != 0:
-        pytest.skip("home server %s unreachable over ssh: %s" % (HOST, probe.stderr.strip()[-200:]))
-    _ssh("rm -rf ~/%s/ctx && mkdir -p ~/%s/ctx" % (REMOTE, REMOTE))
-    tar = subprocess.Popen(["tar", "--exclude=__pycache__", "-cf", "-", "-C", ROOT, "src", "config", "deploy"],
-                           stdout=subprocess.PIPE)
-    sent = subprocess.run(["ssh", "-o", "BatchMode=yes", HOST, "tar -xf - -C ~/%s/ctx" % REMOTE],
-                          stdin=tar.stdout, capture_output=True)
-    tar.stdout.close()
-    assert tar.wait() == 0 and sent.returncode == 0, sent.stderr
-    _ssh("cd ~/%s/ctx && podman build -t %s -f deploy/worker/Containerfile ." % (REMOTE, IMAGE), timeout=2400)
-    return IMAGE

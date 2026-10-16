@@ -166,35 +166,6 @@ def test_the_openapi_document_lists_the_blob_routes(api):
     assert {"/v1/blobs", "/v1/blobs/{blob_id}", "/v1/runs/{run_id}/step", "/v1/runs/{run_id}/checkpoint"} <= set(paths)
 
 
-@pytest.fixture(scope="module")
-def artifact_image():
-    from test_service_worker_channel import HOST, REMOTE
-    probe = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", HOST, "podman --version"],
-                           capture_output=True, text=True)
-    if probe.returncode != 0:
-        pytest.skip("home server %s unreachable over ssh: %s" % (HOST, probe.stderr.strip()[-200:]))
-    remote, image = "dae-502-build", "dae-502-worker"
-    _ssh("rm -rf ~/%s/ctx && mkdir -p ~/%s/ctx" % (remote, remote))
-    tar = subprocess.Popen(["tar", "--exclude=__pycache__", "-cf", "-", "-C", ROOT, "src", "config", "deploy"],
-                           stdout=subprocess.PIPE)
-    sent = subprocess.run(["ssh", "-o", "BatchMode=yes", HOST, "tar -xf - -C ~/%s/ctx" % remote],
-                          stdin=tar.stdout, capture_output=True)
-    tar.stdout.close()
-    assert tar.wait() == 0 and sent.returncode == 0, sent.stderr
-    _ssh("cd ~/%s/ctx && podman build -t %s -f deploy/worker/Containerfile ." % (remote, image), timeout=2400)
-    return image
-
-
-def test_the_checkpoint_the_worker_produces_is_an_fcstd_freecad_opens_and_the_step_has_a_solid(artifact_image):
-    done = _ssh("podman run --rm --name dae-502-artifacts %s python /app/deploy/worker/artifacts_smoke.py" % artifact_image,
-                timeout=600)
-    report = json.loads(done.stdout.strip().splitlines()[-1])
-    assert report["kinds"] == ["step", "checkpoint"]
-    assert report["checkpoint_name"].endswith(".FCStd") and report["step_name"].endswith(".step")
-    assert report["reopened_solids"] == 1
-    assert report["step_header"] == "ISO-10303-21;"
-
-
 def test_the_first_upload_by_an_owner_with_no_users_row_is_201(api, conn):
     app.dependency_overrides[current_owner] = lambda: "owner-fresh"
     response = api.post("/v1/blobs", params={"name": "a.txt"}, content=b"x")

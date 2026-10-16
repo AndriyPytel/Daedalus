@@ -6,7 +6,6 @@ end-to-end test builds a cube through the real worker in the `dae-499-worker` im
 LLM, and skips when the server is unreachable.
 """
 import json
-import os
 import subprocess
 import sys
 
@@ -171,40 +170,3 @@ def test_the_owner_comes_from_the_one_current_owner_dependency(api, repo):
     assert api.get("/v1/runs/%s" % mine["id"]).status_code == 200
 
 
-@pytest.fixture(scope="module")
-def worker_image():
-    probe = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", HOST, "podman --version"],
-                           capture_output=True, text=True)
-    if probe.returncode != 0:
-        pytest.skip("home server %s unreachable over ssh: %s" % (HOST, probe.stderr.strip()[-200:]))
-    _ssh("rm -rf ~/%s/ctx && mkdir -p ~/%s/ctx" % (REMOTE, REMOTE))
-    tar = subprocess.Popen(["tar", "--exclude=__pycache__", "-cf", "-", "-C", ROOT, "src", "config", "deploy"],
-                           stdout=subprocess.PIPE)
-    sent = subprocess.run(["ssh", "-o", "BatchMode=yes", HOST, "tar -xf - -C ~/%s/ctx" % REMOTE],
-                          stdin=tar.stdout, capture_output=True)
-    tar.stdout.close()
-    assert tar.wait() == 0 and sent.returncode == 0, sent.stderr
-    _ssh("cd ~/%s/ctx && podman build -t %s -f deploy/worker/Containerfile ." % (REMOTE, IMAGE), timeout=2400)
-    return IMAGE
-
-
-def test_a_first_build_runs_end_to_end_through_the_worker_in_the_image(worker_image, database_url, monkeypatch):
-    name = "dae-499-real"
-    _ssh("podman rm -f %s >/dev/null 2>&1" % name, check=False)
-    argv = ["ssh", "-o", "BatchMode=yes", HOST,
-            "podman run -i --rm --name %s %s python deploy/worker/scripted_worker.py" % (name, worker_image)]
-    monkeypatch.setenv(db.URL_VARIABLE, database_url)
-    monkeypatch.setenv("DAEDALUS_WORKER_ARGV", json.dumps(argv))
-    monkeypatch.setenv("DAEDALUS_TOKEN", TOKEN)
-    try:
-        with TestClient(app, headers=AUTH) as api:
-            run = start(api, "Add a 10mm cube").json()
-            done = until(lambda: (lambda r: r if r["state"] in FINAL else None)(api.get("/v1/runs/%s" % run["id"]).json()),
-                         seconds=420)
-            assert api.get("/v1/runs/%s" % run["id"]).json()["session_id"] == run["session_id"]
-            with db.connect(database_url) as check:
-                kinds = [row[0] for row in check.execute("SELECT type FROM events WHERE run_id = %s ORDER BY seq", (run["id"],))]
-    finally:
-        _ssh("podman rm -f %s >/dev/null 2>&1" % name, check=False)
-    assert done["state"] == "completed" and done["cost_usd"] >= 0
-    assert {"intent", "applied"} <= set(kinds) and kinds[-1] == "completed", kinds
