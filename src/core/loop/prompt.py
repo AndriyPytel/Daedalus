@@ -99,7 +99,7 @@ _EDITING = re.compile(r"\{\{editing\}\}(.*?)\{\{/editing\}\}", re.DOTALL)
 def nobody_answering():
     """
     Prompts composed inside it say that no one answers and leave out the
-    `{{asking}}` passages, so `question` is not offered. A run is in it when
+    `{{asking}}` passages, which Design uses to offer `question`. A run is in it when
     its `ask` is `nobody_to_ask`; worker threads need `contextvars.copy_context`.
     """
     token = _nobody_answers.set(True)
