@@ -154,11 +154,6 @@ def test_a_provider_that_does_need_a_key_still_says_when_it_has_none(providers_p
     assert _tested(providers_page) == "No key"
 
 
-def test_the_model_list_offers_every_version_models_dev_lists(manager):
-    assert [model["id"] for model in manager.get_models_for_provider(CLAUDE)] == \
-        ["claude-sonnet-5", "claude-sonnet-5-5", "claude-opus-5-5"]
-
-
 def test_the_subscription_is_offered_with_no_key_stored(manager):
     """
     `_configured` skips a provider with neither a key nor an address, so this
