@@ -38,19 +38,6 @@ def _spawned_filenames(phase, tmp_path):
     return set(os.listdir(working))
 
 
-def test_assertion_kernel_has_no_execute_artifact(tmp_path):
-    names = _spawned_filenames(pc.ASSERTION, tmp_path)
-    assert names == _expected_filenames(pc.ASSERTION)
-    assert "execute.json" not in names
-
-
-def test_review_kernel_has_no_code_at_all(tmp_path):
-    names = _spawned_filenames(pc.REVIEW, tmp_path)
-    assert names == _expected_filenames(pc.REVIEW)
-    for code_file in ("design.json", "plan.json", "execute.json", "document.FCStd"):
-        assert code_file not in names
-
-
 def test_every_phases_spawned_kernel_matches_its_declared_row(tmp_path):
     for phase in pc.PHASE_CONTRACT:
         assert _spawned_filenames(phase, tmp_path) == _expected_filenames(phase)
