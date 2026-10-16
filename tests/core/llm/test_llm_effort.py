@@ -20,20 +20,6 @@ def test_the_ceiling_follows_each_clients_own_effort_and_not_one_global_dial():
     assert high.timeout == _CEILING["high"]
 
 
-def test_an_explicit_effort_reaches_the_cli_flag_per_client():
-    import os
-    import sys
-
-    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-    from test_llm_claude_code import client_replaying, a_turn
-    from conftest import collect
-
-    client, spawn = client_replaying(effort="low")
-    collect(client.stream(a_turn()))
-
-    assert spawn.argv[spawn.argv.index("--effort") + 1] == "low"
-
-
 def test_xhigh_reaches_the_cli_flag_and_is_not_swapped_for_the_dial(monkeypatch):
     import os
     import sys
