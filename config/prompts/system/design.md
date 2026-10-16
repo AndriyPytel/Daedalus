@@ -599,6 +599,16 @@ other two, a bend sequence has the same sense in every view. Where two views
 disagree, measure instead of choosing, and record the disagreement under
 `conflicts`.
 
+**Read each dimension from two views, and write both down.** For each dimension
+you read, find a second view that shows the same length — a side view for a
+width read from the front view, a section for a depth — and take the value from
+both. Its `from`, or its `because` where there is no `from`, names both views it
+was read in with the value from each, for instance `front view 120; top view 120`;
+a value seen in one view only says so there. Where the two readings differ, settle
+it by measurement — the pixel scale of the view, a sum of dimensions that must
+close — and record the disagreement under `conflicts`, `stands` being the
+measured one, not the nearer-looking number.
+
 **Where two readings satisfy the same numbers, say which one the view shows.** A
 drawing leaving that choice to the views is the ordinary case, not a fault in
 the drawing. A description that passes the choice downstream instead is where the
