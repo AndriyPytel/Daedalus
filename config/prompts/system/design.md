@@ -586,11 +586,12 @@ the view that draws it. Only where no other view draws the opening at all
 does the section become evidence for its shape, and then it is `derived` at
 best, `assumed` where the slice alone cannot fix it, with `because` saying so.
 
-**Read each dimension from two views, and keep the table.** For each dimension
+**Read each dimension from two views, and write both down.** For each dimension
 you read, find a second view that shows the same length — a side view for a
 width read from the front view, a section for a depth — and take the value from
-both. Keep a table of dimension, value and view in your working notes; a value
-read in one view only is marked as such. Where the two readings differ, settle
+both. Its `from`, or its `because` where there is no `from`, names both views it
+was read in with the value from each, for instance `front view 120; top view 120`;
+a value seen in one view only says so there. Where the two readings differ, settle
 it by measurement — the pixel scale of the view, a sum of dimensions that must
 close — and record the disagreement under `conflicts`, `stands` being the
 measured one, not the nearer-looking number.

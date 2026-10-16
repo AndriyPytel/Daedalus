@@ -112,7 +112,7 @@ across the pages, which are read apart, so the merge can unify them.
 
 `BASELINE`'s input_tokens moved up by 137 on every call: 65 from the `design.md` rules on counting features, 72 from the rule to settle only what the drawing does not give. It takes the ratio to 1.83, the 2024 sheet's first pass crossing 1.81 by 413 tokens. What it buys is counts taken from Design's own feature list and a value measured off the drawing before it is decided.
 
-`BASELINE`'s input_tokens moved up by 148 on every call when `design.md` gained the rule to read each dimension from two views and keep a dimension, value, view table. 592 characters, 148 tokens on every call the first pass makes. It takes the ratio to 1.84, the 2024 sheet's first pass crossing 1.83 by 57 tokens. What it buys is a misread dimension or position caught from a second view before Plan.
+`BASELINE`'s input_tokens moved up by 171 on every call when `design.md` gained the rule to read each dimension from two views and write both readings in the description's `from` or `because`. 690 characters, 171 tokens on every call the first pass makes. It takes the ratio to 1.84, the 2024 sheet's first pass crossing 1.83 by 126 tokens. What it buys is a misread dimension or position caught from a second view before Plan.
 """
 import json
 import os
@@ -147,19 +147,19 @@ FIRST_PASS_CEILING_RATIO = 1.84
 BASELINE = {
     "model-mania_-in-person-2023.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 7195, "input_tokens": 25658},
-            {"label": "page 2", "pictures": 14, "total_chars": 6999, "input_tokens": 26396},
+            {"label": "page 1", "pictures": 15, "total_chars": 7195, "input_tokens": 25681},
+            {"label": "page 2", "pictures": 14, "total_chars": 6999, "input_tokens": 26419},
         ],
-        "reconcile": {"total_chars": 40545, "input_tokens": 22125},
-        "total": 74179,
+        "reconcile": {"total_chars": 40545, "input_tokens": 22148},
+        "total": 74248,
     },
     "model-mania-2024.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 8636, "input_tokens": 23993},
-            {"label": "page 2", "pictures": 15, "total_chars": 8539, "input_tokens": 26877},
+            {"label": "page 1", "pictures": 15, "total_chars": 8636, "input_tokens": 24016},
+            {"label": "page 2", "pictures": 15, "total_chars": 8539, "input_tokens": 26900},
         ],
-        "reconcile": {"total_chars": 41375, "input_tokens": 22332},
-        "total": 73202,
+        "reconcile": {"total_chars": 41375, "input_tokens": 22355},
+        "total": 73271,
     },
 }
 
