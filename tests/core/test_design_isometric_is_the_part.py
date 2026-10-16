@@ -15,5 +15,5 @@ def test_both_design_prompts_build_the_isometric_and_read_a_flat_pattern_as_a_cu
     for headless in (True, False):
         said = _said(headless)
         assert "The isometric view shows the finished part, and that is what gets built" in said
-        assert "a flat pattern only shows how the sheet is cut" in said
+        assert "A flat pattern only shows how the sheet is cut" in said
         assert "developed lengths, never the part's extents" in said
