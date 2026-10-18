@@ -95,13 +95,13 @@ def test_the_body_is_valid_in_memory_and_still_refused_after_a_round_trip(broken
 
     assert "does not survive a STEP round trip" in refusal
     assert "Body:" in refusal
-    assert "Plane" in refusal and "area" in refusal
+    assert "plane" in refusal and "area" in refusal
 
 
 def test_the_refusal_names_at_most_five_faces(broken_body):
     from core.manifold import step_round_trip_fc
 
-    assert step_round_trip_fc(broken_body.Body.Shape).count("Plane") <= 5
+    assert step_round_trip_fc(broken_body.Body.Shape).count("plane") <= 5
 
 
 def test_a_body_that_survives_the_round_trip_is_not_refused():
