@@ -634,6 +634,12 @@ def _pinched(shape):
     return check_fc(shape)
 
 
+def _not_round_trip_safe(shape):
+    from core.manifold import step_round_trip_fc
+
+    return step_round_trip_fc(shape)
+
+
 _BODY_CHECKS = (
     (_in_pieces, "this Step left a Body in more than one piece:",
      "A PartDesign Body is one solid. Disjoint profiles in one sketch pad into "
@@ -651,6 +657,11 @@ _BODY_CHECKS = (
      "thickness there. OCC calls it valid, but the exported STEP fails the mesh check "
      "every consumer runs -- move the cylinder or change its radius so the faces "
      "overlap or leave a gap."),
+    (_not_round_trip_safe, "this Step left a Body that does not survive a STEP round trip:",
+     "OCC calls the Body valid, but the STEP written from it reads back with broken faces and the "
+     "exported file is rejected as invalid. Coplanar faces left unmerged (Refine off), or a feature "
+     "leaving a sliver or a ledge face that coincides with an earlier feature's face, make it -- "
+     "rebuild the Step so the faces merge or overlap clearly."),
 )
 
 

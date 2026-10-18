@@ -390,6 +390,60 @@ def check_fc(fc_shape):
     return "; ".join([finding.message] + contacts(shape, finding)[:5])
 
 
+def _read(path):
+    reader = STEPControl_Reader()
+    if reader.ReadFile(path) != IFSelect_RetDone:
+        return None
+    reader.TransferRoots()
+    return reader.OneShape()
+
+
+def _invalid_faces(shape):
+    analyzer = BRepCheck_Analyzer(shape)
+    explorer = TopExp_Explorer(shape, TopAbs_FACE)
+    faces = []
+    while explorer.More():
+        if not analyzer.IsValid(explorer.Current()):
+            faces.append(explorer.Current())
+        explorer.Next()
+    return faces
+
+
+def _describe_invalid(face):
+    props = GProp_GProps()
+    brepgprop.SurfaceProperties(face, props)
+    centre = props.CentreOfMass()
+    return "%s, area %.3f, centre (%.3f, %.3f, %.3f)" % (
+        _describe(face), abs(props.Mass()), centre.X(), centre.Y(), centre.Z())
+
+
+def step_round_trip_fc(fc_shape):
+    """
+    The sentence naming up to 5 faces that read back invalid from the STEP written for *fc_shape*, or None.
+
+    Every mode `_survives_step` tries is written and read back; one that reads back valid passes the shape.
+    The faces named are those of the first mode, the one the exporter writes first.
+    """
+    if not fc_shape.Solids:
+        return None
+    shape = from_freecad(fc_shape)
+    handle, path = tempfile.mkstemp(suffix=".step")
+    os.close(handle)
+    try:
+        bad = None
+        for mode in (0,) + STEP_PRECISION_MODES:
+            _write(shape, path, mode)
+            read = _read(path)
+            faces = _invalid_faces(read) if read is not None else []
+            if read is not None and BRepCheck_Analyzer(read).IsValid():
+                return None
+            if bad is None:
+                bad = faces
+    finally:
+        os.remove(path)
+    return "; ".join(["%d face(s) read back invalid" % len(bad)] + [_describe_invalid(f) for f in bad[:5]])
+
+
 def repair_fc(fc_shape):
     """`(shape, note)`: *fc_shape* itself and None when it passes the gate, else `repair`'s outcome."""
     if not fc_shape.Solids:
