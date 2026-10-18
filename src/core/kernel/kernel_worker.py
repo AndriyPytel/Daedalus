@@ -464,7 +464,7 @@ RESERVED_STEP_NAMES = frozenset(
 
 def _harvested_plan_values(namespace):
     """
-    The top-level numbers, and lists or dicts of numbers, a Plan-phase call computed,
+    The top-level plain values, and lists or dicts of them, a Plan-phase call computed,
     for `_SESSION` to remember by name. A reserved name is never captured, so
     a Step cannot smuggle a value in under `design` or `doc`, and a
     `_`-prefixed name is scratch.
@@ -473,22 +473,38 @@ def _harvested_plan_values(namespace):
     for name, value in namespace.items():
         if name in RESERVED_STEP_NAMES or name.startswith("_"):
             continue
-        numbers = _numbers(value)
-        if numbers is not None:
-            kept[name] = numbers
+        plain = _plain_data(value)
+        if plain is not None:
+            kept[name] = plain
     return kept
 
 
-def _numbers(value):
-    """*value* as a number, or a non-empty nesting of lists and string-keyed dicts of numbers, else None."""
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
+def _unharvested_plan_names(namespace):
+    """The names `_harvested_plan_values` would skip, each with the type it holds."""
+    kept = _harvested_plan_values(namespace)
+    return {name: type(value).__name__ for name, value in namespace.items()
+            if name not in kept and name not in RESERVED_STEP_NAMES and not name.startswith("_")}
+
+
+_PLAIN_DEPTH = 50
+
+
+def _plain_data(value, depth=0):
+    """
+    *value* as a number, string or boolean, or a non-empty nesting of lists and string-keyed
+    dicts of those, else None. Nesting deeper than `_PLAIN_DEPTH` is not plain, which also
+    stops a value that contains itself.
+    """
+    if isinstance(value, (bool, str, int, float)):
         return value
+    if depth >= _PLAIN_DEPTH:
+        return None
     if isinstance(value, (list, tuple)) and value:
-        items = [_numbers(item) for item in value]
+        items = [_plain_data(item, depth + 1) for item in value]
         if all(item is not None for item in items):
             return items
     if isinstance(value, dict) and value and all(isinstance(key, str) for key in value):
-        items = {key: _numbers(item) for key, item in value.items()}
+        items = {key: _plain_data(item, depth + 1) for key, item in value.items()}
         if all(item is not None for item in items.values()):
             return items
     return None
@@ -1263,7 +1279,7 @@ def _recompute_scope(doc, touched):
 SCRATCH = "KERNEL_SCRATCH"
 
 _SESSION = {"doc": None, "checkpoint": None, "names": {}, "design": None,
-            "plan_values": {}, "scratch": None}
+            "plan_values": {}, "unharvested": {}, "scratch": None}
 
 
 def _scratch():
@@ -1480,6 +1496,9 @@ def run_step(request):
     if response.get("ok"):
         if capture_values:
             _SESSION["plan_values"].update(_harvested_plan_values(namespace))
+            _SESSION["unharvested"].update(_unharvested_plan_names(namespace))
+            for name in _SESSION["plan_values"]:
+                _SESSION["unharvested"].pop(name, None)
         if exploring and touched.touched() and not ephemeral:
             _reload_checkpoint()
             response["rolled_back"] = sorted(touched.created | touched.deleted | touched.modified())
@@ -1493,6 +1512,7 @@ def run_step(request):
     response["checkpoint"] = _SESSION["checkpoint"]
     response["names"] = dict(_SESSION["names"])
     response["plan_values"] = dict(_SESSION["plan_values"])
+    response["plan_values_unharvested"] = dict(_SESSION["unharvested"])
     return response
 
 
