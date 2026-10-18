@@ -63,6 +63,7 @@ class KernelResult:
     signature: dict = field(default_factory=dict)
     rolled_back: list = field(default_factory=list)
     plan_values: dict = field(default_factory=dict)
+    plan_values_unharvested: dict = field(default_factory=dict)
 
     @classmethod
     def from_response(cls, response):
@@ -81,12 +82,14 @@ class KernelResult:
         checkpoint = response.get("checkpoint")
         names = response.get("names") or {}
         plan_values = response.get("plan_values") or {}
+        unharvested = response.get("plan_values_unharvested") or {}
         if not response.get("ok"):
             return cls(ok=False, traceback=response.get("traceback", "the kernel failed"),
                        held=held, failed=failed, defects=defects,
                        stdout=response.get("stdout", ""),
                        volume=response.get("volume") or {},
-                       checkpoint=checkpoint, names=names, plan_values=plan_values)
+                       checkpoint=checkpoint, names=names, plan_values=plan_values,
+                       plan_values_unharvested=unharvested)
         return cls(ok=True,
                    render=response.get("render"),
                    objects=response.get("objects", []),
@@ -100,7 +103,7 @@ class KernelResult:
                    checkpoint=checkpoint, names=names,
                    signature=response.get("signature") or {},
                    rolled_back=response.get("rolled_back") or [],
-                   plan_values=plan_values)
+                   plan_values=plan_values, plan_values_unharvested=unharvested)
 
 
 def _alive(pid):
@@ -163,6 +166,7 @@ class Kernel:
         self._needs_resume = False
         self._design = None
         self._plan_values = {}
+        self._unharvested_plan_values = {}
 
     @property
     def alive(self):
@@ -172,6 +176,11 @@ class Kernel:
     def plan_values(self) -> dict:
         """The name -> number Plan's kernel session currently holds."""
         return dict(self._plan_values)
+
+    @property
+    def unharvested_plan_values(self) -> dict:
+        """The name -> type of what Plan's kernel session holds but a Step cannot use."""
+        return dict(self._unharvested_plan_values)
 
     @property
     def pid(self):
@@ -329,6 +338,7 @@ class Kernel:
         self._needs_resume = False
         if "plan_values" in response:
             self._plan_values = dict(response.get("plan_values") or {})
+            self._unharvested_plan_values = dict(response.get("plan_values_unharvested") or {})
         return KernelResult.from_response(response)
 
     def reading(self, request, timeout=None):

@@ -116,7 +116,8 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
     known_values = dict(getattr(kernel, "plan_values", None) or {})
     changes = []
     steps, satisfies, cites, ops, unbuildable, values, value_errors = _steps_of(
-        reply.get("steps", []), reply.get("op_vocabulary"), known_values, changes)
+        reply.get("steps", []), reply.get("op_vocabulary"), known_values, changes,
+        dict(getattr(kernel, "unharvested_plan_values", None) or {}))
     rollback, bad_rollback = _rollback_field(reply.get("rollback"), len(history), undo_depth)
 
     look = reply.get("look")
@@ -143,7 +144,7 @@ def _disputes_of(raw) -> list:
             if isinstance(item, dict) and all(str(item.get(key) or "").strip() for key in keys)]
 
 
-def _steps_of(planned, op_vocabulary=None, known_values=None, changes=None):
+def _steps_of(planned, op_vocabulary=None, known_values=None, changes=None, unharvested=None):
     """
     The prose of each Step, the entries the Plan cites, the operation each kept
     Step declared (its `changes` land in *changes* when given), and the Steps refused outright. What a Step satisfies goes
@@ -155,6 +156,7 @@ def _steps_of(planned, op_vocabulary=None, known_values=None, changes=None):
     shape `unbuildable` already is rather than raised as a Step failure.
     """
     known_values = known_values or {}
+    unharvested = unharvested or {}
     steps, satisfies, cites, ops, unbuildable, values, value_errors = \
         [], [], [], [], [], {}, []
     closed = op_vocabulary == OP_VOCABULARY
@@ -190,6 +192,11 @@ def _steps_of(planned, op_vocabulary=None, known_values=None, changes=None):
                                             "a new name" % name})
             elif name in known_values:
                 values[name] = known_values[name]
+            elif name in unharvested:
+                value_errors.append({"step": prose,
+                                     "why": "%r exists in your kernel but holds a %s, and a Step "
+                                            "can only use plain data (numbers, strings, booleans, "
+                                            "lists and dicts of those)" % (name, unharvested[name])})
             else:
                 value_errors.append({"step": prose,
                                      "why": "%r was never computed in your kernel" % name})
