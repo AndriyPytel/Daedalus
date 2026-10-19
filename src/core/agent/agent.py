@@ -504,7 +504,9 @@ def _one_turn(session, llm, content, phase=None, stream=None):
             stream.emit(COST, **paid)
 
     if invoke is None:
-        return "".join(text)
+        reply = "".join(text)
+        session.messages[-1]["content"] = _the_object_alone(reply)
+        return reply
 
     name, parameters = invoke
     session.messages.append({"role": "assistant", "content": "".join(text)})
@@ -515,6 +517,17 @@ def _one_turn(session, llm, content, phase=None, stream=None):
     if recovered is not None:
         return recovered
     return _one_turn(session, llm, read_prompt("invoke_markup_used.md"), phase, stream)
+
+
+def _the_object_alone(reply):
+    """
+    *reply* cut down to the object it carries, since text written after it
+    is the model answering its own call and replaying that to the provider
+    is what its reasoning extraction filter refuses. A reply with no object
+    is kept as written.
+    """
+    parsed = _object_of(reply)
+    return json.dumps(parsed, ensure_ascii=False) if isinstance(parsed, dict) else reply
 
 
 def _parsed(text):
