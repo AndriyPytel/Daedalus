@@ -86,7 +86,8 @@ from core.design.gaps import (
     entries,
 )
 from core.loop.budgets import Budgets, revisions_ceiling
-from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, nobody_answering, prompt
+from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, prompt
+from core.nobody import nobody_answering
 from core.loop.run import run
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
@@ -217,7 +218,7 @@ def design_reply(model=None, question="", thinking=None):
     return {"reasoning": thinking, "text": body} if thinking else body
 
 
-def _first_pass_turns(model, attachments, question="", readings=Budgets().readings):
+def _first_pass_turns(model, attachments, question="", readings=1):
     """
     The scripted replies one `_first_pass` costs today: the same
     `design_reply` repeated *readings* times per page-sized group

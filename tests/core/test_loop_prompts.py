@@ -48,7 +48,8 @@ from core.design.gaps import (
     entries,
 )
 from core.loop.budgets import Budgets, revisions_ceiling
-from core.loop.prompt import nobody_answering, prompt
+from core.loop.prompt import prompt
+from core.nobody import nobody_answering
 from core.loop.run import run
 from core.prompts import read_prompt
 from core.loop.design import _the_groups

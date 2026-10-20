@@ -100,7 +100,7 @@ from core.loop.helpers import (
     _trailing_gap, _tried, _block, _stopped, _aborted, _budget_exhausted,
     _going_nowhere, _last_kernel_result, _disputes_of_unmet,
 )
-from core.loop.prompt import nobody_answering
+from core.nobody import nobody_answering
 from core.loop.review import review, review_suspect
 
 

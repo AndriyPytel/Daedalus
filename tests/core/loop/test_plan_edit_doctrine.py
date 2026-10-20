@@ -10,8 +10,8 @@ from core.events import EventStream
 from core.lint import OP_TYPEIDS
 from core.llm import ScriptedLLMClient
 from core.loop import plan as plan_module
-from core.loop import prompt as prompts
 from core.loop.prompt import DESIGN_PHASE, prompt
+from core.nobody import nobody_answering
 from core.prompts import ROOT
 
 BASE = "The part before the edit, in mm:\nvolume: 10000 mm3, solids: 1"
@@ -56,7 +56,7 @@ def test_the_first_plan_prompt_of_an_edit_steers_to_features_on_the_base_part(mo
 
 
 def test_a_run_nobody_answers_says_so_and_design_is_not_offered_question(monkeypatch):
-    with prompts.nobody_answering():
+    with nobody_answering():
         designing = prompt(DESIGN_PHASE)
 
     assert "Nobody answers" in designing
@@ -65,7 +65,7 @@ def test_a_run_nobody_answers_says_so_and_design_is_not_offered_question(monkeyp
 
 
 def test_a_run_nobody_answers_still_offers_plan_question_which_goes_back_to_design(monkeypatch):
-    with prompts.nobody_answering():
+    with nobody_answering():
         system = " ".join(_system_of_the_first_plan(monkeypatch).split())
 
     assert "Nobody answers" in system
@@ -79,7 +79,7 @@ def test_a_run_nobody_answers_still_offers_plan_question_which_goes_back_to_desi
 
 
 def test_a_run_nobody_answers_plans_with_a_flagged_assumption_only_as_the_last_resort(monkeypatch):
-    with prompts.nobody_answering():
+    with nobody_answering():
         system = " ".join(_system_of_the_first_plan(monkeypatch).split())
 
     assert "Only where `nobody_answered` tells you to decide, because Design could not answer from the drawing either" in system
