@@ -206,6 +206,11 @@ def acceptance_of(*models):
     return [entry["says"] for entry in entries(_grown(models))]
 
 
+def a_person_who_declines(question):
+    """An `ask` that is not `nobody_to_ask`: a run with it has a person to answer, and this one answers nothing."""
+    return ""
+
+
 def design_reply(model=None, question="", thinking=None):
     """
     One Design turn: what it adds to the part, and what it wants a person asked.

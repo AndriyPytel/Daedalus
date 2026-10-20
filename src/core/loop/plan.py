@@ -27,6 +27,7 @@ from core.loop.execute import (
     _lookable,
 )
 from core.loop.gate import _DECIDE, _DECIDE_AND_ASSUME, _a_question_for_the_build
+from core.nobody import nobody_is_answering
 from core.loop.prompt import PLAN_PHASE, _pictures, prompt
 from core.kernel.kernel_worker import RESERVED_STEP_NAMES
 
@@ -501,6 +502,7 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
     """
     grown, for_the_build, change_set = the_part, False, None
     nobody_answered = 0
+    patience = 0 if nobody_is_answering() else budgets.unanswered_questions
     undo_depth = tools.call("undo_depth")["depth"] if history else None
     while True:
         if cancelled():
@@ -512,7 +514,7 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                        looked=asking.looked_up,
                        tried=ledger.render() if ledger else "", supervisor=supervisor,
                        undo_depth=undo_depth, kernel=kernel,
-                       must_decide=nobody_answered > budgets.unanswered_questions,
+                       must_decide=nobody_answered > patience or nobody_is_answering(),
                        base=base)
         change_set = None
         if planned.look:
@@ -535,7 +537,8 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
             asking.looks += 1
             for_the_build = True
             continue
-        elif asking.read_again < budgets.rereads and _pictures(attachments):
+        elif asking.read_again < budgets.rereads and _pictures(attachments) \
+                and not nobody_is_answering():
             asking.read_again += 1
             from_the_drawing, _ = design({"intent": intent,
                                           "the_part_as_you_described_it": grown,
@@ -551,7 +554,7 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
             events.emit(ANSWER, text=_SAID_NOTHING, by="drawing")
 
         settled = None
-        if asking.settled < budgets.settles:
+        if asking.settled < budgets.settles and not nobody_is_answering():
             settled, _ = design({"intent": intent,
                                  "the_part_as_you_described_it": grown,
                                  "the_question": _settle_it(planned.question)},
@@ -567,11 +570,11 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
             grown = before
 
         nobody_answered += 1
-        if nobody_answered > budgets.unanswered_questions + 1:
+        if nobody_answered > patience + 1:
             raise PhaseError("Plan kept asking after it was told to decide and write "
                              "`assumed`: %s" % planned.question)
         events.emit(ANSWER, by="nobody",
-                    text=_DECIDE_AND_ASSUME if nobody_answered > budgets.unanswered_questions
+                    text=_DECIDE_AND_ASSUME if nobody_answered > patience
                     else _DECIDE)
         if planned.question not in asking.unanswered:
             asking.unanswered.append(planned.question)

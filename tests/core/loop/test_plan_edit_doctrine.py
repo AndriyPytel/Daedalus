@@ -64,26 +64,23 @@ def test_a_run_nobody_answers_says_so_and_design_is_not_offered_question(monkeyp
     assert '"question"' not in designing
 
 
-def test_a_run_nobody_answers_still_offers_plan_question_which_goes_back_to_design(monkeypatch):
+def test_a_run_nobody_answers_lets_plan_ask_only_where_no_step_can_be_written(monkeypatch):
     with nobody_answering():
         system = " ".join(_system_of_the_first_plan(monkeypatch).split())
 
     assert "Nobody answers" in system
     assert '{"declare": {"question": "..."}}' in system
     assert "reply with a `question` instead of `steps`" in system
-    assert "Your question does not reach the user" in system
-    assert "It goes back to the phase that owns the description" in system
-    assert "Never ask about anything the drawing shows" in system
-    assert "say so in `question`, naming both entries" in system
-    assert "is a `conflict` or a `question`" in system
+    assert "Ask a `question` only when no Step can be written at all" in system
+    assert "Your question does not reach the user" not in system
+    assert "say so in `question`, naming both entries" not in system
 
 
 def test_a_run_nobody_answers_plans_with_a_flagged_assumption_only_as_the_last_resort(monkeypatch):
     with nobody_answering():
         system = " ".join(_system_of_the_first_plan(monkeypatch).split())
 
-    assert "Only where `nobody_answered` tells you to decide, because Design could not answer from the drawing either" in system
-    assert "pick the value yourself, flag it `assumed`" in system
+    assert "When `nobody_answered` tells you to decide, pick the value yourself, flag it `assumed`" in system
     assert "say in that Step that you chose it and what you chose it from" in system
 
 

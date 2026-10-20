@@ -664,8 +664,8 @@ def test_plan_is_told_to_name_a_computed_value_and_never_retype_it():
     assert "never the number itself" in plan_system
     assert "A name is frozen the moment a Step naming it has landed" \
         in plan_system
-    assert "A computation that will not come out is a disagreement between " \
-        "two entries" in plan_system
+    assert "A computation that will not come out is yours to settle, once, and " \
+        "out loud" in plan_system
 
 
 def test_design_is_told_to_replace_the_feature_the_later_page_supersedes():
