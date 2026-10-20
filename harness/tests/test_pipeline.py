@@ -33,6 +33,9 @@ def test_one_design_end_to_end(local_design, tmp_path):
         lo_x, lo_y, lo_z, hi_x, hi_y, hi_z = box.Get()
         return hi_x - lo_x, hi_y - lo_y, hi_z - lo_z
 
+    from cadgenbench.common.validity import analyze_step
+
+    assert analyze_step(out / "exemplar.step").validation.is_valid
     source = extent(local_design / f"{local_design.name}.step", "CM")
     exemplar = extent(out / "exemplar.step", "MM")
     for s, e in zip(source, exemplar):

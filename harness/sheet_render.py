@@ -25,6 +25,7 @@ OVERSHOOT = 2.0
 VISIBLE_WIDTH = 0.5
 HIDDEN_WIDTH = 0.25
 DIM_WIDTH = 0.25
+SCALE_FIELD = np.array([534.0, 371.2])
 HOMEBREW_CAIRO = "/opt/homebrew/lib/libcairo.2.dylib"
 
 
@@ -199,8 +200,7 @@ def render_svg(template_svg, views, dims):
     scale = choose_scale(views)
     positions = _layout(views, scale)
     body = _edges(views, positions, scale) + _dimensions(dims, views, positions, scale)
-    x0, y0, x1, y1 = AREA
-    body.append(_text(np.array([x1 - 25, y1 - 4]), f"{scale_label(scale)}", 0.0))
+    body.append(_text(SCALE_FIELD, scale_label(scale)))
     frame = re.sub(r"(<text[^>]*freecad:editable[^>]*>).*?(</text>)", r"\1\2", template_svg, flags=re.S)
     return frame.replace("</svg>", "<g id=\"sheet\">" + "".join(body) + "</g></svg>")
 

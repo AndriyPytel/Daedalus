@@ -165,7 +165,7 @@ def generate(out, seed, count, test):
                     source = json.loads((work / f"{design}.json").read_text())
                     ok = acceptable(source, _read_shape(work / f"{design}.step"))
                     ok = ok and not build_sheet(work, staging / design)
-                    ok = ok and analyze_step(staging / design / "exemplar.step").validation.valid
+                    ok = ok and analyze_step(staging / design / "exemplar.step").validation.is_valid
                 except (RuntimeError, subprocess.SubprocessError, KeyError, ValueError):
                     ok = False
             if ok:
