@@ -535,6 +535,8 @@ def _one_turn(session, llm, content, phase=None, stream=None):
                         "cache_creation_tokens", "reasoning_tokens", "usage_unavailable"):
                 if key in spent:
                     paid[key] = spent[key]
+            if getattr(llm, "resolved_model", None):
+                paid["resolved_model"] = llm.resolved_model
             stream.emit(COST, **paid)
 
     if invoke is None:

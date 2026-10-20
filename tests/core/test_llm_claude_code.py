@@ -1042,3 +1042,17 @@ def test_no_claude_at_all_is_reported_rather_than_raised(monkeypatch):
 
     assert ok is False
     assert "CLAUDE_CMD" in said
+
+
+def test_the_model_the_alias_resolved_to_is_logged_on_the_cost_of_the_call():
+    from core.agent.agent import _one_turn
+    from core.events import COST, EventStream
+    from core.llm import Session
+
+    client, _ = client_replaying()
+    stream = EventStream()
+
+    _one_turn(Session(system="s"), client, "hi", "design", stream)
+
+    costs = [event.data for event in stream if event.kind == COST]
+    assert costs[0]["model"] == MODEL and costs[0]["resolved_model"] == _init(MINIMAL)["model"]

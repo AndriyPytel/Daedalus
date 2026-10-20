@@ -167,6 +167,7 @@ class ClaudeCodeClient:
         self.effort = _resolved_effort(effort)
         self.timeout = _CEILING[self.effort] if timeout is None else timeout
         self.last_cost = None
+        self.resolved_model = None
         self._spawn = spawn
         self.run = run if run is not None else Run()
 
@@ -184,6 +185,7 @@ class ClaudeCodeClient:
         """
         spawn = self._spawn or _spawn_claude
         self.last_cost = None
+        self.resolved_model = None
         workspace = tempfile.mkdtemp(prefix="fcc-claude-")
         cwd = os.path.join(tempfile.gettempdir(), "fcc-claude")
         os.makedirs(cwd, exist_ok=True)
@@ -229,6 +231,8 @@ class ClaudeCodeClient:
                     if line.strip():
                         noise.append(line.strip())
                     continue
+                if event.get("type") == "system" and event.get("subtype") == "init":
+                    self.resolved_model = event.get("model") or self.resolved_model
                 if event.get("total_cost_usd") is not None:
                     self.last_cost = {"usd": event["total_cost_usd"], "model": self.model}
                     self.last_cost.update(_tokens_of(event.get("usage") or {}))
