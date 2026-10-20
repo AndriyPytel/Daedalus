@@ -56,6 +56,7 @@ from core.loop.design import _the_groups
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from tests.loop_helpers import (
+    request_in,
     RENDER_PNG,
     prompts_of,
     read,
@@ -559,7 +560,7 @@ def test_the_part_travels_as_a_structure_and_reaches_the_gate_laid_out():
 
     assert first_event(events, DESIGN).data["model"] == A_PART, "the structure was flattened away"
 
-    shown = json.loads(llm.calls[1][-1]["content"])["what_the_part_is"]
+    shown = request_in(llm.calls[1])["what_the_part_is"]
     assert shown == render(distilled(A_PART)), "Plan was shown something else again"
     for heading in ("Datums", "Envelope", "Features"):
         assert heading in shown
@@ -567,12 +568,12 @@ def test_the_part_travels_as_a_structure_and_reaches_the_gate_laid_out():
     assert "{" not in shown, "Plan was handed a JSON dump"
 
 
-def test_plan_is_handed_a_finished_description_and_not_the_picture():
+def test_plan_is_handed_the_drawing_only_where_nobody_answers():
     """
     Far too much of the split is invisible in the background otherwise: Plan is
-    told plainly that this is a description somebody else produced, that what it
-    calls not defined stays not defined, and that nothing arrives beside it to
-    be weighed against it.
+    told plainly that this is a description somebody else produced and that what
+    it calls not defined stays not defined; where nobody answers it is also told
+    it has the drawing, and a person at the Gate is told it has none.
     """
     _, _, llm, _ = drive([
         design_reply(A_DATUM),
@@ -583,9 +584,14 @@ def test_plan_is_handed_a_finished_description_and_not_the_picture():
     plan_system = " ".join(_system_messages(llm)[1].split())
 
     assert "what_the_part_is" in plan_system
-    assert "You do not get the picture itself" in plan_system
+    assert "You are given the drawing beside the description" in plan_system
+    assert "where it cannot be built, the drawing decides" in plan_system
+    assert "You do not get the picture itself" not in plan_system
     assert "What it lists as not defined stays not defined" in plan_system
-    assert "nothing arrives beside it to be weighed against it" in plan_system
+
+    asked = " ".join(prompt("plan").split())
+    assert "You do not get the picture itself" in asked
+    assert "nothing arrives beside it to be weighed against it" in asked
     assert "you_asked_and_were_answered" not in plan_system, \
         "plan.md still documents the second source this ticket removed"
 

@@ -689,6 +689,12 @@ def _system_messages(llm):
     return [call[0]["content"] for call in llm.calls]
 
 
+def request_in(call):
+    """The JSON a phase was asked, whether the request is plain text or pictures with the text last."""
+    content = call[-1]["content"]
+    return json.loads(content[-1]["text"] if isinstance(content, list) else content)
+
+
 def _turns_of(llm, phase):
     """
     Every request body that phase was sent, in order — one entry per provider call.
@@ -699,7 +705,7 @@ def _turns_of(llm, phase):
     that section's prefix.
     """
     systems = prompts_of(phase)
-    return [json.loads(call[-1]["content"]) for call in llm.calls
+    return [request_in(call) for call in llm.calls
             if call[0]["content"].startswith(systems)]
 
 

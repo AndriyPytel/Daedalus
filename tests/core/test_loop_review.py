@@ -58,6 +58,7 @@ from core.llm.session import Session
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from tests.loop_helpers import (
+    request_in,
     a_person_who_declines,
     prompts_of,
     RENDER_PNG,
@@ -1047,7 +1048,7 @@ def test_the_users_answer_is_written_into_the_description_and_not_handed_to_plan
     assert told["the_question"] == MISSING
     assert told["the_answer_you_were_given"] == "module 2, 20 teeth, 10 thick, ⌀8 bore"
 
-    described = json.loads(llm.calls[3][-1]["content"])
+    described = request_in(llm.calls[3])
     assert "20 teeth (assumed)" in described["what_the_part_is"]
     assert "you_asked_and_were_answered" not in described
 
@@ -1064,7 +1065,7 @@ def test_a_run_nobody_is_watching_gets_a_plan_settled_for_them():
     assert first_event(events, ANSWER).data["text"] == _DECIDE_AND_ASSUME
     design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompts_of("design"))]
     assert len(design_turns) == 1, "a Plan question went back to Design in a run nobody answers"
-    to_plan = json.loads(llm.calls[2][-1]["content"])
+    to_plan = request_in(llm.calls[2])
     assert to_plan["nobody_answered"]["what_to_do"] == _DECIDE_AND_ASSUME
 
 
@@ -1259,7 +1260,7 @@ def test_a_question_about_the_drawing_goes_to_the_sheet_before_the_user():
     assert asked_again["the_question"] == THROUGH_OR_NOT
     assert asked_again["the_part_as_you_described_it"] == distilled(A_PART)
 
-    to_plan = json.loads(llm.calls[3][-1]["content"])
+    to_plan = request_in(llm.calls[3])
     changed = to_plan["what_the_part_is"]
     added = [entry for entry in changed if entry["section"] == "features"]
     assert added == [{"section": "features", "kind": "added", "id": "pocket-front",
@@ -1288,7 +1289,7 @@ def test_a_value_already_described_is_not_overwritten_by_a_later_pass():
     assert grown["features"][0]["position"]["the left end face"] == read("15 mm")
     assert grown["conflicts"][0]["was_also_said"] == read("25 mm")
 
-    shown = json.loads(llm.calls[3][-1]["content"])["what_the_part_is"]
+    shown = request_in(llm.calls[3])["what_the_part_is"]
     conflicts_shown = [entry for entry in shown if entry["section"] == "conflicts"]
     assert conflicts_shown, "the disagreement never reached the Plan Gate"
     assert conflicts_shown[0]["now"]["stands"] == read("15 mm")

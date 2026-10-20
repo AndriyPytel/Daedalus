@@ -28,7 +28,8 @@ from core.loop.execute import (
 )
 from core.loop.gate import _DECIDE, _DECIDE_AND_ASSUME, _a_question_for_the_build
 from core.nobody import nobody_is_answering
-from core.loop.prompt import PLAN_PHASE, _pictures, prompt
+from core.llm import cache_control_supported
+from core.loop.prompt import PLAN_PHASE, _pictures, _the_evidence, prompt
 from core.kernel.kernel_worker import RESERVED_STEP_NAMES
 
 from core.agent.agent import run_declaring
@@ -69,12 +70,14 @@ class Plan:
 
 def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set=None,
          unanswered=(), revising=(), history=(), looking=(), looked=(), tried="",
-         supervisor=None, kernel=None, undo_depth=None, must_decide=False, base=None):
+         supervisor=None, kernel=None, undo_depth=None, must_decide=False, base=None,
+         attachments=()):
     """
     Produce an ordered list of Steps from the Intent and a Snapshot. Plan
-    never sees the picture; it is handed the part Design describes, one
-    key and the user's own words -- two keys once let the newer always
-    win and lost a value read off SECTION B-B. A revision before anything
+    is handed the part Design describes, one key and the user's own words
+    -- two keys once let the newer always win and lost a value read off
+    SECTION B-B -- and the drawing too, in *attachments*, where nobody
+    answers. A revision before anything
     is applied is handed the Plan it rewrites (`revising`) or drops Steps
     a bare complaint never named; a revision after Steps have landed is
     handed those read-only (`history`), writes only the continuation
@@ -111,6 +114,11 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
         request["what_the_tools_say"] = list(looked)
 
     task = json.dumps(request, indent=2, default=str)
+    if attachments:
+        evidence = _the_evidence(attachments)
+        if evidence and cache_control_supported(getattr(llm, "model", None)):
+            evidence = evidence[:-1] + [dict(evidence[-1], cache_control={"type": "ephemeral"})]
+        task = evidence + [{"type": "text", "text": task}]
     reply, _ = run_declaring(
         pc.PLAN, {}, llm, task, kernel=kernel, supervisor=supervisor, stream=events,
         system=prompt(PLAN_PHASE, editing=bool(base)), design=the_part or {})
@@ -515,7 +523,7 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                        tried=ledger.render() if ledger else "", supervisor=supervisor,
                        undo_depth=undo_depth, kernel=kernel,
                        must_decide=nobody_answered > patience or nobody_is_answering(),
-                       base=base)
+                       base=base, attachments=attachments if nobody_is_answering() else ())
         change_set = None
         if planned.look:
             asking.looked_up.append(_look(tools, planned.look, events))

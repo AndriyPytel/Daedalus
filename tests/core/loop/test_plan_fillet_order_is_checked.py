@@ -8,7 +8,7 @@ from core.loop.budgets import Budgets
 from core.loop.plan import _fillet_before_a_cut
 from core.prompts import ROOT, read_prompt
 
-from tests.loop_helpers import (RENDER_PNG, _grown, assertion_reply, code_reply, design_reply, drive, plan_reply,
+from tests.loop_helpers import (request_in, RENDER_PNG, _grown, assertion_reply, code_reply, design_reply, drive, plan_reply,
                                 read, suspect_reply, verdict_reply)
 from tests.event_helpers import events_of
 
@@ -83,7 +83,7 @@ def test_the_complaint_is_a_free_patch_that_names_the_offending_step():
     assert result.ok, result.reason
     revised = events_of(events, PLAN_REVISED)
     assert len(revised) == 1 and revised[0].data["revision"] == 0
-    told = json.loads(llm.calls[2][-1]["content"])["what_went_wrong_last_time"]
+    told = request_in(llm.calls[2])["what_went_wrong_last_time"]
     assert "Fillet R5 the top edge" in told and "Pad Base" not in told
     assert "every other Step unchanged" in told
 

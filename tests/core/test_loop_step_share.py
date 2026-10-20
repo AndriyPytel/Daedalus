@@ -10,7 +10,7 @@ import json
 from core.agent import subagent as sa
 from core.events import ANSWER, PLAN_REVISED, TURN_BUDGET_EXHAUSTED
 from core.loop.budgets import Budgets
-from tests.loop_helpers import (_MultiTurn, code_reply, design_reply, drive, failed,
+from tests.loop_helpers import (_MultiTurn, a_person_who_declines, code_reply, design_reply, drive, failed,
                                 plan_reply, question_reply, suspect_reply, verdict_reply)
 from tests.event_helpers import events_of, first_event
 
@@ -93,7 +93,7 @@ def test_the_question_after_the_third_unanswered_one_is_told_to_decide_and_write
     result, events, llm, _ = drive(
         _asks(4) + [plan_reply("Sketch it"), code_reply("a()"), suspect_reply(),
                     verdict_reply("pass")],
-        budgets=Budgets(settles=0),
+        budgets=Budgets(settles=0), ask=a_person_who_declines,
     )
 
     assert result.ok, result.reason
@@ -104,7 +104,7 @@ def test_the_question_after_the_third_unanswered_one_is_told_to_decide_and_write
 
 
 def test_a_plan_that_keeps_asking_after_it_was_told_to_decide_stops_the_run():
-    result, events, llm, _ = drive(_asks(12), budgets=Budgets(settles=0))
+    result, events, llm, _ = drive(_asks(12), budgets=Budgets(settles=0), ask=a_person_who_declines)
 
     assert not result.ok
     assert len([event for event in events_of(events, ANSWER) if event.data["by"] == "nobody"]) == 4

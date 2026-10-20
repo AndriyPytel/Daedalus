@@ -55,6 +55,8 @@ from core.loop.plan import _in_the_prose
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from tests.loop_helpers import (
+    a_person_who_declines,
+    request_in,
     RENDER_PNG,
     StubKernel,
     DESCRIPTION,
@@ -185,9 +187,9 @@ def test_a_replan_after_a_reread_is_handed_the_change_set_not_the_whole_part():
         plan_reply("Possible", satisfies=everything(A_PART)), code_reply("yes()"),
         suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], applies=[failed("one")], attachments=[RENDER_PNG],
-        budgets=Budgets(rereads=1, attempts_per_step=1))
+        budgets=Budgets(rereads=1, attempts_per_step=1), ask=a_person_who_declines)
 
-    reread_plan = json.loads(llm.calls[3][-1]["content"])
+    reread_plan = request_in(llm.calls[3])
     assert reread_plan["what_the_part_is"] == [
         {"section": "datums", "kind": "added", "id": "d1",
          "now": {"name": "d1", "is": "20 mm from the left end"}}]
@@ -388,7 +390,7 @@ def test_a_suspicion_never_gates_but_reaches_assertions_acceptance_list():
     assert PLAN_REVISED not in [e.kind for e in between], (
         "a suspicion sent the run back to Plan on its own")
 
-    assertion_request = json.loads(llm.calls[-2][-1]["content"])
+    assertion_request = request_in(llm.calls[-2])
     assert raised + " (suspected)" in [a["text"] for a in assertion_request["acceptance"]]
     for entry in ACCEPTANCE:
         assert entry in [a["text"] for a in assertion_request["acceptance"]], (
@@ -421,7 +423,7 @@ def test_a_refuted_suspicion_fails_assertion_and_replans_then_passes():
     assert first_event(events, PLAN_REVISED).data["because"] == "the acceptance checks failed"
     assert first_event(events, REVIEW_VERDICT).data["verdict"] == "pass"
 
-    first_assertion_request = json.loads(llm.calls[5][-1]["content"])
+    first_assertion_request = request_in(llm.calls[5])
     assert raised + " (suspected)" in [a["text"] for a in first_assertion_request["acceptance"]]
 
 
@@ -821,7 +823,7 @@ def test_a_plan_that_leaves_a_read_entry_unconsumed_is_planned_again():
     assert revised is not None, "a Plan that dropped the depth reached the user as final"
     assert CAVITY_DEPTH in revised.data["reason"]
 
-    told = json.loads(llm.calls[2][-1]["content"])["what_went_wrong_last_time"]
+    told = request_in(llm.calls[2])["what_went_wrong_last_time"]
     assert CAVITY_DEPTH in told
     assert CAVITY_POCKET not in told, "an entry that was cited was reported as missing"
 
@@ -1330,7 +1332,7 @@ def test_an_inherited_failure_is_checked_again_at_the_end_of_the_new_run():
         planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(), verdict_reply("pass"),
         outstanding=inherited)
 
-    checked = json.loads(llm.calls[5][-1]["content"])
+    checked = request_in(llm.calls[5])
 
     assert [a["text"] for a in checked["acceptance"]] == ACCEPTANCE + inherited
 
@@ -1340,7 +1342,7 @@ def test_an_inherited_entry_the_new_run_already_lists_is_not_listed_twice():
         planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(), verdict_reply("pass"),
         outstanding=[ACCEPTANCE[0]])
 
-    assert [a["text"] for a in json.loads(llm.calls[5][-1]["content"])["acceptance"]] == ACCEPTANCE
+    assert [a["text"] for a in request_in(llm.calls[5])["acceptance"]] == ACCEPTANCE
 
 
 def test_an_inherited_failure_that_now_passes_is_no_longer_outstanding():
@@ -1387,7 +1389,7 @@ def test_design_settles_plans_questions_a_bounded_number_of_times_then_plan_deci
     replies += [question_reply(MISSING), plan_reply("Sketch it"), code_reply("a()"),
                 suspect_reply(), assertion_reply(), verdict_reply("pass")]
 
-    result, events, _, _ = drive(replies, intent=GEAR, budgets=budgets)
+    result, events, _, _ = drive(replies, intent=GEAR, budgets=budgets, ask=a_person_who_declines)
 
     assert result.ok, result.reason
     assert [event.data["by"] for event in events_of(events, ANSWER)][-1] == "nobody"

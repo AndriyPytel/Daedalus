@@ -5,7 +5,7 @@ from core.events import PLAN_REVISED
 from core.loop.budgets import Budgets
 from core.loop.plan import _cited_without_a_number
 
-from tests.loop_helpers import (RENDER_PNG, _grown, assertion_reply, code_reply, design_reply, drive, plan_reply,
+from tests.loop_helpers import (request_in, RENDER_PNG, _grown, assertion_reply, code_reply, design_reply, drive, plan_reply,
                                 read, suspect_reply, verdict_reply)
 from tests.event_helpers import events_of
 
@@ -42,7 +42,7 @@ def test_a_step_citing_a_numberless_address_gets_a_patch_naming_it_and_no_except
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG], budgets=Budgets(mechanical_revisions=0))
 
-    told = json.loads(llm.calls[2][-1]["content"])["what_went_wrong_last_time"]
+    told = request_in(llm.calls[2])["what_went_wrong_last_time"]
     assert result.ok, result.reason
     assert DEPTH in told and "no number" in told
     assert events_of(events, PLAN_REVISED)[0].data["revision"] == 0

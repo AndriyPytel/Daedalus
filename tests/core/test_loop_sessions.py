@@ -55,6 +55,7 @@ from core.loop.plan import _acceptance_of
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from tests.loop_helpers import (
+    request_in,
     RENDER_PNG,
     DESCRIPTION,
     settled,
@@ -684,7 +685,7 @@ def test_review_and_assertion_are_both_given_the_whole_description():
     ], attachments=[RENDER_PNG])
 
     to_review = json.loads(llm.calls[4][-1]["content"][0]["text"].split("\n\n")[0])
-    to_assertion = json.loads(llm.calls[5][-1]["content"])
+    to_assertion = request_in(llm.calls[5])
 
     assert to_assertion["the_document_as_it_now_stands"] == DESCRIPTION
     assert to_review["the_document_as_it_now_stands"] == DESCRIPTION
@@ -724,7 +725,7 @@ def test_an_attachment_reaches_the_design_phase_as_a_picture():
     """
     The panel used to collect the attached paths and throw them away, so the
     user showed the assistant a photo it never saw. The phase that
-    receives it is the Design phase; Plan never sees a picture.
+    receives it is the Design phase.
     """
     llm = scripted([design_reply(A_DATUM), plan_reply("Only"),
                     code_reply("box()"), suspect_reply(), verdict_reply("pass")],
@@ -739,7 +740,6 @@ def test_an_attachment_reaches_the_design_phase_as_a_picture():
     assert len(images) == 1
     assert images[0]["image_url"]["url"].startswith("data:image/png;base64,")
     assert RENDER_PNG not in json.dumps(content), "the path was sent instead of the bytes"
-    assert isinstance(llm.calls[1][-1]["content"], str), "Plan was sent the picture"
 
 
 

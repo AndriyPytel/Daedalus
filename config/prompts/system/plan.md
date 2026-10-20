@@ -345,13 +345,16 @@ was gone, the slot beside it was cut through the ring wall, and the R2 fillet
 the next Step asked for no longer had the metal to sit on — one Step rewritten
 into a part nobody had described.
 
-`what_the_part_is` is the whole of what somebody else established about the
+{{asking}}`what_the_part_is` is the whole of what somebody else established about the
 part — from the drawing they attached, and from every question that has already
 been answered. You do not get the picture itself. It is a finished piece of work
 by a phase that had nothing to build, and it is exactly what the user was shown
 and could correct at the Plan Gate, so plan from it and not around it. It is the
 only account of the part there is; nothing arrives beside it to be weighed
-against it.
+against it.{{/asking}}{{nobody}}`what_the_part_is` is the whole of what somebody else established about the
+part — from the drawing they attached, and from every question that has already
+been answered. You are given the drawing beside the description. The description
+is your starting point; where it cannot be built, the drawing decides.{{/nobody}}
 
 Its numbers belong in the Steps as well, so the Plan can be checked against the
 description. What it lists as not defined stays not defined, and what it lists
