@@ -114,11 +114,22 @@ def merge(held, offered, record_conflicts=True):
         offered = _without_refused_kinds(offered)
         offered = _without_refused_conflicts(offered)
         offered = _without_refused_dimensions(offered)
-    merged = _written(dict(held or {}), offered, "", conflicts, record_conflicts)
+    merged = _without_the_claims(
+        _written(dict(held or {}), offered, "", conflicts, record_conflicts))
     merged = _one_datum_to_a_plane(merged, conflicts, record_conflicts)
     if conflicts:
         merged["conflicts"] = _appended(merged.get("conflicts"), conflicts)
     return _with_the_findings(merged)
+
+
+def _without_the_claims(node):
+    """*node* with every `corrects` taken off its values: a claim to overrule is spent once it is made."""
+    if isinstance(node, dict):
+        return {key: _without_the_claims(value) for key, value in node.items()
+                if not (key == "corrects" and _a_value(node))}
+    if isinstance(node, list):
+        return [_without_the_claims(entry) for entry in node]
+    return node
 
 
 _A_PLANE_ADDRESS = re.compile(r"^\s*plane\s+([xyz])\s*=\s*(-?\d+(?:\.\d+)?)\s*(?:mm)?\s*$", re.IGNORECASE)

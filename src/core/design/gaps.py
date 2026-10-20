@@ -12,6 +12,7 @@ user needs to spot the miss. An `assumed` value with no `because` is what
 import re
 from core.design.core import (
     A_CONFLICT,
+    _A_DIRECTION,
     KINDS,
     UNDER,
     _HEADED_BY,
@@ -26,7 +27,9 @@ from core.design.core import (
     _under,
     _which_kind_it_is,
 )
+from core.nobody import nobody_is_answering
 from core.design.orientation_checks import (
+    _A_DIRECTION_FIELD,
     _ONE_WORD_FROM_THE_NEXT,
     _as_a_view,
     _which_way_each_datum_fixes,
@@ -286,20 +289,23 @@ def _each_value(node, path):
 
 def _written(held, offered, path, conflicts, record_conflicts=True):
     """
-    *offered* grown into *held* at *path*, a node at a time. A value and its
-    flag are one thing -- 20 mm read disagreeing with 20 mm assumed is a
-    real disagreement, except `not_defined`, which records that nothing
-    supplied a value so a later pass can fill it. The held value always
-    stands against a later disagreement; *record_conflicts* false only
-    drops the record of it, so nothing else about the model changes.
+    *offered* grown into *held* at *path*, a node at a time; the held value stands
+    against a later disagreement, and *record_conflicts* false only drops the record
+    of it. A value and its flag are one thing, except `not_defined`, which a later
+    pass may fill. Where nobody answers, values with the same numbers are one
+    whatever their wording, and one carrying `corrects` replaces the one it
+    differs from, which stays under `was`.
     """
     if isinstance(held, dict) and isinstance(offered, dict) \
             and not (_a_value(held) or _a_value(offered)):
         grown = dict(held)
         for key, value in offered.items():
-            grown[key] = (_written(grown[key], value, _under(path, key), conflicts,
-                                   record_conflicts)
-                          if _filled(grown.get(key)) else value)
+            at = _under(path, key)
+            if _filled(grown.get(key)):
+                if not (nobody_is_answering() and key in _ONLY_WORDING):
+                    grown[key] = _written(grown[key], value, at, conflicts, record_conflicts)
+            else:
+                grown[key] = value
         return grown
 
     if isinstance(held, list) and isinstance(offered, list):
@@ -311,9 +317,61 @@ def _written(held, offered, path, conflicts, record_conflicts=True):
     if _stood_not_defined(held) and _a_value(offered) and not _stood_not_defined(offered):
         return offered
 
+    if nobody_is_answering() and _a_value(held) and _a_value(offered):
+        if _the_same_number(held, offered, path.split(UNDER)[-1]):
+            return held
+        if _filled(offered.get("corrects")):
+            return dict(offered, was=held["value"], because=offered["corrects"])
+
     if record_conflicts:
         conflicts.append({"about": path, "stands": held, "was_also_said": offered})
     return held
+
+
+_ONLY_WORDING = ("from", "because", "proves", "region", "topology", "is", "joins", "round_in")
+
+
+_A_NUMBER = re.compile(r"[-+]?(?:\d+\.?\d*|\.\d+)")
+
+
+_ONE_LETTER_AXIS = re.compile(r"(?<![a-z0-9])([xyz])(?![a-z0-9])")
+
+
+def _the_same_number(held, offered, field):
+    """
+    Whether two value records say one thing, going by what they count or
+    measure and never by how they say it. Anything that is not a pair of value
+    records is not compared here.
+    """
+    if not (_a_value(held) and _a_value(offered)):
+        return False
+    if field in _A_DIRECTION_FIELD:
+        return _the_direction(held["value"]) == _the_direction(offered["value"])
+    units = [unit for unit in ("mm", "deg") if unit in held and unit in offered]
+    if units:
+        return all(_close(held[unit], offered[unit]) for unit in units)
+    numbers = [_A_NUMBER.search(str(record["value"])) for record in (held, offered)]
+    return not all(numbers) or _close(float(numbers[0].group()), float(numbers[1].group()))
+
+
+def _close(one, other):
+    if isinstance(one, (list, tuple)) or isinstance(other, (list, tuple)):
+        return (isinstance(one, (list, tuple)) and isinstance(other, (list, tuple))
+                and len(one) == len(other) and all(map(_close, one, other)))
+    try:
+        return abs(float(one) - float(other)) <= 0.005
+    except (TypeError, ValueError):
+        return one == other
+
+
+def _the_direction(said):
+    """The x, y or z a direction names, else the one direction word, else its words."""
+    text = str(said).lower()
+    letters = set(_ONE_LETTER_AXIS.findall(text))
+    if len(letters) == 1:
+        return letters.pop()
+    words = [way for way in _A_DIRECTION if way in text]
+    return words[0] if len(words) == 1 else _in_the_same_words(text)
 
 
 def _stood_not_defined(value):
