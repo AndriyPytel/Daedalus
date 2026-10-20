@@ -24,6 +24,15 @@ def test_the_same_numbers_in_other_words_are_no_conflict_and_other_numbers_still
         ["features \u2192 bore-left \u2192 diameter"]
 
 
+def test_one_feature_read_under_two_ids_is_one_feature():
+    with nobody_answering():
+        grown = merge({"features": [_hole("boss-right-lower", 40)]},
+                      {"features": [_hole("boss-bottom-right", 40, because="again")]})
+
+    assert [feature["id"] for feature in grown["features"]] == ["boss-right-lower"]
+    assert "conflicts" not in grown
+
+
 def test_a_correction_replaces_the_value_and_keeps_the_old_one_under_was():
     held = {"features": [_hole("bore-left", 40)]}
     correction = {"features": [{"id": "bore-left", "diameter": {

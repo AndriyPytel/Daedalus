@@ -380,17 +380,22 @@ def _stood_not_defined(value):
 
 def _alongside(held, offered, path, conflicts, record_conflicts=True):
     """
-    Two lists of the same things, matched by what makes an entry that thing.
-
-    By `id`, never by position -- a fragment naming one feature must not
-    land on whichever happens to be first. An entry with no identity (a
-    view, a gap) is appended if not already there.
+    Two lists of the same things, matched by `id`, never by position. Where nobody
+    answers, a feature under another `id` is the same one when its kind, size, axis
+    and placement are. An entry with no identity (a view, a gap) is appended if not
+    already there.
     """
     grown = list(held)
     for entry in offered:
         this = _named(entry, _IDENTITY)
         at = next((index for index, other in enumerate(grown)
                    if this and _named(other, _IDENTITY) == this), None)
+        if at is None and nobody_is_answering() and _signature(entry):
+            at = next((index for index, other in enumerate(grown)
+                       if _signature(other) == _signature(entry)), None)
+            if at is not None:
+                entry = {key: value for key, value in entry.items() if key != "id"}
+                this = _named(grown[at], _IDENTITY)
         if at is None:
             if entry not in grown:
                 grown.append(entry)
@@ -398,6 +403,37 @@ def _alongside(held, offered, path, conflicts, record_conflicts=True):
             grown[at] = _written(grown[at], entry, _under(path, this), conflicts,
                                  record_conflicts)
     return grown
+
+
+_SIZES = ("diameter", "outer_diameter", "radius", "thickness", "length", "width", "depth",
+          "angle", "bolt_circle_diameter")
+
+
+def _signature(feature):
+    """
+    What makes a feature that feature whatever the reading called it: its kind,
+    first size, axis and where it sits, each number rounded to a millimetre.
+    None for anything that does not carry all four.
+    """
+    if not isinstance(feature, dict) or not feature.get("kind"):
+        return None
+    sizes = [(field, _rounded(feature[field])) for field in _SIZES
+             if _rounded(feature.get(field)) is not None]
+    position = feature.get("position")
+    if not sizes or not isinstance(position, dict):
+        return None
+    placed = {datum: _rounded(at) for datum, at in position.items()}
+    if not placed or None in placed.values():
+        return None
+    axis = feature.get("axis")
+    return (feature["kind"], sizes[0], _the_direction(axis["value"] if _a_value(axis) else axis or ""),
+            tuple(sorted(placed.items())))
+
+
+def _rounded(record):
+    """The millimetres a value record carries, to the nearest one, or None."""
+    mm = record.get("mm") if isinstance(record, dict) else None
+    return round(mm) if isinstance(mm, (int, float)) else None
 
 
 def _lines(value, indent):
