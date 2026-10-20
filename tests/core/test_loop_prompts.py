@@ -49,6 +49,7 @@ from core.design.gaps import (
 )
 from core.loop.budgets import Budgets, revisions_ceiling
 from core.loop.prompt import prompt
+from core.loop.gate import nobody_to_ask
 from core.nobody import nobody_answering
 from core.loop.run import run
 from core.prompts import read_prompt
@@ -105,8 +106,7 @@ def test_each_phase_sends_the_prompt_from_its_config_file(turn, phase):
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
-    with nobody_answering():
-        phase_prompt = prompt(phase, raster=True)
+    phase_prompt = prompt(phase, raster=True)
 
     system = _system_messages(llm)[turn]
     assert phase_prompt in system, "phase prompt not found in system message"
@@ -580,7 +580,7 @@ def test_plan_is_handed_the_drawing_only_where_nobody_answers():
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         suspect_reply(), verdict_reply("pass"),
-    ], attachments=[RENDER_PNG])
+    ], attachments=[RENDER_PNG], ask=nobody_to_ask)
     plan_system = " ".join(_system_messages(llm)[1].split())
 
     assert "what_the_part_is" in plan_system
@@ -670,8 +670,8 @@ def test_plan_is_told_to_name_a_computed_value_and_never_retype_it():
     assert "never the number itself" in plan_system
     assert "A name is frozen the moment a Step naming it has landed" \
         in plan_system
-    assert "A computation that will not come out is yours to settle, once, and " \
-        "out loud" in plan_system
+    assert "A computation that will not come out is a disagreement between " \
+        "two entries" in plan_system
 
 
 def test_design_is_told_to_replace_the_feature_the_later_page_supersedes():

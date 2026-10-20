@@ -21,6 +21,7 @@ from core.loop.budgets import Budgets
 from core.loop.gate import ACCEPT, AMEND, APPROVE, Approval, REJECT, REVISE, START_OVER
 from core.loop.run import run
 from tests.loop_helpers import (
+    a_person_who_declines,
     RENDER_PNG, FakeTools, assertion_reply, code_reply, design_reply, failed,
     obsolete_reply, plan_reply, question_reply, scripted, suspect_reply, verdict_reply,
     StubKernel,
@@ -139,7 +140,7 @@ def test_a_revised_plan_is_shown_before_it_changes_anything():
         plan_reply("Impossible"), code_reply("nope()"),
         plan_reply("Possible"), code_reply("yes()"), suspect_reply(), verdict_reply("pass"),
     ]), tools=tools.registry, gate=gate, budgets=Budgets(attempts_per_step=1),
-        kernel=StubKernel())
+        kernel=StubKernel(), ask=a_person_who_declines)
 
     assert applied_when_shown == [[], ["nope()"]], \
         "the revised Plan ran before it was shown: %s" % applied_when_shown

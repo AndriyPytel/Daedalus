@@ -11,6 +11,7 @@ from core.lint import OP_TYPEIDS
 from core.llm import ScriptedLLMClient
 from core.loop import plan as plan_module
 from core.loop.prompt import DESIGN_PHASE, prompt
+from core.loop.gate import nobody_to_ask
 from core.nobody import nobody_answering
 from core.prompts import ROOT
 
@@ -94,7 +95,7 @@ def test_an_interactive_run_still_offers_question(monkeypatch):
 
 def test_run_without_a_person_to_ask_plans_without_question():
     from tests.loop_helpers import _system_messages, drive, plan_reply
-    _, _, llm, _ = drive([plan_reply("Pad it 10 mm")], intent="x")
+    _, _, llm, _ = drive([plan_reply("Pad it 10 mm")], intent="x", ask=nobody_to_ask)
     plans = [text for text in _system_messages(llm) if text.startswith("You plan changes")]
 
     assert plans and all("Nobody answers" in text for text in plans)

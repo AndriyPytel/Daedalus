@@ -56,7 +56,6 @@ from core.loop.execute import (
     _A_PROPERTY_OF_THE_DOCUMENT,
     _FAILED_THIS_WAY,
     _MAY_START_AGAIN,
-    _ROUNDS,
     _SHAPES_THE_PART,
     _SKIPPED_A_STEP,
     _THICKNESS_FAILED,
@@ -65,7 +64,6 @@ from core.loop.execute import (
     _WHAT_NOW,
     _emit_plan,
     _freecad_version,
-    _kind_of_step,
     _review_views,
     _what_this_build_has,
     execute,
@@ -566,6 +564,11 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                               step=outcome["applied_here"])
             continue
 
+        if nobody_is_answering() and not applied:
+            return _block(events, "No Step could be built: %s" % "; ".join(
+                "%s (%s)" % (item["step"], item["why"]) for item in outcome.get("unbuilt") or ()),
+                          outcome["tried"], applied)
+
         described = outcome["description"] or described
 
         views = _review_views(tools, events)
@@ -718,10 +721,8 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
             events.emit(STEP_STARTED, index=index + 1, total=len(steps), description=step)
 
         outcome = written.for_step(index + 1)
-        a_round = nobody_is_answering() and _kind_of_step(
-            step, ops[index] if index < len(ops) else None) in _ROUNDS
         if not outcome.code and written.unbuildable:
-            if a_round and not written.forced:
+            if nobody_is_answering() and not written.forced:
                 leave_out(written.unbuildable)
                 continue
             if not _changes_the_shape(step, op=ops[index] if index < len(ops) else None):
@@ -772,7 +773,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
             progress.tried = [_tried(step, a) for a in declared_attempts]
             if ledger is not None:
                 ledger.record(step, outcome.apply_failed)
-            if a_round:
+            if nobody_is_answering():
                 leave_out(outcome.apply_failed)
                 continue
             return {
@@ -811,6 +812,9 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
             charged += 1
 
         if charged >= budgets.attempts_per_step:
+            if nobody_is_answering():
+                leave_out(attempts[-1].traceback)
+                continue
             return {
                 "handback": "Step %d of %d could not be built after %d attempts: %s\n"
                             "The last traceback was:\n%s%s"

@@ -223,7 +223,7 @@ def design_reply(model=None, question="", thinking=None):
     return {"reasoning": thinking, "text": body} if thinking else body
 
 
-def _first_pass_turns(model, attachments, question="", readings=1):
+def _first_pass_turns(model, attachments, question="", readings=3):
     """
     The scripted replies one `_first_pass` costs today: the same
     `design_reply` repeated *readings* times per page-sized group
@@ -657,7 +657,7 @@ def needs_drawing(*paths):
             pytest.skip("drawing not found: %s; set DAE_MODELMANIA_DIR" % path)
 
 
-def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
+def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=a_person_who_declines,
           views=None, checks=(), attachments=(), decide=None, outstanding=(),
           the_part_path=None, kernel=None, undo_capacity=None, base=None, faces=()):
     """Run the loop over scripted turns and hand back everything to assert on."""
@@ -666,7 +666,7 @@ def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
     tools = FakeTools(applies, views=views, checks=checks, undo_capacity=undo_capacity,
                       base=base, faces=faces)
     events = EventStream()
-    kwargs = {"ask": ask} if ask is not None else {}
+    kwargs = {"ask": ask}
     if decide is not None:
         kwargs["decide"] = decide
     if the_part_path is not None:
@@ -1254,6 +1254,7 @@ def driven_through(gate, turns, **kwargs):
     tools = FakeTools(kwargs.pop("applies", ()), views=kwargs.pop("views", None),
                       checks=kwargs.pop("checks", ()))
     events = EventStream()
+    kwargs.setdefault("ask", a_person_who_declines)
     result = run("Make a 10mm box", llm=llm, tools=tools.registry, events=events,
                  budgets=kwargs.pop("budgets", None) or Budgets(), gate=gate,
                  kernel=kwargs.pop("kernel", None) or StubKernel(), **kwargs)

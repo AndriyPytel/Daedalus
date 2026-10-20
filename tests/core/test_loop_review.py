@@ -57,6 +57,7 @@ from core.agent import agent
 from core.llm.session import Session
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
+from core.loop.gate import nobody_to_ask
 from tests.loop_helpers import (
     request_in,
     a_person_who_declines,
@@ -1058,7 +1059,7 @@ def test_a_run_nobody_is_watching_gets_a_plan_settled_for_them():
         [question_reply(MISSING),
          plan_reply("Sketch the blank"), code_reply("a()"),
          suspect_reply(), verdict_reply("pass")],
-        intent=GEAR)
+        intent=GEAR, ask=nobody_to_ask)
 
     assert result.ok
     assert [answer.data["by"] for answer in events_of(events, ANSWER)] == ["nobody"]
