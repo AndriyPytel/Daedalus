@@ -1,6 +1,8 @@
 """Role client wrapper."""
 import copy
 
+from core.llm.effort_policy import _CEILING
+
 
 class RoleClient:
     """
@@ -30,3 +32,13 @@ class RoleClient:
             roles={role: copy.copy(client) for role, client in self.roles.items()},
             caller=copy.copy(self.caller),
         )
+
+
+def patient_for(llm, role):
+    """*llm*, or a copy of it whose client for *role* waits as long as an xhigh call may take, when that client has a ceiling to raise."""
+    client = llm.for_role(role) if isinstance(llm, RoleClient) else llm
+    if not hasattr(client, "timeout") or client.timeout >= _CEILING["xhigh"]:
+        return llm
+    patient = copy.copy(llm)
+    (patient.for_role(role) if isinstance(patient, RoleClient) else patient).timeout = _CEILING["xhigh"]
+    return patient

@@ -31,6 +31,7 @@ from core.loop.execute import (
 from core.loop.gate import _DECIDE, _DECIDE_AND_ASSUME, _a_question_for_the_build
 from core.nobody import nobody_is_answering
 from core.llm import cache_control_supported
+from core.llm.roles import patient_for
 from core.loop.prompt import PLAN_PHASE, _pictures, _the_evidence, prompt
 from core.kernel.kernel_worker import RESERVED_STEP_NAMES
 
@@ -115,6 +116,8 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
     if looked:
         request["what_the_tools_say"] = list(looked)
 
+    if nobody_is_answering():
+        llm = patient_for(llm, PLAN_PHASE)
     task = json.dumps(request, indent=2, default=str)
     if attachments:
         evidence = _the_evidence(attachments)
