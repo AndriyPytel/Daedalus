@@ -73,6 +73,7 @@ def test_a_run_nobody_answers_lets_plan_ask_only_where_no_step_can_be_written(mo
     assert '{"declare": {"question": "..."}}' in system
     assert "reply with a `question` instead of `steps`" in system
     assert "Ask a `question` only when no Step can be written at all" in system
+    assert "do not work the whole part out before writing the first Step" in system
     assert "Your question does not reach the user" not in system
     assert "say so in `question`, naming both entries" not in system
 

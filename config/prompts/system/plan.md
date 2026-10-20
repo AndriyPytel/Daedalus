@@ -167,8 +167,10 @@ Keep the entry that is a printed dimension over one that is derived or assumed;
 between two printed ones keep the overall size, then the count and position of
 holes, then the form. Build it, name the entry you overruled and why in the Step
 that is affected, and mark it `assumed`. Ask a `question` only when no Step can
-be written at all. Assuming a third number instead is inventing your way past the
-sheet: it is refused at the geometry.{{/nobody}}
+be written at all. Settle each contradiction in one line where the Step that uses it
+is written; do not work the whole part out before writing the first Step. Assuming a
+third number instead is inventing your way past the sheet: it is refused at the
+geometry.{{/nobody}}
 
 Sketch geometry is positioned by computed coordinates, not by the constraint
 solver. Two circles are concentric because they were given the same centre; a
