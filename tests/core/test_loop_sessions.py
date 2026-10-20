@@ -55,6 +55,7 @@ from core.loop.plan import _acceptance_of
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from tests.loop_helpers import (
+    a_person_who_declines,
     request_in,
     RENDER_PNG,
     DESCRIPTION,
@@ -573,7 +574,7 @@ def test_obsolete_beside_code_does_not_throw_that_code_away():
         plan_reply("Fillet the four corner edges"),
         code_reply("fillet()", first=2),
         suspect_reply(), verdict_reply("pass"),
-    ])
+    ], ask=a_person_who_declines)
 
     assert result.ok
     assert tools.applied_codes() == ["pad()", "fillet()"]
@@ -629,7 +630,8 @@ def test_an_unbuildable_reply_on_a_retry_hands_back_instead_of_being_asked_again
         plan_reply("Fillet the root edges at a smaller radius"),
         code_reply("fillet_root_smaller()"),
         suspect_reply(), verdict_reply("pass"),
-    ], applies=[failed("Fillet (Part::Fillet): FilletId is not part of the shape")])
+    ], applies=[failed("Fillet (Part::Fillet): FilletId is not part of the shape")],
+        ask=a_person_who_declines)
 
     assert result.ok
     assert tools.applied_codes() == ["fillet_root()", "fillet_root_smaller()"]

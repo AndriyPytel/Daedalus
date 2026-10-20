@@ -24,6 +24,7 @@ from core.loop.execute import (
     _LOOK_IT_UP,
     _SAID_NOTHING,
     _addressed,
+    _kind_of_step,
     _look,
     _lookable,
 )
@@ -452,16 +453,6 @@ _NUMBER = r"(?:\d+|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)"
 _PIECES = re.compile(r"\b%s\s+(?:pieces|segments|parts)\b|\binto\s+%s\b" % (_NUMBER, _NUMBER), re.I)
 _A_LATER_FEATURE = re.compile(r"\b(?:pocket|hole|groove|thread|notch|slot|cut|bore|pattern|lug|boss)", re.I)
 _INHERITED_INSIDE = re.compile(r"(?=.*\binherit)(?=.*\b(?:inside|inner|internal)\b)", re.I | re.S)
-
-
-def _kind_of_step(prose, op):
-    first = prose.split(None, 1)[0] if prose.strip() else ""
-    word = re.sub(r"[^a-z]", "", (op or first).lower())
-    if word in ("fillet", "chamfer", "draft"):
-        return word
-    if word in ("pocket", "hole", "thickness") or "pattern" in word or word == "multitransform":
-        return "thickness" if word == "thickness" else "cut"
-    return None
 
 
 def _fillet_before_a_cut(steps, ops):

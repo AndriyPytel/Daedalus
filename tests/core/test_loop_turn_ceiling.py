@@ -15,7 +15,8 @@ import json
 
 from core.agent import agent as agent_module
 from core.agent import phase_contract as pc
-from tests.loop_helpers import code_reply, drive, plan_reply, suspect_reply, verdict_reply
+from tests.loop_helpers import (
+    a_person_who_declines, code_reply, drive, plan_reply, suspect_reply, verdict_reply)
 from tests.event_helpers import events_of
 
 
@@ -48,7 +49,7 @@ def test_a_plan_revision_shares_the_same_supervisor_execute_spent_its_turns_on(m
     ], applies=[
         {"status": "applied", "created": ["Pad1"], "description": {}},
         {"status": "applied", "created": ["Pad2"], "description": {}},
-    ])
+    ], ask=a_person_who_declines)
 
     assert result.ok, result.reason
     assert len(seen) == 2, "one execute() call before the revision, one after"
@@ -163,7 +164,7 @@ def test_a_plan_revision_grows_the_ceiling_when_it_ends_up_longer(monkeypatch):
     ], applies=[
         {"status": "applied", "created": ["Pad1"], "description": {}},
         {"status": "applied", "created": ["Pad2"], "description": {}},
-    ])
+    ], ask=a_person_who_declines)
 
     assert result.ok, result.reason
     revisions = events_of(events, PLAN_REVISED)
