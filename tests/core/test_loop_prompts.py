@@ -106,7 +106,7 @@ def test_each_phase_sends_the_prompt_from_its_config_file(turn, phase):
     ], attachments=[RENDER_PNG])
 
     with nobody_answering():
-        phase_prompt = prompt(phase)
+        phase_prompt = prompt(phase, raster=True)
 
     system = _system_messages(llm)[turn]
     assert phase_prompt in system, "phase prompt not found in system message"

@@ -91,17 +91,29 @@ _NOBODY = re.compile(r"\{\{nobody\}\}(.*?)\{\{/nobody\}\}", re.DOTALL)
 _EDITING = re.compile(r"\{\{editing\}\}(.*?)\{\{/editing\}\}", re.DOTALL)
 
 
+_VECTOR = re.compile(r"\{\{vector\}\}(.*?)\{\{/vector\}\}", re.DOTALL)
+
+
+_RASTER = re.compile(r"\{\{raster\}\}(.*?)\{\{/raster\}\}", re.DOTALL)
+
+
+def a_raster_picture(attachments):
+    """Whether the drawing is a picture, and so has no text layer or line work to read."""
+    return bool(attachments) and not any(str(path).lower().endswith(".pdf") for path in attachments)
+
+
 def _typeid_table():
     """The verb-to-TypeId table the op_mismatch gate checks against, one verb a line."""
     return "\n".join("- %s: %s" % (op, ", ".join(typeids) or "(builds no feature of its own)")
                      for op, typeids in OP_TYPEIDS.items())
 
 
-def prompt(phase, ledger="", editing=False):
+def prompt(phase, ledger="", editing=False, raster=False):
     """
     A phase's system prompt, read from `config/prompts/<phase>.md` and
     composed with the sections of the shared vocabulary. `{{editing}}`
-    passages stay only where the run edits a base part.
+    passages stay only where the run edits a base part; `{{raster}}` passages
+    stay only for a picture, `{{vector}}` ones only where it is not.
     """
     body = read_prompt(phase + ".md").strip()
     sections = _language_sections()
@@ -110,6 +122,7 @@ def prompt(phase, ledger="", editing=False):
     asking, nobody = (r"", r"\1") if nobody_is_answering() else (r"\1", r"")
     body = _NOBODY.sub(nobody, _ASKING.sub(asking, body))
     body = _EDITING.sub(r"\1" if editing else r"", body)
+    body = _VECTOR.sub(r"" if raster else r"\1", _RASTER.sub(r"\1" if raster else r"", body))
     body = body.replace(_TRAPS_PLACEHOLDER, "\n".join("- " + trap for trap in TRAPS))
     body = body.replace("{{typeids}}", _typeid_table())
     if ledger:

@@ -678,10 +678,14 @@ def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
 
 
 def prompts_of(phase):
-    """The phase's system prompt as a run with a person to ask sends it, and as a batch run does, edit or not."""
-    prompts = [prompt(phase), prompt(phase, editing=True)]
+    """The phase's system prompt as a run with a person to ask sends it, and as a batch run does, edit or not, picture or not."""
+    def every():
+        return [prompt(phase, editing=editing, raster=raster)
+                for editing in (False, True) for raster in (False, True)]
+
+    asked = every()
     with nobody_answering():
-        return tuple(prompts + [prompt(phase), prompt(phase, editing=True)])
+        return tuple(asked + every())
 
 
 def _system_messages(llm):
