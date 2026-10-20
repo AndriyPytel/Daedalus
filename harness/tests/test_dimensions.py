@@ -25,9 +25,10 @@ def test_every_extrude_gets_a_depth_dimension(local_design):
 
 
 def _envelope():
+    ends = [(10.0, 0.0, 0.0), (0.0, 0.0, 10.0), (0.0, 10.0, 0.0)]
     return [
-        sd.Dim("envelope", "step", "envelope", 10.0, view, (0.0, 0.0, 0.0), (10.0, 0.0, 0.0))
-        for view in ("Front", "Front", "Top")
+        sd.Dim("envelope", "step", "envelope", 10.0, view, (0.0, 0.0, 0.0), end)
+        for view, end in zip(("Front", "Front", "Top"), ends)
     ]
 
 

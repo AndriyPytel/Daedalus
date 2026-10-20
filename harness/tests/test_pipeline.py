@@ -19,10 +19,12 @@ def test_one_design_end_to_end(local_design, tmp_path):
     ]
     from OCP.Bnd import Bnd_Box
     from OCP.BRepBndLib import BRepBndLib
+    from OCP.Interface import Interface_Static
     from OCP.IFSelect import IFSelect_RetDone
     from OCP.STEPControl import STEPControl_Reader
 
-    def extent(path):
+    def extent(path, unit):
+        Interface_Static.SetCVal_s("xstep.cascade.unit", unit)
         reader = STEPControl_Reader()
         assert reader.ReadFile(str(path)) == IFSelect_RetDone
         reader.TransferRoots()
@@ -31,7 +33,7 @@ def test_one_design_end_to_end(local_design, tmp_path):
         lo_x, lo_y, lo_z, hi_x, hi_y, hi_z = box.Get()
         return hi_x - lo_x, hi_y - lo_y, hi_z - lo_z
 
-    source = extent(local_design / f"{local_design.name}.step")
-    exemplar = extent(out / "exemplar.step")
+    source = extent(local_design / f"{local_design.name}.step", "CM")
+    exemplar = extent(out / "exemplar.step", "MM")
     for s, e in zip(source, exemplar):
         assert e == pytest.approx(10 * s, rel=1e-3)
