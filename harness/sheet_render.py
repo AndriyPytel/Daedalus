@@ -1,11 +1,12 @@
 """
 Lays the four projected views out on an A2 ISO 5457 frame in first-angle
 position (Front top left, Top below it, Left to its right, isometric top
-right), draws the dimensions in SVG and renders PNG at 300 dpi and PDF; cairocffi cannot find Homebrew's libcairo on its own, so it is loaded by path first. One ISO
+right), draws the dimensions in SVG and renders PNG at 300 dpi and PDF; cairocffi cannot find Homebrew's libcairo on its own, so write_sheet points it there. The template's editable title-block fields are emptied. One ISO
 5455 scale serves all views; a world point maps into a view as
 ((p - centre) . x_direction, -(p - centre) . (direction x x_direction)).
 """
 import math
+import re
 
 import numpy as np
 
@@ -200,7 +201,8 @@ def render_svg(template_svg, views, dims):
     body = _edges(views, positions, scale) + _dimensions(dims, views, positions, scale)
     x0, y0, x1, y1 = AREA
     body.append(_text(np.array([x1 - 25, y1 - 4]), f"{scale_label(scale)}", 0.0))
-    return template_svg.replace("</svg>", "<g id=\"sheet\">" + "".join(body) + "</g></svg>")
+    frame = re.sub(r"(<text[^>]*freecad:editable[^>]*>).*?(</text>)", r"\1\2", template_svg, flags=re.S)
+    return frame.replace("</svg>", "<g id=\"sheet\">" + "".join(body) + "</g></svg>")
 
 
 def write_sheet(svg, png_path, pdf_path):
@@ -211,5 +213,5 @@ def write_sheet(svg, png_path, pdf_path):
     import cairosvg
 
     data = svg.encode()
-    cairosvg.svg2png(bytestring=data, write_to=str(png_path), dpi=300)
+    cairosvg.svg2png(bytestring=data, write_to=str(png_path), dpi=300, background_color="white")
     cairosvg.svg2pdf(bytestring=data, write_to=str(pdf_path))
