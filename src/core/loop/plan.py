@@ -536,7 +536,9 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
             for_the_build = False
             continue
         mixed = _two_directions_in_one_step(planned)
-        if mixed and asking.re_aimed < budgets.revisions:
+        if mixed and nobody_is_answering():
+            events.emit(ANSWER, by="nobody", text=_one_direction_per_step(mixed))
+        elif mixed and asking.re_aimed < budgets.revisions:
             asking.re_aimed += 1
             feedback, revising = _one_direction_per_step(mixed), planned.steps
             continue
