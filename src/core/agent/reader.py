@@ -141,17 +141,16 @@ def mismatches(facts, table):
     found = []
     extents = facts["extents"]
     if table is not None:
-        given = {axis: value for axis, value in table["overall"].items() if value is not None}
-        wrong = [(axis, value, extents["xyz".index(axis)]) for axis, value in given.items()
-                 if not _close(extents["xyz".index(axis)], value)]
+        given = [value for value in table["overall"].values() if value is not None]
+        pool = sorted(extents)
+        if len(given) == 3:
+            wrong = not all(_close(a, b) for a, b in zip(pool, sorted(given)))
+        else:
+            wrong = any(not any(_close(e, value) for e in pool) for value in given)
         if wrong:
-            permuted = len(given) == 3 and all(
-                _close(a, b) for a, b in zip(sorted(extents), sorted(given.values())))
-            found.append("Overall size: the drawing gives %s, the solid measures %s mm%s." % (
-                ", ".join("%s %g" % (axis, value) for axis, value in given.items()),
-                " x ".join("%.1f" % e for e in extents),
-                "; the extents match with the axes permuted, so the part stands the wrong way round"
-                if permuted else ""))
+            found.append("Overall size: the drawing gives %s, the solid measures %s mm." % (
+                " x ".join("%g" % value for value in sorted(given)),
+                " x ".join("%.1f" % e for e in pool)))
     if facts["b0"] != 1:
         found.append("The Document holds %d separate solids; the part is one." % facts["b0"])
     if table is not None:

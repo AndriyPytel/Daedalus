@@ -52,3 +52,10 @@ def test_an_edit_that_changed_nothing_is_a_difference_and_a_changed_part_is_not(
 
     assert len(mismatches(same, None)) == 1 and "not been made" in mismatches(same, None)[0]
     assert mismatches(changed, None) == []
+
+
+def test_the_overall_size_ignores_which_axis_the_part_was_built_along():
+    stood_up = dict(PLATE, extents=[10.0, 100.0, 50.0])
+
+    assert mismatches(stood_up, _table()) == []
+    assert len(mismatches(stood_up, _table(overall={"x": 120.0, "y": 50.0, "z": 10.0}))) == 1
