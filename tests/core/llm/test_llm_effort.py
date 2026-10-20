@@ -37,6 +37,23 @@ def test_xhigh_reaches_the_cli_flag_and_is_not_swapped_for_the_dial(monkeypatch)
     assert spawn.argv[spawn.argv.index("--effort") + 1] == "xhigh"
 
 
+def test_xhigh_reaches_the_cli_flag_and_is_not_swapped_for_the_dial(monkeypatch):
+    import os
+    import sys
+
+    from core import settings
+
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from test_llm_claude_code import client_replaying, a_turn
+    from conftest import collect
+
+    monkeypatch.setattr(settings.instance(), "get_effort", lambda: "medium")
+    client, spawn = client_replaying(effort="xhigh")
+    collect(client.stream(a_turn()))
+
+    assert spawn.argv[spawn.argv.index("--effort") + 1] == "xhigh"
+
+
 def test_an_explicit_effort_wins_over_whatever_the_dial_is_set_to(monkeypatch):
     from core import settings
 

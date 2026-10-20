@@ -18,7 +18,7 @@ from core.events import (
     CALL_STARTED, COST, INVOKE_MARKUP, STEP_DECLARED, THOUGHT, TOOL_CALL, TOOL_RESULT,
     TURN_BUDGET_EXHAUSTED, WRITING,
 )
-from core.kernel import Kernel
+from core.kernel import Kernel, KernelResult
 from core.llm import REASONING, TEXT, Session
 from core.llm.exceptions import StreamCutOff
 from core.agent import phase_contract as pc
@@ -71,7 +71,7 @@ def _a_python_level_error(traceback):
 def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
               kernel=None, supervisor=None, stream=None, system=None,
               on_declaration=None, exploration=None, design=None, repair_ceiling=None,
-              already_delivered=(), ledger="", plan_values=None):
+              already_delivered=(), ledger="", plan_values=None, preflight=True):
     """
     Run *phase* as a multi-turn agent against its own kernel, returning
     `(declared, session, declarations)`. *on_declaration*, called the moment a
@@ -96,7 +96,9 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
     split `core.agent.agent._composed_system` documents; and *plan_values*,
     handed to the kernel the same way as *design*, is captured back out of
     every call the Plan phase itself makes, so a later Step can name a
-    value an earlier one computed.
+    value an earlier one computed; and *preflight* false hands a Step's code
+    to *on_declaration* without the kernel having run it, resyncing the kernel
+    from the Document Apply answers with.
     """
     working = spawn(phase, working_dir,
                     **(dict(sources, document=document) if isinstance(document, str)
@@ -234,15 +236,20 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                     kernel_kwargs["capture_values"] = True
                 if builds:
                     kernel_kwargs["builds"] = True
-                result = working_kernel.check(
-                    message["code"], exploring=not builds, **kernel_kwargs)
+                skipped = builds and not preflight
+                if skipped:
+                    result = KernelResult(ok=True)
+                else:
+                    result = working_kernel.check(
+                        message["code"], exploring=not builds, **kernel_kwargs)
                 last_failure = None if result.ok else result.traceback
                 first_step = False
                 if fix is not None:
-                    if result.ok and result.checkpoint:
+                    if result.ok and (result.checkpoint or skipped):
                         since_declaration = 0
                         declaration_demanded = False
-                        checkpoint = _kept(working, result.checkpoint, len(declarations))
+                        checkpoint = (None if skipped else
+                                      _kept(working, result.checkpoint, len(declarations)))
                         declaration = {
                             "step": None, "fix": fix,
                             "label": message.get("label") or "Fix Step %s" % fix,
@@ -254,8 +261,11 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                         delivered = (on_declaration(declaration) if on_declaration is not None
                                     else {"delivered": True})
                         if delivered.get("delivered"):
+                            if skipped:
+                                checkpoint = _resynced(working_kernel, working, delivered,
+                                                       len(declarations))
                             last_landed_checkpoint = checkpoint
-                            answer = _feedback(result, None)
+                            answer = _applied(declaration) if skipped else _feedback(result, None)
                             answer["fixed"] = fix
                         else:
                             resync = delivered.get("resync")
@@ -275,10 +285,11 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                     text = replied_with(answer)
                     continue
                 delivered_step = None
-                if "step" in message and result.ok and result.checkpoint:
+                if "step" in message and result.ok and (result.checkpoint or skipped):
                     since_declaration = 0
                     declaration_demanded = False
-                    checkpoint = _kept(working, result.checkpoint, len(declarations))
+                    checkpoint = (None if skipped else
+                                  _kept(working, result.checkpoint, len(declarations)))
                     declaration = {
                         "step": message["step"], "label": message.get("label"),
                         "code": message["code"], "checkpoint": checkpoint,
@@ -330,6 +341,10 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                         declared_failure = message["step"]
                     else:
                         pending_retry = None
+                        if skipped:
+                            checkpoint = _resynced(working_kernel, working, delivered,
+                                                   len(declarations))
+                            declaration["checkpoint"] = checkpoint
                         declarations.append(declaration)
                         if message["step"] is not None:
                             delivered_steps.add(message["step"])
@@ -339,7 +354,8 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                         last_landed_checkpoint = checkpoint
                 lint_warnings = (lint(message["code"]).problems
                                 if "step" not in message else None)
-                answer = _feedback(result, lint_warnings)
+                answer = (_applied(declaration) if skipped and delivered_step is not None
+                          else _feedback(result, lint_warnings))
                 if delivered_step is not None:
                     answer["step"] = delivered_step
                     next_step = _step_beside(delivered_step, sources.get("plan"), forward=True)
@@ -423,6 +439,24 @@ def _step_beside(step, plan, forward):
         return min(later) if later else None
     earlier = [number for number in numbers if number < step]
     return max(earlier) if earlier else None
+
+
+def _applied(declaration):
+    """What a Step nothing rehearsed is told: Apply took it, and what it created."""
+    return {"ok": True, "status": "applied", "created": list(declaration.get("created") or ())}
+
+
+def _resynced(kernel, working_dir, delivered, index):
+    """
+    Point *kernel* at the live Document Apply just changed and keep that copy as
+    the Step's checkpoint, since no rehearsal wrote one.
+    """
+    resync = delivered.get("resync")
+    kept = _kept(working_dir, resync, index) if resync else None
+    kernel.check("pass", document=resync)
+    if resync:
+        discard(resync)
+    return kept
 
 
 def _kept(working_dir, checkpoint, index):

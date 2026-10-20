@@ -283,26 +283,27 @@ class ApplyPipeline:
         Lint *code* and land it on the live Document as one transaction.
         `kernel_result` is what the kernel already found running this Step
         for real -- names created/deleted/modified, its name map, its
-        Document's signature -- so the kernel's run is the rehearsal, rolled
+        Document's signature (`None`: nothing rehearsed, those gates skipped) -- so the kernel's run is the rehearsal, rolled
         back on a signature disagreement, with no second rehearsal here.
         `op` is checked against what the kernel built, not this code's text,
         and `design` and `plan_values` are the Design model and the Plan's
         frozen numbers Preflight ran this Step against, carried into the same
         transaction so Apply resolves them identically.
         """
+        rehearsed = kernel_result is not None
         kernel_result = kernel_result or {}
         checked = lint(code, selection)
         if not checked.ok:
             return ApplyResult(ok=False, traceback=checked.report(), gate="lint")
 
-        mismatch = op_typeid_mismatch(op, kernel_result.get("created"),
-                                      kernel_result.get("objects"))
+        mismatch = rehearsed and op_typeid_mismatch(op, kernel_result.get("created"),
+                                                    kernel_result.get("objects"))
         if mismatch:
             return ApplyResult(ok=False, traceback=_TYPEID_REASON % (
                 mismatch, mismatch, op, " or ".join(OP_TYPEIDS[op])), gate="op_mismatch")
 
-        if not (kernel_result.get("created") or kernel_result.get("deleted")
-                or kernel_result.get("modified")):
+        if rehearsed and not (kernel_result.get("created") or kernel_result.get("deleted")
+                              or kernel_result.get("modified")):
             return ApplyResult(ok=False, traceback=_CHANGED_NOTHING, gate="changed_nothing")
 
         doc = self._dispatch(self._active)
@@ -333,7 +334,8 @@ class ApplyPipeline:
                 gate="rollback",
             )
 
-        self._names = dict(kernel_result.get("names") or {})
+        if rehearsed:
+            self._names = dict(kernel_result.get("names") or {})
         self._dispatch(lambda: _show_tip(doc))
         self._dispatch(lambda: fit_view(doc))
         described = self._dispatch(lambda: description(doc))

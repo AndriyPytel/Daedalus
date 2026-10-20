@@ -25,7 +25,9 @@ class Budgets:
     read; `record_conflicts` false drops the disagreement's record at the
     Gate while the held reading still stands, isolating what recording a
     conflict itself contributes when the rest of a run, `readings`
-    included, is held the same.
+    included, is held the same; `preflight` false hands every Step's code
+    to Apply without the kernel having run it, isolating what Preflight
+    itself contributes.
     """
 
     attempts_per_step: int = 3
@@ -38,6 +40,7 @@ class Budgets:
     readings: int = 3
     trailing_gap_retries: int = 1
     record_conflicts: bool = True
+    preflight: bool = True
 
 
 def revisions_ceiling(budgets, steps) -> int:
