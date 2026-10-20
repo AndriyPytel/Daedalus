@@ -27,6 +27,7 @@ from core.loop import (ACCEPT, APPROVE, ASSERTION_PHASE, DECISIONS, DESIGN_PHASE
                        nobody_to_ask, revise_by_default, run)
 from core.loop.budgets import Budgets
 from core.agent.oneshot import run_oneshot
+from core.agent.reader import run_reader
 from core.agent.solo import run_solo
 from core.narrate import narrate
 from core.orchestrator import CONTROL, DESIGN, RUN_QUESTION, route
@@ -320,21 +321,22 @@ class Client:
         else:
             return design(prompt)
 
-    def agent(self, prompt, attachments=(), cancelled=None, max_turns=60):
+    def agent(self, prompt, attachments=(), cancelled=None, max_turns=60, reader=False, base=False):
         """
         The agent arm: one model over this Client's kernel, choosing its own
         route, its read tools bound to whichever Document the kernel last
         checkpointed. The Client's Document becomes that checkpoint, so `save`
-        and `export_step` write what the agent built.
+        and `export_step` write what the agent built; *reader* reads the drawing into a table first, and *base* says the Document already holds the part to edit.
         """
         if self.kernel is None:
             raise ValueError("the agent arm works through a kernel")
         self.pipeline.events = self.events
         tools = build_registry(document=lambda: self.document)
-        result, checkpoint = run_solo(
-            prompt, llm=self.llm, kernel=self.kernel, tools=tools, events=self.events,
-            attachments=list(attachments), cancelled=cancelled, max_turns=max_turns,
-            refresh=self._adopt)
+        arguments = dict(llm=self.llm, kernel=self.kernel, tools=tools, events=self.events,
+                         attachments=list(attachments), cancelled=cancelled, max_turns=max_turns,
+                         refresh=self._adopt)
+        result, checkpoint = (run_reader(prompt, base=base, **arguments) if reader
+                              else run_solo(prompt, **arguments))
         if checkpoint:
             self._adopt(checkpoint)
         return result

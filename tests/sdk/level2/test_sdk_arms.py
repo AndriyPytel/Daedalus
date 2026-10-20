@@ -248,3 +248,114 @@ def test_nopreflight_hands_an_apply_failure_back_like_any_other(tmp_path):
         assert [e.data["gate"] for e in failed] == ["rollback"]
         assert "missing_name" in failed[0].data["traceback"]
         client.close()
+
+
+TABLE = {"views": [{"crop": 1, "view": "front"}], "overall": {"x": 10, "y": 10, "z": 10},
+         "through_count": 0, "thin_walled": False, "body_family": "prismatic"}
+
+
+def _sheet(tmp_path):
+    from PIL import Image, ImageDraw
+
+    path = str(tmp_path / "input.png")
+    picture = Image.new("RGB", (1200, 800), "white")
+    draw = ImageDraw.Draw(picture)
+    draw.rectangle((100, 100, 500, 400), outline="black", width=4)
+    draw.rectangle((650, 100, 1000, 300), outline="black", width=4)
+    picture.save(path)
+    return path
+
+
+def _reader(llm, kernel, sheet):
+    client = _client(llm, kernel)
+    result = client.agent("Make the part", attachments=[sheet], reader=True)
+    return client, result
+
+
+def test_the_reader_arm_reads_the_drawing_once_then_builds_with_the_table_in_front_of_it(kernel, tmp_path):
+    llm = ScriptedLLMClient([_say(**TABLE), _say(code=BOX), _say(finish="a cube")])
+
+    client, result = _reader(llm, kernel, _sheet(tmp_path))
+
+    assert result.ok and len(llm.calls) == 3
+    opening = json.dumps(llm.calls[1][-1]["content"])
+    assert "A first reading of the sheet" in opening and "Crop 1" in opening
+    assert opening.count("image_url") >= 2
+    client.close()
+
+
+def test_the_finish_gate_returns_the_differences_only_and_a_second_finish_is_accepted(kernel, tmp_path):
+    table = dict(TABLE, through_count=4)
+    llm = ScriptedLLMClient([_say(**table), _say(code=BOX), _say(finish="a cube"),
+                             _say(finish="still a cube")])
+
+    client, result = _reader(llm, kernel, _sheet(tmp_path))
+
+    assert result.ok and len(llm.calls) == 4
+    sent = _user_text(llm.calls[3])
+    assert "Through openings" in sent and "conform" not in sent.lower()
+    assert "front view, then crop 1" in sent
+    client.close()
+
+
+def test_a_part_that_matches_the_table_finishes_at_the_first_finish_without_a_word(kernel, tmp_path):
+    llm = ScriptedLLMClient([_say(**TABLE), _say(code=BOX), _say(finish="a cube")])
+
+    client, result = _reader(llm, kernel, _sheet(tmp_path))
+
+    assert result.ok and len(llm.calls) == 3
+    client.close()
+
+
+def test_a_failed_reading_is_retried_once_and_the_build_goes_on_without_a_table(kernel, tmp_path):
+    llm = ScriptedLLMClient(["no idea", "still no idea", _say(code=BOX), _say(finish="a cube")])
+
+    client, result = _reader(llm, kernel, _sheet(tmp_path))
+
+    assert result.ok and len(llm.calls) == 4
+    assert "A first reading" not in json.dumps(llm.calls[2][-1]["content"])
+    client.close()
+
+
+def test_an_edit_that_ships_the_part_unchanged_is_told_once_and_then_let_go(kernel, tmp_path):
+    import sys
+
+    import Part
+
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "src", "tools"))
+    import run
+
+    step = str(tmp_path / "input.step")
+    Part.makeBox(40, 30, 10).exportStep(step)
+    seed = run.base_document(step)
+    from sdk import Client
+
+    llm = ScriptedLLMClient([_say(finish="nothing to do"), _say(finish="still nothing")])
+    client = Client(document=seed, kernel=kernel, llm=llm)
+    client.kernel.check("pass", document=seed)
+
+    result = client.agent("Drill a hole", reader=True, base=True)
+
+    assert len(llm.calls) == 2 and "not been made" in _user_text(llm.calls[1])
+    out = client.export_step(str(tmp_path / "out.step"), "Body")
+    assert _volume_of(out) == pytest.approx(12000)
+    client.close()
+
+
+def test_a_view_render_is_drawn_from_the_direction_it_names(tmp_path):
+    from PIL import Image
+    import numpy as np
+
+    code = BOX.replace("Width = 10", "Width = 20").replace("Height = 10", "Height = 30")
+    sizes = {}
+    with Kernel(timeout=120) as fresh:
+        for view in ("top", "front", "right"):
+            path = str(tmp_path / (view + ".png"))
+            assert fresh.check(code, render_path=path, render_view=view).ok
+            drawn = np.asarray(Image.open(path).convert("L")) < 200
+            rows, columns = np.where(drawn)
+            sizes[view] = (columns.max() - columns.min() + 1) / (rows.max() - rows.min() + 1)
+
+    assert sizes["top"] == pytest.approx(10 / 20, rel=0.08)
+    assert sizes["front"] == pytest.approx(10 / 30, rel=0.08)
+    assert sizes["right"] == pytest.approx(20 / 30, rel=0.08)

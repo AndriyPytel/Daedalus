@@ -1419,7 +1419,7 @@ def _run_step_body(doc, namespace, touched, request):
     if render_path:
         from core.kernel.preflight_render import render
 
-        result["render"] = render(doc, render_path)
+        result["render"] = render(doc, render_path, view=request.get("render_view") or "iso")
     return result
 
 

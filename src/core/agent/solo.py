@@ -34,22 +34,26 @@ def _answer(result):
 
 
 def run_solo(intent, *, llm, kernel, tools, events, attachments=(), cancelled=None,
-             max_turns=60, refresh=None):
+             max_turns=60, refresh=None, system=None, opening=None, gate=None):
     """
     Run *intent* to `finish`, the turn ceiling or *cancelled*, and hand back
     `(LoopResult, checkpoint)`, the checkpoint being the kernel's Document as it
     last stood or `None` where nothing landed. *refresh* is called before a read
     tool asks about the Document, so the Document it reads is the kernel's.
+    *system* is the prompt text where it is not `solo.md`, *opening* is the first message where it is not the
+    intent and the attachments, and *gate*, asked once at the first `finish`, answers with
+    what to send back instead of finishing, or `None`.
     """
     events.emit(INTENT, text=intent)
     if attachments:
         events.emit(ATTACHED, files=[{"name": os.path.basename(p), "path": p} for p in attachments])
 
-    session = Session(system=with_traps(read_prompt("solo.md")))
-    content = [{"type": "text", "text": intent}]
-    content += [block for block in map(_as_image, attachments) if block]
+    session = Session(system=with_traps(system or read_prompt("solo.md")))
+    content = opening or [{"type": "text", "text": intent}] + [
+        block for block in map(_as_image, attachments) if block]
     renders = tempfile.mkdtemp(prefix="fcc-solo-")
-    state = {"applied": 0, "failures": 0, "checkpoint": None, "stale": False, "renders": 0}
+    state = {"applied": 0, "failures": 0, "checkpoint": None, "stale": False, "renders": 0,
+             "gated": gate is None}
 
     def built(reason, ok=True):
         return LoopResult(ok=state["applied"] > 0 and ok, reason=reason,
@@ -95,12 +99,14 @@ def run_solo(intent, *, llm, kernel, tools, events, attachments=(), cancelled=No
         events.emit(TOOL_RESULT, name=name, result=answer)
         return json.dumps(answer, default=str)
 
-    def render_turn():
+    def render_turn(view):
         state["renders"] += 1
-        events.emit(TOOL_CALL, name="render", arguments={})
-        drawn = kernel.check("pass", render_path=os.path.join(renders, "%d.png" % state["renders"]))
+        view = view if isinstance(view, str) else None
+        events.emit(TOOL_CALL, name="render", arguments={"view": view})
+        drawn = kernel.check("pass", render_path=os.path.join(renders, "%d.png" % state["renders"]),
+                             render_view=view)
         picture = _as_image(drawn.render) if drawn.ok else None
-        answer = {"rendered": "isometric"} if picture else {
+        answer = {"rendered": view or "isometric"} if picture else {
             "error": drawn.traceback or "nothing to draw yet"}
         events.emit(TOOL_RESULT, name="render", result=answer)
         return [{"type": "text", "text": json.dumps(answer)}] + ([picture] if picture else [])
@@ -116,6 +122,12 @@ def run_solo(intent, *, llm, kernel, tools, events, attachments=(), cancelled=No
                 return built("the turn budget was spent")
             turns += 1
             message = _parsed(_say(session, llm, content, phase="agent", stream=events))
+            if "finish" in message and not state["gated"]:
+                state["gated"] = True
+                content = gate()
+                if content:
+                    events.emit(TOOL_RESULT, name="finish_gate", result={"returned": True})
+                    continue
             if "finish" in message:
                 events.emit(COMPLETED, summary=str(message["finish"]))
                 return built(str(message["finish"]))
@@ -126,7 +138,7 @@ def run_solo(intent, *, llm, kernel, tools, events, attachments=(), cancelled=No
             elif "inspect" in message:
                 content = inspect_turn(message["inspect"])
             elif message.get("render"):
-                content = render_turn()
+                content = render_turn(message["render"])
             else:
                 content = read_prompt("solo_correction.md")
     except Exception as exc:

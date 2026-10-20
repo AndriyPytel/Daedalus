@@ -646,7 +646,7 @@ def main():
     parser.add_argument("--conflicts", choices=("on", "off"), default=None,
                         help="The conflict-recording A/B arm; unset runs tools/run.py's own "
                              "default (on)")
-    parser.add_argument("--arm", choices=("pipeline", "agent", "oneshot", "nopreflight"),
+    parser.add_argument("--arm", choices=("pipeline", "agent", "reader", "oneshot", "nopreflight"),
                         default="pipeline",
                         help="Which arm tools/run.py runs each task as; pipeline is unchanged")
     parser.add_argument("--max-turns", type=int, default=None,

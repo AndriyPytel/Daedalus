@@ -25,9 +25,9 @@ def test_the_pipeline_command_line_has_no_arm_flag(monkeypatch):
 
 
 def test_another_arm_is_passed_on_with_its_turn_ceiling(monkeypatch):
-    cmd = _command(monkeypatch, arm="agent", max_turns=30)
+    cmd = _command(monkeypatch, arm="reader", max_turns=30)
 
-    assert cmd[cmd.index("--arm") + 1] == "agent"
+    assert cmd[cmd.index("--arm") + 1] == "reader"
     assert cmd[cmd.index("--max-turns") + 1] == "30"
     assert cmd[cmd.index("--budget-usd") + 1] == "5.0"
 

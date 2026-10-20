@@ -1,0 +1,54 @@
+"""
+Level 1 -- the reader arm's table is parsed tolerantly, and the finish gate lists differences only.
+"""
+from core.agent.reader import mismatches, parse_table
+
+PLATE = {"solid": True, "extents": [100.0, 50.0, 10.0], "volume": 40000.0, "faces": 10,
+         "b0": 1, "b1": 0, "b2": 0}
+
+
+def _table(**fields):
+    return parse_table('{"overall": {"x": 100, "y": 50, "z": 10}, "through_count": 0}') | fields
+
+
+def test_a_table_wrapped_in_prose_with_unreadable_fields_is_still_a_table():
+    table = parse_table('Here you go:\n```json\n{"overall": {"x": "100", "y": "n/a", "z": 10}, '
+                        '"through_count": "4", "thin_walled": "yes", "views": [{"crop": 1, '
+                        '"view": "front"}, "junk"], "dimensions": 3}\n```')
+
+    assert table["overall"] == {"x": 100.0, "y": None, "z": 10.0}
+    assert table["through_count"] == 4 and table["thin_walled"] is True
+    assert table["views"] == [{"crop": 1, "view": "front"}] and table["dimensions"] == []
+
+
+def test_a_reply_with_no_object_is_no_table():
+    assert parse_table("I could not read it.") is None
+    assert parse_table("") is None
+
+
+def test_a_part_that_matches_the_table_has_no_differences():
+    assert mismatches(PLATE, _table()) == []
+
+
+def test_the_differences_are_listed_largest_first_and_never_say_the_part_conforms():
+    table = _table(overall={"x": 120.0, "y": 50.0, "z": 10.0}, through_count=4, thin_walled=True)
+
+    found = mismatches(dict(PLATE, volume=45000.0), table)
+
+    assert [line.split(":")[0].split(",")[0] for line in found] == [
+        "Overall size", "Through openings", "The drawing shows a thin-walled part"]
+    assert not any("conform" in line.lower() for line in found)
+
+
+def test_an_overall_size_within_two_percent_or_half_a_millimetre_is_not_a_difference():
+    table = _table(overall={"x": 101.5, "y": 50.4, "z": 10.0})
+
+    assert mismatches(PLATE, table) == []
+
+
+def test_an_edit_that_changed_nothing_is_a_difference_and_a_changed_part_is_not():
+    same = dict(PLATE, base={"volume": 40000.0, "faces": 10})
+    changed = dict(PLATE, volume=39000.0, base={"volume": 40000.0, "faces": 10})
+
+    assert len(mismatches(same, None)) == 1 and "not been made" in mismatches(same, None)[0]
+    assert mismatches(changed, None) == []

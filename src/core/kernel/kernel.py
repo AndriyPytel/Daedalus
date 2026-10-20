@@ -268,7 +268,7 @@ class Kernel:
     def check(self, code, document=_CONTINUE, render_path=None, timeout=None, names=None,
               ephemeral=False, design=None, exploring=False, plan_values=None,
               capture_values=False, builds=False, geometry=False, base_faces=None,
-              intent=None, outcome=None):
+              intent=None, outcome=None, render_view=None):
         """
         Run *code* as one Step in the kernel. `document` not given
         continues the kernel's own session, resuming on the last
@@ -284,7 +284,8 @@ class Kernel:
         rather than only reading it, *base_faces* is the base part's address -> area map, and *intent* and *outcome* are the Intent and the result's description, each for this one call and not remembered, *geometry* asks for the geometry snapshot a Step that changes nothing
         otherwise skips, *builds* marks a Step or a fix that fails
         where it changes nothing in the Document, and the return is always a
-        KernelResult, never a raise for anything the code did.
+        KernelResult, never a raise for anything the code did; *render_view* names the
+        view a *render_path* picture is drawn from, isometric where unset.
         """
         if document is _CONTINUE and self._needs_resume:
             if self._checkpoint is None:
@@ -309,6 +310,8 @@ class Kernel:
             request["document"] = document
         if render_path is not None:
             request["render_path"] = render_path
+        if render_view is not None:
+            request["render_view"] = render_view
         if names:
             request["names"] = names
         if ephemeral:

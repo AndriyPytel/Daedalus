@@ -27,6 +27,7 @@ def test_the_header_names_arm_model_effort_turns_and_commit():
 def test_the_arm_defaults_to_the_pipeline_and_rejects_anything_else():
     parsed = run.parser().parse_args(["--intent", "x"])
 
+    assert run.parser().parse_args(["--intent", "x", "--arm", "reader"]).arm == "reader"
     assert parsed.arm == "pipeline" and parsed.max_turns == 60
     try:
         run.parser().parse_args(["--intent", "x", "--arm", "bogus"])

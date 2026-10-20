@@ -25,7 +25,7 @@ sys.path.insert(0, _SRC)
 sys.path.insert(0, os.path.dirname(_SRC))
 
 
-ARMS = ("pipeline", "agent", "oneshot", "nopreflight")
+ARMS = ("pipeline", "agent", "reader", "oneshot", "nopreflight")
 
 
 def client_for(provider, model_id, effort):
@@ -118,7 +118,9 @@ def parser():
     parser.add_argument("--arm", choices=ARMS, default="pipeline",
                         help="pipeline is the fixed phase loop; nopreflight is it with every "
                              "Step's code going straight to Apply; agent is one model choosing "
-                             "its own route; oneshot is one call executed once")
+                             "its own route; reader is agent with the drawing read into a table "
+                             "first and the part checked against it before it may finish; "
+                             "oneshot is one call executed once")
     parser.add_argument("--max-turns", type=int, default=60,
                         help="The agent arm's turn ceiling")
     parser.add_argument("--base-step", default=None,
@@ -184,9 +186,10 @@ def main():
     client.watch(track)
 
     cancelled = (lambda: spent["usd"] >= args.budget_usd) if args.budget_usd is not None else None
-    if args.arm == "agent":
+    if args.arm in ("agent", "reader"):
         result = client.agent(args.intent, attachments=list(args.attach), cancelled=cancelled,
-                              max_turns=args.max_turns)
+                              max_turns=args.max_turns, reader=args.arm == "reader",
+                              base=bool(args.base_step))
     elif args.arm == "oneshot":
         result = client.oneshot(args.intent, attachments=list(args.attach))
     else:
