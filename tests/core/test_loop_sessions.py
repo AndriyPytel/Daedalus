@@ -716,7 +716,7 @@ def test_review_is_told_when_there_is_no_render_to_judge_by():
                                 "description": {"features": [], "geometry": {}}}])
     llm = scripted([plan_reply("Only"), code_reply("sketch()"), suspect_reply(), verdict_reply("pass")])
 
-    run("Sketch a square", llm=llm, tools=tools.registry, kernel=StubKernel())
+    run("Sketch a square", llm=llm, tools=tools.registry, kernel=StubKernel(), ask=a_person_who_declines)
 
     content = llm.calls[-1][-1]["content"]
     assert not [b for b in content if b.get("type") == "image_url"]

@@ -55,6 +55,7 @@ from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from core.loop.design import _the_groups
 from tests.loop_helpers import (
+    a_person_who_declines,
     request_in,
     prompts_of,
     _a_real_png,
@@ -1058,7 +1059,7 @@ def test_a_pdf_rides_into_review_beside_the_render():
                    [drawing])
 
     result = run("Build this", llm=llm, tools=FakeTools(views=[RENDER_PNG]).registry,
-                 attachments=[drawing], kernel=StubKernel())
+                 attachments=[drawing], kernel=StubKernel(), ask=a_person_who_declines)
 
     assert result.ok
     content = llm.calls[-1][-1]["content"]
@@ -1332,7 +1333,7 @@ def test_review_is_shown_the_drawing_beside_the_render():
                    [RENDER_PNG])
 
     run("Build this bracket", llm=llm, tools=FakeTools(views=[RENDER_PNG]).registry,
-        attachments=[RENDER_PNG], kernel=StubKernel())
+        attachments=[RENDER_PNG], kernel=StubKernel(), ask=a_person_who_declines)
 
     content = llm.calls[-1][-1]["content"]
     images = [block for block in content if block.get("type") == "image_url"]
@@ -1356,7 +1357,7 @@ def test_an_attachment_that_has_been_moved_does_not_break_review():
                      suspect_reply(), verdict_reply("pass")])
 
     result = run("Build this", llm=llm, tools=FakeTools(views=[RENDER_PNG]).registry,
-                 attachments=["/nowhere/gone.png"], kernel=StubKernel())
+                 attachments=["/nowhere/gone.png"], kernel=StubKernel(), ask=a_person_who_declines)
 
     assert result.ok
     content = llm.calls[-1][-1]["content"]

@@ -798,7 +798,7 @@ def test_a_phase_is_answered_by_the_client_its_own_profile_names():
     events = EventStream()
 
     result = run("Make a box", llm=llm, tools=FakeTools().registry, events=events,
-                 kernel=StubKernel())
+                 kernel=StubKernel(), ask=a_person_who_declines)
 
     assert result.ok
     assert llm.asked == ["design", "plan", "execute", "execute", "review_suspect", "review"]

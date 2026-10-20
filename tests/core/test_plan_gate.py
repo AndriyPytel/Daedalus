@@ -33,7 +33,7 @@ def drive(turns, gate, budgets=None, ask=None):
     llm = scripted(turns)
     tools = FakeTools()
     events = EventStream()
-    kwargs = {"ask": ask} if ask is not None else {}
+    kwargs = {"ask": ask if ask is not None else a_person_who_declines}
     result = run("Make a 10mm box", llm=llm, tools=tools.registry, events=events,
                  gate=gate, budgets=budgets or Budgets(), kernel=StubKernel(), **kwargs)
     return result, events, tools
@@ -364,7 +364,7 @@ def drive_with(turns, decide, gate=None, applies=(), checks=(), attachments=()):
     events = EventStream()
     result = run("Make a 10mm box", llm=llm, tools=tools.registry, events=events,
                  gate=gate or Gate(), decide=decide, attachments=list(attachments),
-                 kernel=StubKernel())
+                 kernel=StubKernel(), ask=a_person_who_declines)
     return result, events, tools
 
 
@@ -448,7 +448,7 @@ def test_stopping_while_the_decision_is_open_is_recorded_as_stopped():
     tools = FakeTools(checks=[SELF_INTERSECTION_HELD, {"ok": True, "held": [], "failed": [0], "defects": []}])
     result = run("Make a 10mm box", llm=llm, tools=tools.registry, events=EventStream(),
                  cancelled=lambda: bool(stopped), decide=presses_stop,
-                 attachments=[RENDER_PNG], kernel=StubKernel())
+                 attachments=[RENDER_PNG], kernel=StubKernel(), ask=a_person_who_declines)
 
     assert result.blocked
     assert not result.ok, "a stopped run was recorded as a result the user took"

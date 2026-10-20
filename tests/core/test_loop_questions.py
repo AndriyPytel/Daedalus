@@ -733,7 +733,7 @@ def test_stop_during_the_checks_does_not_wait_out_three_provider_calls():
         return any(name == "check_assertions" for name, _ in tools.calls)
 
     result = run("Make a nut", llm=llm, tools=tools.registry, events=events,
-                 cancelled=cancelled, attachments=[RENDER_PNG], kernel=StubKernel())
+                 cancelled=cancelled, attachments=[RENDER_PNG], kernel=StubKernel(), ask=a_person_who_declines)
 
     assert result.blocked
     assert "Stopped by you" in result.reason

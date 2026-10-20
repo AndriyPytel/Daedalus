@@ -4,7 +4,7 @@ import json
 from core.events import EventStream, PLAN_REVISED
 from core.loop.run import run
 
-from tests.loop_helpers import (FakeTools, StubKernel, gate_that, plan_reply, scripted,
+from tests.loop_helpers import (a_person_who_declines, FakeTools, StubKernel, gate_that, plan_reply, scripted,
                                suspect_reply, verdict_reply)
 
 
@@ -40,7 +40,7 @@ def test_a_rollback_past_the_undo_stack_is_refused_before_any_undo_call():
     tools = FakeTools(applies, undo_capacity=2)
     events = EventStream()
     result = run("Make a 10mm box", llm=llm, tools=tools.registry, events=events,
-                gate=gate_that(), kernel=StubKernel())
+                gate=gate_that(), kernel=StubKernel(), ask=a_person_who_declines)
 
     assert result.ok, result.reason
     assert _undo_calls(tools) == [], (

@@ -32,6 +32,7 @@ from loop_helpers import design_reply, everything, plan_reply
 from core.loop.gate import APPROVE, Approval
 from core.loop.run import run
 from core.kernel import Kernel, find_freecadcmd
+from tests.loop_helpers import a_person_who_declines
 from tests.event_helpers import events_of, first_event
 
 pytestmark = pytest.mark.freecad
@@ -207,7 +208,7 @@ def _drive_the_slice(worker, render_dir):
         result = run("Make a %gmm square padded to %gmm with filleted top edges"
                      % (SQUARE, PAD_CHANGED),
                      llm=scripted_model(), tools=build_registry(doc, pipeline=pipeline),
-                     events=events, gate=plan_gate)
+                     events=events, gate=plan_gate, ask=a_person_who_declines)
 
         yield {"result": result, "events": events, "doc": doc,
                "pipeline": pipeline, "gate": gate}

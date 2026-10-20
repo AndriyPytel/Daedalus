@@ -1058,7 +1058,7 @@ def a_clean_run(llm):
     """One run over *llm* with nothing wrong in it, as what it produced."""
     events = EventStream()
     result = run("Make a box", llm=llm, tools=FakeTools().registry, events=events,
-                 kernel=StubKernel())
+                 kernel=StubKernel(), ask=a_person_who_declines)
     return result, events
 
 

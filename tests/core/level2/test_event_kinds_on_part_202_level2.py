@@ -13,6 +13,7 @@ from core.loop.gate import APPROVE, Approval
 from core.loop.run import run
 from loop_helpers import design_reply, everything, plan_reply
 from tests.core.kernel import part_202
+from tests.loop_helpers import a_person_who_declines
 
 pytestmark = pytest.mark.freecad
 
@@ -59,7 +60,7 @@ def test_the_event_kinds_of_a_scripted_run_on_part_202_are_the_recorded_sequence
             ])
             result = run("Raise the hub to 8 mm", llm=llm,
                          tools=build_registry(doc, pipeline=pipeline), events=events,
-                         gate=lambda steps, **kwargs: Approval(APPROVE))
+                         gate=lambda steps, **kwargs: Approval(APPROVE), ask=a_person_who_declines)
     finally:
         import FreeCAD
         FreeCAD.closeDocument(doc.Name)

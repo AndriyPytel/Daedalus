@@ -571,6 +571,14 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
         described = outcome["description"] or described
 
+        if nobody_is_answering():
+            unbuilt = outcome.get("unbuilt") or []
+            progress.unmet = list(dict.fromkeys(
+                _not_reached(unbuilt, planned.acceptance) + plan_unmet))
+            return LoopResult(ok=True, steps_applied=applied, unmet=list(progress.unmet),
+                              reason="; ".join("Step not built: %s (%s)" % (item["step"], item["why"])
+                                               for item in unbuilt))
+
         views = _review_views(tools, events)
         suspected = review_suspect(intent, views, described, llm, events, attachments,
                                    supervisor=supervisor)
