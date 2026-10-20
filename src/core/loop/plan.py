@@ -11,6 +11,7 @@ from core.design.merge import (
 )
 from core.design.report import render
 from core.design.gaps import _TO_BE_READ_AGAIN, _each_value, entries
+from core.design.presence_checks import placements_twice
 from core.design.settlement_checks import described_twice
 from core.events import ANSWER, CHANGE_SET, DESIGN, QUESTION
 
@@ -268,21 +269,32 @@ def _a_feature_and_its_leaf(address):
 
 def _unconsumed(the_part, satisfies, standing=()):
     """
-    The entries of the description that no Step of the Plan accounts for.
+    The entries of the description that no Step of the Plan accounts for: only what the drawing fixes, `read` or `derived`, counts.
 
-    Only what the drawing fixes -- `read` or `derived` -- counts. A Step citing
-    a feature's main value, any address but plane, edges, position or angle,
-    covers that feature's bookkeeping addresses.
+    A Step citing a feature's main value covers its plane, edges, position and angle. Where nobody answers, a feature described twice needs only one of its two cited.
     """
     cited = {_as_written(entry) for entry in list(satisfies) + list(standing)}
     cited_features = {feature for feature, leaf in map(_a_feature_and_its_leaf, cited)
                       if feature and leaf not in _BOOKKEEPING}
+    twins = _twins_of(the_part, cited_features) if nobody_is_answering() else set()
     return [entry["about"] for entry in entries(the_part)
             if entry["flag"] in ("read", "derived")
+            and _a_feature_and_its_leaf(entry["about"])[0] not in twins
             and not any(said == entry["about"] or said.startswith(entry["about"] + ":")
                         for said in cited)
             and not (_a_feature_and_its_leaf(entry["about"])[0] in cited_features
                      and _a_feature_and_its_leaf(entry["about"])[1] in _BOOKKEEPING)]
+
+
+def _twins_of(the_part, cited_features):
+    """The features `twice_placed` finds described again beside a feature that is cited."""
+    twins = set()
+    for one, other, _, differing, opposing in placements_twice(the_part):
+        pair = [("features", str(feature.get("id"))) for feature in (one, other)]
+        if differing or (not opposing and one.get("kind") and one.get("kind") == other.get("kind")):
+            twins.update(twin for twin, cited in ((pair[1], pair[0]), (pair[0], pair[1]))
+                         if cited in cited_features)
+    return twins
 
 
 def _rollback_field(raw, applied, undo_depth=None) -> tuple:
