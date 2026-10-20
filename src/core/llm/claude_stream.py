@@ -27,7 +27,7 @@ def _as_text(content) -> str:
                        if piece.get("type") == "text")
 
 
-_CACHE_BREAKPOINT = {"type": "ephemeral", "ttl": "5m"}
+_CACHE_BREAKPOINT = {"type": "ephemeral", "ttl": "1h"}
 
 
 def _user_turn(messages: list) -> dict:

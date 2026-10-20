@@ -854,7 +854,7 @@ def test_the_user_message_goes_in_as_one_json_line_on_stdin():
     assert spawn.process.stdin.getvalue().count("\n") == 1
     assert sent(spawn) == {"type": "user", "message": {
         "role": "user", "content": [{"type": "text", "text": "Make a 10mm plate",
-                                      "cache_control": {"type": "ephemeral", "ttl": "5m"}}]}}
+                                      "cache_control": {"type": "ephemeral", "ttl": "1h"}}]}}
 
 
 def test_a_later_turn_carries_the_models_own_earlier_replies_in_order():
