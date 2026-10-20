@@ -1,6 +1,7 @@
 """The Execute phase: write code for steps and apply them."""
 import json
 import os
+import re
 import shutil
 import tempfile
 from dataclasses import dataclass, field
@@ -21,6 +22,7 @@ from core.lint import OP_TYPEIDS
 from core.loop.prompt import EXECUTE_PHASE, prompt
 from core.prompts import read_prompt
 from core.loop.looks import Looks
+from core.nobody import nobody_is_answering
 from core.prompts import LOGS
 
 
@@ -286,12 +288,14 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         directive = _the_same_way_twice(
             [Attempt(code="", traceback=t) for t in tried[number]])
         resync = tools.call("document_copy")["path"]
-        if number not in free_refusal_spent and budgets.attempts_per_step > 1:
+        a_round = nobody_is_answering() and index is not None and index < len(steps) \
+            and _kind_of_step(steps[index], op) in _ROUNDS
+        if number not in free_refusal_spent and budgets.attempts_per_step > 1 and not a_round:
             free_refusal_spent.add(number)
             return {"delivered": False, "traceback": traceback, "retry": True,
                     "drift": drift, "directive": directive, "resync": resync}
         refused[number] = refused.get(number, 0) + 1
-        if refused[number] < budgets.attempts_per_step:
+        if refused[number] < (1 if a_round else budgets.attempts_per_step):
             return {"delivered": False, "traceback": traceback, "retry": True,
                     "drift": drift, "directive": directive, "resync": resync}
         exhausted.add(number)
@@ -347,6 +351,19 @@ _UNASKED = ("Step %d names faces of the base part the intent did not ask to chan
 _COLLATERAL = ("Step %d was undone: it removed or moved these faces of the base part: %s. "
                "It named: %s. It did not name: %s. Plan the Step so that it changes only "
                "the faces it names, or name every face it changes.")
+
+
+def _kind_of_step(prose, op):
+    first = prose.split(None, 1)[0] if prose.strip() else ""
+    word = re.sub(r"[^a-z]", "", (op or first).lower())
+    if word in ("fillet", "chamfer", "draft"):
+        return word
+    if word in ("pocket", "hole", "thickness") or "pattern" in word or word == "multitransform":
+        return "thickness" if word == "thickness" else "cut"
+    return None
+
+
+_ROUNDS = ("fillet", "chamfer", "draft")
 
 
 def _changed_addresses(design):

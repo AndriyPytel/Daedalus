@@ -1,7 +1,8 @@
 """
 Design builds the part the isometric view shows, and reads a flat pattern only as how the sheet is cut, in a headless and in an interactive run.
 """
-from core.loop.prompt import nobody_answering, prompt
+from core.loop.prompt import prompt
+from core.nobody import nobody_answering
 
 
 def _said(headless):

@@ -55,6 +55,8 @@ from core.loop.plan import _acceptance_of
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from tests.loop_helpers import (
+    a_person_who_declines,
+    request_in,
     RENDER_PNG,
     DESCRIPTION,
     settled,
@@ -572,7 +574,7 @@ def test_obsolete_beside_code_does_not_throw_that_code_away():
         plan_reply("Fillet the four corner edges"),
         code_reply("fillet()", first=2),
         suspect_reply(), verdict_reply("pass"),
-    ])
+    ], ask=a_person_who_declines)
 
     assert result.ok
     assert tools.applied_codes() == ["pad()", "fillet()"]
@@ -628,7 +630,8 @@ def test_an_unbuildable_reply_on_a_retry_hands_back_instead_of_being_asked_again
         plan_reply("Fillet the root edges at a smaller radius"),
         code_reply("fillet_root_smaller()"),
         suspect_reply(), verdict_reply("pass"),
-    ], applies=[failed("Fillet (Part::Fillet): FilletId is not part of the shape")])
+    ], applies=[failed("Fillet (Part::Fillet): FilletId is not part of the shape")],
+        ask=a_person_who_declines)
 
     assert result.ok
     assert tools.applied_codes() == ["fillet_root()", "fillet_root_smaller()"]
@@ -684,7 +687,7 @@ def test_review_and_assertion_are_both_given_the_whole_description():
     ], attachments=[RENDER_PNG])
 
     to_review = json.loads(llm.calls[4][-1]["content"][0]["text"].split("\n\n")[0])
-    to_assertion = json.loads(llm.calls[5][-1]["content"])
+    to_assertion = request_in(llm.calls[5])
 
     assert to_assertion["the_document_as_it_now_stands"] == DESCRIPTION
     assert to_review["the_document_as_it_now_stands"] == DESCRIPTION
@@ -713,7 +716,7 @@ def test_review_is_told_when_there_is_no_render_to_judge_by():
                                 "description": {"features": [], "geometry": {}}}])
     llm = scripted([plan_reply("Only"), code_reply("sketch()"), suspect_reply(), verdict_reply("pass")])
 
-    run("Sketch a square", llm=llm, tools=tools.registry, kernel=StubKernel())
+    run("Sketch a square", llm=llm, tools=tools.registry, kernel=StubKernel(), ask=a_person_who_declines)
 
     content = llm.calls[-1][-1]["content"]
     assert not [b for b in content if b.get("type") == "image_url"]
@@ -724,7 +727,7 @@ def test_an_attachment_reaches_the_design_phase_as_a_picture():
     """
     The panel used to collect the attached paths and throw them away, so the
     user showed the assistant a photo it never saw. The phase that
-    receives it is the Design phase; Plan never sees a picture.
+    receives it is the Design phase.
     """
     llm = scripted([design_reply(A_DATUM), plan_reply("Only"),
                     code_reply("box()"), suspect_reply(), verdict_reply("pass")],
@@ -739,7 +742,6 @@ def test_an_attachment_reaches_the_design_phase_as_a_picture():
     assert len(images) == 1
     assert images[0]["image_url"]["url"].startswith("data:image/png;base64,")
     assert RENDER_PNG not in json.dumps(content), "the path was sent instead of the bytes"
-    assert isinstance(llm.calls[1][-1]["content"], str), "Plan was sent the picture"
 
 
 

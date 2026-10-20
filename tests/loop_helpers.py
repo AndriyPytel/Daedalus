@@ -86,7 +86,8 @@ from core.design.gaps import (
     entries,
 )
 from core.loop.budgets import Budgets, revisions_ceiling
-from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, nobody_answering, prompt
+from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, prompt
+from core.nobody import nobody_answering
 from core.loop.run import run
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
@@ -205,6 +206,11 @@ def acceptance_of(*models):
     return [entry["says"] for entry in entries(_grown(models))]
 
 
+def a_person_who_declines(question):
+    """An `ask` that is not `nobody_to_ask`: a run with it has a person to answer, and this one answers nothing."""
+    return ""
+
+
 def design_reply(model=None, question="", thinking=None):
     """
     One Design turn: what it adds to the part, and what it wants a person asked.
@@ -217,7 +223,7 @@ def design_reply(model=None, question="", thinking=None):
     return {"reasoning": thinking, "text": body} if thinking else body
 
 
-def _first_pass_turns(model, attachments, question="", readings=Budgets().readings):
+def _first_pass_turns(model, attachments, question="", readings=3):
     """
     The scripted replies one `_first_pass` costs today: the same
     `design_reply` repeated *readings* times per page-sized group
@@ -651,7 +657,7 @@ def needs_drawing(*paths):
             pytest.skip("drawing not found: %s; set DAE_MODELMANIA_DIR" % path)
 
 
-def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
+def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=a_person_who_declines,
           views=None, checks=(), attachments=(), decide=None, outstanding=(),
           the_part_path=None, kernel=None, undo_capacity=None, base=None, faces=()):
     """Run the loop over scripted turns and hand back everything to assert on."""
@@ -660,7 +666,7 @@ def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
     tools = FakeTools(applies, views=views, checks=checks, undo_capacity=undo_capacity,
                       base=base, faces=faces)
     events = EventStream()
-    kwargs = {"ask": ask} if ask is not None else {}
+    kwargs = {"ask": ask}
     if decide is not None:
         kwargs["decide"] = decide
     if the_part_path is not None:
@@ -672,15 +678,25 @@ def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
 
 
 def prompts_of(phase):
-    """The phase's system prompt as a run with a person to ask sends it, and as a batch run does, edit or not."""
-    prompts = [prompt(phase), prompt(phase, editing=True)]
+    """The phase's system prompt as a run with a person to ask sends it, and as a batch run does, edit or not, picture or not."""
+    def every():
+        return [prompt(phase, editing=editing, raster=raster)
+                for editing in (False, True) for raster in (False, True)]
+
+    asked = every()
     with nobody_answering():
-        return tuple(prompts + [prompt(phase), prompt(phase, editing=True)])
+        return tuple(asked + every())
 
 
 def _system_messages(llm):
     """The system message of every turn, in order, as the provider saw it."""
     return [call[0]["content"] for call in llm.calls]
+
+
+def request_in(call):
+    """The JSON a phase was asked, whether the request is plain text or pictures with the text last."""
+    content = call[-1]["content"]
+    return json.loads(content[-1]["text"] if isinstance(content, list) else content)
 
 
 def _turns_of(llm, phase):
@@ -693,7 +709,7 @@ def _turns_of(llm, phase):
     that section's prefix.
     """
     systems = prompts_of(phase)
-    return [json.loads(call[-1]["content"]) for call in llm.calls
+    return [request_in(call) for call in llm.calls
             if call[0]["content"].startswith(systems)]
 
 
@@ -1042,7 +1058,7 @@ def a_clean_run(llm):
     """One run over *llm* with nothing wrong in it, as what it produced."""
     events = EventStream()
     result = run("Make a box", llm=llm, tools=FakeTools().registry, events=events,
-                 kernel=StubKernel())
+                 kernel=StubKernel(), ask=a_person_who_declines)
     return result, events
 
 
@@ -1238,6 +1254,7 @@ def driven_through(gate, turns, **kwargs):
     tools = FakeTools(kwargs.pop("applies", ()), views=kwargs.pop("views", None),
                       checks=kwargs.pop("checks", ()))
     events = EventStream()
+    kwargs.setdefault("ask", a_person_who_declines)
     result = run("Make a 10mm box", llm=llm, tools=tools.registry, events=events,
                  budgets=kwargs.pop("budgets", None) or Budgets(), gate=gate,
                  kernel=kwargs.pop("kernel", None) or StubKernel(), **kwargs)

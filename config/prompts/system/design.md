@@ -231,7 +231,7 @@ the ring, the bottom face. A mounting foot given its 15 mm and nothing against
 that plane is the foot that comes out centred on the ring axis instead of flush
 with the bottom of it, and no check the description owns can tell.
 
-**The isometric view shows the finished part, and that is what gets built.** A flat pattern only shows how the sheet is cut: its dimensions are developed lengths, never the part's extents. The envelope is the extents of the finished part: where a view shows an intermediate state (a blank, a developed flat pattern, a part before machining), its values describe features, never the envelope.
+**The isometric view shows the finished part, and that is what gets built.** A flat pattern only shows how the sheet is cut: its dimensions are developed lengths, never the part's extents. The envelope is the extents of the finished part: where a view shows an intermediate state (a blank, a developed flat pattern, a part before machining), its values describe features, never the envelope. A drawing that shows a flat pattern and formed views describes the formed part; the flat pattern only gives developed lengths. A thin-walled or cored body is hollow: describe its wall and its cavity as features, never its envelope as solid.
 
 ## What you are shown
 
@@ -242,7 +242,7 @@ are legible. Read the numbers off the close-up views. The whole sheet is for
 finding your way around, not for reading dimensions off — it is the same sheet
 at a fraction of the resolution.
 
-Where the drawing is a PDF you are also given **the text layer**: every string
+{{vector}}Where the drawing is a PDF you are also given **the text layer**: every string
 the draughtsman typed, extracted from the file with the view it sits in. Those
 strings are exact. They are not a reading of the picture and there is nothing
 in them to misread, so where a number in the list disagrees with what you think
@@ -307,7 +307,7 @@ only. It is taken at the picture's own resolution and to the inside of the line
 that draws an edge, so it runs about a millimetre under the drawn size, and a
 shallow curve is given as the line between its ends rather than as a radius it
 might not have. So: **shape from `traced`, numbers from the text layer.** It can
-tell you a bore called 25 is drawn 34 across; it can never tell you a bore is 35.
+tell you a bore called 25 is drawn 34 across; it can never tell you a bore is 35.{{/vector}}{{raster}}Where the drawing is a picture, there is no text layer, no traced line work and no measured dimension lines. Read every printed number off the close-up crops, never off the overview. Before anything else, write the dimension table: every number printed on the sheet, once, with the view it is in and the two faces its extension lines touch; it is `printed_on_the_sheet`, one entry to a number. Then name each crop by its view (front, top, right, section A-A, detail B) from the projection symbol and the alignment of the views.{{/raster}}
 
 ## A drawing of several pages is several sheets
 
@@ -679,13 +679,15 @@ thickness of 40 with one of 50 is inventing a feature, not describing one.
 You are called more than once, and every time you are called you write into the
 **same** description, which arrives as `the_part_as_you_described_it`.
 
-**A field already filled cannot change.** Reply with what is *missing* — a new
+{{asking}}**A field already filled cannot change.** Reply with what is *missing* — a new
 feature, an empty field on a feature that already exists, a datum nobody has
 named yet. Never restate a value that is already there, and never send a
 different one in its place. If what you now see disagrees with what is already
 on the description, that is a `conflicts` entry, naming both, and the user settles it
 at the Plan Gate. The first pass stands even where you now think it was wrong;
-the disagreement is the thing that has to survive, not your latest opinion.
+the disagreement is the thing that has to survive, not your latest opinion.{{/asking}}{{nobody}}When you are asked again, correct what you now see is wrong. Reply with the feature's `id` and the corrected number, and say in one line what in the drawing settles it. A correction replaces the old value; nobody is waiting at a Plan Gate to settle a disagreement, so a disagreement left standing is a part nobody can build. Write a `conflicts` entry only when the drawing itself prints two values that cannot both hold.
+
+Write that line as `corrects` on the value: `{"value": "26 mm", "flag": "read", "mm": 26, "from": "the top view, the callout at the left boss", "corrects": "the callout reads Ø26, not Ø28"}`. A value sent without `corrects` that differs from the one on the description does not replace it.{{/nobody}}
 
 **`not_defined` is the one exception.** It is a gap, not a value, so a later
 pass that fills it is not a `conflicts` entry. A field already carrying a

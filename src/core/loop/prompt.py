@@ -1,7 +1,5 @@
 """Prompt composition and parsing utilities."""
 import base64
-import contextlib
-import contextvars
 import json
 import mimetypes
 import os
@@ -9,6 +7,7 @@ import re
 
 from core.freecad_apply import TRAPS
 from core.lint import OP_TYPEIDS
+from core.nobody import nobody_is_answering
 from core.sheets import sheet_reader
 
 
@@ -83,9 +82,6 @@ def _language_sections():
     return sections
 
 
-_nobody_answers = contextvars.ContextVar("nobody_answers", default=False)
-
-
 _ASKING = re.compile(r"\{\{asking\}\}(.*?)\{\{/asking\}\}", re.DOTALL)
 
 
@@ -95,18 +91,15 @@ _NOBODY = re.compile(r"\{\{nobody\}\}(.*?)\{\{/nobody\}\}", re.DOTALL)
 _EDITING = re.compile(r"\{\{editing\}\}(.*?)\{\{/editing\}\}", re.DOTALL)
 
 
-@contextlib.contextmanager
-def nobody_answering():
-    """
-    Prompts composed inside it say that no one answers and leave out the
-    `{{asking}}` passages, which Design uses to offer `question`. A run is in it when
-    its `ask` is `nobody_to_ask`; worker threads need `contextvars.copy_context`.
-    """
-    token = _nobody_answers.set(True)
-    try:
-        yield
-    finally:
-        _nobody_answers.reset(token)
+_VECTOR = re.compile(r"\{\{vector\}\}(.*?)\{\{/vector\}\}", re.DOTALL)
+
+
+_RASTER = re.compile(r"\{\{raster\}\}(.*?)\{\{/raster\}\}", re.DOTALL)
+
+
+def a_raster_picture(attachments):
+    """Whether the drawing is a picture, and so has no text layer or line work to read."""
+    return bool(attachments) and not any(str(path).lower().endswith(".pdf") for path in attachments)
 
 
 def _typeid_table():
@@ -115,19 +108,21 @@ def _typeid_table():
                      for op, typeids in OP_TYPEIDS.items())
 
 
-def prompt(phase, ledger="", editing=False):
+def prompt(phase, ledger="", editing=False, raster=False):
     """
     A phase's system prompt, read from `config/prompts/<phase>.md` and
     composed with the sections of the shared vocabulary. `{{editing}}`
-    passages stay only where the run edits a base part.
+    passages stay only where the run edits a base part; `{{raster}}` passages
+    stay only for a picture, `{{vector}}` ones only where it is not.
     """
     body = read_prompt(phase + ".md").strip()
     sections = _language_sections()
     vocabulary = "\n\n".join(sections[heading] for heading in _PHASE_VOCABULARY[phase])
     body = "%s\n\n%s" % (body, vocabulary)
-    asking, nobody = (r"", r"\1") if _nobody_answers.get() else (r"\1", r"")
+    asking, nobody = (r"", r"\1") if nobody_is_answering() else (r"\1", r"")
     body = _NOBODY.sub(nobody, _ASKING.sub(asking, body))
     body = _EDITING.sub(r"\1" if editing else r"", body)
+    body = _VECTOR.sub(r"" if raster else r"\1", _RASTER.sub(r"\1" if raster else r"", body))
     body = body.replace(_TRAPS_PLACEHOLDER, "\n".join("- " + trap for trap in TRAPS))
     body = body.replace("{{typeids}}", _typeid_table())
     if ledger:

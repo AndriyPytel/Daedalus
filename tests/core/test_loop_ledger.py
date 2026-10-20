@@ -58,6 +58,7 @@ from core import kernel
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from tests.loop_helpers import (
+    a_person_who_declines,
     RENDER_PNG,
     read,
     settled,
@@ -901,7 +902,7 @@ def test_design_is_given_the_line_work_of_the_views_in_millimetres():
     run("Build this", llm=llm, tools=FakeTools().registry, attachments=[MODEL_MANIA])
 
     groups = len(_the_groups([MODEL_MANIA]))
-    said = _said_to_design(llm, at=groups * Budgets().readings)
+    said = _said_to_design(llm, at=groups * 3)
     assert "line work" in said, "the views' own geometry never reached Design"
     assert "arc R" in said or "line (" in said, "the line work arrived with no entities"
     assert "derived" in said, \

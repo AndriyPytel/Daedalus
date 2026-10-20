@@ -5,7 +5,7 @@ from core.events import PLAN_REVISED
 from core.loop.budgets import Budgets
 from core.loop.plan import _unconsumed
 
-from tests.loop_helpers import (RENDER_PNG, _grown, assertion_reply, code_reply, design_reply, drive, plan_reply,
+from tests.loop_helpers import (request_in, RENDER_PNG, _grown, assertion_reply, code_reply, design_reply, drive, plan_reply,
                                 read, suspect_reply, verdict_reply)
 from tests.event_helpers import events_of
 
@@ -68,7 +68,7 @@ def test_the_patch_is_asked_for_the_uncovered_addresses_only_and_as_an_addition(
         verdict_reply("pass"),
     ], attachments=[_png()])
 
-    told = json.loads(llm.calls[2][-1]["content"])["what_went_wrong_last_time"]
+    told = request_in(llm.calls[2])["what_went_wrong_last_time"]
     assert RADIUS in told
     assert not any(address in told for address in BOOKKEEPING + [LENGTH])
     assert "`satisfies` of an existing Step" in told and "end of the Plan" in told
@@ -125,7 +125,7 @@ def test_plan_is_told_the_real_undo_depth_up_front():
         suspect_reply(), verdict_reply("pass"),
     ], applies=applies, undo_capacity=2)
 
-    requests = [json.loads(call[-1]["content"]) for call in llm.calls
+    requests = [request_in(call) for call in llm.calls
                 if "already_built" in call[-1]["content"]]
     assert requests and requests[0]["undo_depth"] == 2
 

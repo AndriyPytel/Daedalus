@@ -10,8 +10,9 @@ from core.events import EventStream
 from core.lint import OP_TYPEIDS
 from core.llm import ScriptedLLMClient
 from core.loop import plan as plan_module
-from core.loop import prompt as prompts
 from core.loop.prompt import DESIGN_PHASE, prompt
+from core.loop.gate import nobody_to_ask
+from core.nobody import nobody_answering
 from core.prompts import ROOT
 
 BASE = "The part before the edit, in mm:\nvolume: 10000 mm3, solids: 1"
@@ -56,7 +57,7 @@ def test_the_first_plan_prompt_of_an_edit_steers_to_features_on_the_base_part(mo
 
 
 def test_a_run_nobody_answers_says_so_and_design_is_not_offered_question(monkeypatch):
-    with prompts.nobody_answering():
+    with nobody_answering():
         designing = prompt(DESIGN_PHASE)
 
     assert "Nobody answers" in designing
@@ -64,26 +65,24 @@ def test_a_run_nobody_answers_says_so_and_design_is_not_offered_question(monkeyp
     assert '"question"' not in designing
 
 
-def test_a_run_nobody_answers_still_offers_plan_question_which_goes_back_to_design(monkeypatch):
-    with prompts.nobody_answering():
+def test_a_run_nobody_answers_lets_plan_ask_only_where_no_step_can_be_written(monkeypatch):
+    with nobody_answering():
         system = " ".join(_system_of_the_first_plan(monkeypatch).split())
 
     assert "Nobody answers" in system
     assert '{"declare": {"question": "..."}}' in system
     assert "reply with a `question` instead of `steps`" in system
-    assert "Your question does not reach the user" in system
-    assert "It goes back to the phase that owns the description" in system
-    assert "Never ask about anything the drawing shows" in system
-    assert "say so in `question`, naming both entries" in system
-    assert "is a `conflict` or a `question`" in system
+    assert "Ask a `question` only when no Step can be written at all" in system
+    assert "do not work the whole part out before writing the first Step" in system
+    assert "Your question does not reach the user" not in system
+    assert "say so in `question`, naming both entries" not in system
 
 
 def test_a_run_nobody_answers_plans_with_a_flagged_assumption_only_as_the_last_resort(monkeypatch):
-    with prompts.nobody_answering():
+    with nobody_answering():
         system = " ".join(_system_of_the_first_plan(monkeypatch).split())
 
-    assert "Only where `nobody_answered` tells you to decide, because Design could not answer from the drawing either" in system
-    assert "pick the value yourself, flag it `assumed`" in system
+    assert "When `nobody_answered` tells you to decide, pick the value yourself, flag it `assumed`" in system
     assert "say in that Step that you chose it and what you chose it from" in system
 
 
@@ -97,7 +96,7 @@ def test_an_interactive_run_still_offers_question(monkeypatch):
 
 def test_run_without_a_person_to_ask_plans_without_question():
     from tests.loop_helpers import _system_messages, drive, plan_reply
-    _, _, llm, _ = drive([plan_reply("Pad it 10 mm")], intent="x")
+    _, _, llm, _ = drive([plan_reply("Pad it 10 mm")], intent="x", ask=nobody_to_ask)
     plans = [text for text in _system_messages(llm) if text.startswith("You plan changes")]
 
     assert plans and all("Nobody answers" in text for text in plans)

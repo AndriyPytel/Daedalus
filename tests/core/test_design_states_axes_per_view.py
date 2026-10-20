@@ -1,6 +1,7 @@
 """Design states the axes of each view, the face and axis of each feature, and cross-checks the views."""
 import pytest
-from core.loop.prompt import nobody_answering, prompt
+from core.loop.prompt import prompt
+from core.nobody import nobody_answering
 
 
 def _said(headless):

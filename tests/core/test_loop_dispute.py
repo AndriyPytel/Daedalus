@@ -2,7 +2,8 @@
 Level 1 -- a revision that finds an unmet acceptance check wrong disputes it with a measurement; the run ends unverified, and blocked only when the revision neither fixes nor disputes an entry.
 """
 from core.events import BLOCKED, DISPUTED
-from core.loop.prompt import nobody_answering, prompt
+from core.loop.prompt import prompt
+from core.nobody import nobody_answering
 from tests.event_helpers import first_event
 from tests.loop_helpers import (
     code_reply, drive, plan_reply, suspect_reply, verdict_reply,

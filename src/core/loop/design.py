@@ -18,6 +18,7 @@ from core.loop.prompt import (
     _CHARS_PER_TOKEN,
     _pieces_of,
     _the_evidence,
+    a_raster_picture,
     prompt,
 )
 from core.loop.results import Stopped
@@ -45,7 +46,7 @@ def design(body, llm, events, attachments=(), views=None, phase=DESIGN_PHASE,
     intent_data = body.get("intent", body)
     reply, _ = run_declaring(
         pc.DESIGN, {"intent": intent_data}, llm, task, kernel=kernel,
-        supervisor=supervisor, stream=events, system=prompt(DESIGN_PHASE))
+        supervisor=supervisor, stream=events, system=prompt(DESIGN_PHASE, raster=a_raster_picture(attachments)))
     the_part = reply.get("design")
     return (the_part if isinstance(the_part, dict) else {},
             str(reply.get("question") or "").strip())
@@ -109,7 +110,7 @@ def _the_groups(attachments):
 
     A page is the boundary since a run's log can point at "design: page 2" without a group id to translate. Empty where `sheet_reader` reads nothing — `_first_pass`'s sign to fall back to one whole-attachment call.
     """
-    prompt_tokens = len(prompt(DESIGN_PHASE)) // _CHARS_PER_TOKEN
+    prompt_tokens = len(prompt(DESIGN_PHASE, raster=a_raster_picture(attachments))) // _CHARS_PER_TOKEN
     groups = []
     for path in attachments:
         sheet = sheet_reader.read(path)

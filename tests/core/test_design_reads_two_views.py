@@ -1,7 +1,8 @@
 """
 Design reads each dimension from two views and names both views and their values in its description, in a headless and in an interactive run.
 """
-from core.loop.prompt import nobody_answering, prompt
+from core.loop.prompt import prompt
+from core.nobody import nobody_answering
 
 
 def _said(headless):

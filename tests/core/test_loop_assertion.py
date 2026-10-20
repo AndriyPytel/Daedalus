@@ -55,6 +55,8 @@ from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from core.loop.design import _the_groups
 from tests.loop_helpers import (
+    a_person_who_declines,
+    request_in,
     prompts_of,
     _a_real_png,
     _a_real_pdf,
@@ -1057,7 +1059,7 @@ def test_a_pdf_rides_into_review_beside_the_render():
                    [drawing])
 
     result = run("Build this", llm=llm, tools=FakeTools(views=[RENDER_PNG]).registry,
-                 attachments=[drawing], kernel=StubKernel())
+                 attachments=[drawing], kernel=StubKernel(), ask=a_person_who_declines)
 
     assert result.ok
     content = llm.calls[-1][-1]["content"]
@@ -1173,7 +1175,7 @@ def test_with_nothing_attached_the_part_is_described_from_the_words_alone():
     assert described == A_BOX_FROM_WORDS
     assert acceptance == acceptance_of(A_BOX_FROM_WORDS)
     assert len(acceptance) == len(entries(described))
-    assert json.loads(llm.calls[1][-1]["content"])["what_the_part_is"]
+    assert request_in(llm.calls[1])["what_the_part_is"]
 
 
 def test_a_reading_with_no_sheet_to_name_it_after_is_still_written_down():
@@ -1260,7 +1262,7 @@ def test_design_asks_the_user_itself_before_any_plan_exists():
     assert kinds.index(QUESTION) < kinds.index(DESIGN) < kinds.index(PLAN), \
         "the question reached the user after a Plan had been drafted"
 
-    shown = json.loads(llm.calls[3][-1]["content"])["what_the_part_is"]
+    shown = request_in(llm.calls[3])["what_the_part_is"]
     assert "the left end face: 25 mm (assumed)" in shown
     assert "the left end face: 15 mm (read)" in shown
 
@@ -1290,7 +1292,7 @@ def test_the_description_reaches_plan_under_one_key():
                           code_reply("box()"), suspect_reply(), assertion_reply(), verdict_reply("pass")],
                          attachments=[RENDER_PNG])
 
-    request = json.loads(llm.calls[1][-1]["content"])
+    request = request_in(llm.calls[1])
     assert request["what_the_part_is"] == render(distilled(A_PART))
     assert "how_the_drawing_was_read" not in request
     assert "you_asked_and_were_answered" not in request
@@ -1299,7 +1301,7 @@ def test_the_description_reaches_plan_under_one_key():
 def test_execute_is_told_nothing_extra_when_nothing_was_described():
     _, _, llm, _ = drive([plan_reply("Only"), code_reply("box()"), suspect_reply(), verdict_reply("pass")])
 
-    assert "what_the_part_is" not in json.loads(llm.calls[1][-1]["content"])
+    assert "what_the_part_is" not in request_in(llm.calls[1])
 
 
 def test_a_revision_plans_from_the_same_description_and_does_not_read_again():
@@ -1316,7 +1318,7 @@ def test_a_revision_plans_from_the_same_description_and_does_not_read_again():
     ], attachments=[RENDER_PNG])
 
     assert len(events_of(events, DESIGN)) == 1
-    replan = json.loads(llm.calls[7][-1]["content"])
+    replan = request_in(llm.calls[7])
     assert replan["what_the_part_is"] == render(distilled(A_PART))
     assert replan["what_went_wrong_last_time"] == "not right"
 
@@ -1331,7 +1333,7 @@ def test_review_is_shown_the_drawing_beside_the_render():
                    [RENDER_PNG])
 
     run("Build this bracket", llm=llm, tools=FakeTools(views=[RENDER_PNG]).registry,
-        attachments=[RENDER_PNG], kernel=StubKernel())
+        attachments=[RENDER_PNG], kernel=StubKernel(), ask=a_person_who_declines)
 
     content = llm.calls[-1][-1]["content"]
     images = [block for block in content if block.get("type") == "image_url"]
@@ -1355,7 +1357,7 @@ def test_an_attachment_that_has_been_moved_does_not_break_review():
                      suspect_reply(), verdict_reply("pass")])
 
     result = run("Build this", llm=llm, tools=FakeTools(views=[RENDER_PNG]).registry,
-                 attachments=["/nowhere/gone.png"], kernel=StubKernel())
+                 attachments=["/nowhere/gone.png"], kernel=StubKernel(), ask=a_person_who_declines)
 
     assert result.ok
     content = llm.calls[-1][-1]["content"]

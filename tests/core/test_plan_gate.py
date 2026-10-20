@@ -21,6 +21,7 @@ from core.loop.budgets import Budgets
 from core.loop.gate import ACCEPT, AMEND, APPROVE, Approval, REJECT, REVISE, START_OVER
 from core.loop.run import run
 from tests.loop_helpers import (
+    a_person_who_declines,
     RENDER_PNG, FakeTools, assertion_reply, code_reply, design_reply, failed,
     obsolete_reply, plan_reply, question_reply, scripted, suspect_reply, verdict_reply,
     StubKernel,
@@ -32,7 +33,7 @@ def drive(turns, gate, budgets=None, ask=None):
     llm = scripted(turns)
     tools = FakeTools()
     events = EventStream()
-    kwargs = {"ask": ask} if ask is not None else {}
+    kwargs = {"ask": ask if ask is not None else a_person_who_declines}
     result = run("Make a 10mm box", llm=llm, tools=tools.registry, events=events,
                  gate=gate, budgets=budgets or Budgets(), kernel=StubKernel(), **kwargs)
     return result, events, tools
@@ -139,7 +140,7 @@ def test_a_revised_plan_is_shown_before_it_changes_anything():
         plan_reply("Impossible"), code_reply("nope()"),
         plan_reply("Possible"), code_reply("yes()"), suspect_reply(), verdict_reply("pass"),
     ]), tools=tools.registry, gate=gate, budgets=Budgets(attempts_per_step=1),
-        kernel=StubKernel())
+        kernel=StubKernel(), ask=a_person_who_declines)
 
     assert applied_when_shown == [[], ["nope()"]], \
         "the revised Plan ran before it was shown: %s" % applied_when_shown
@@ -363,7 +364,7 @@ def drive_with(turns, decide, gate=None, applies=(), checks=(), attachments=()):
     events = EventStream()
     result = run("Make a 10mm box", llm=llm, tools=tools.registry, events=events,
                  gate=gate or Gate(), decide=decide, attachments=list(attachments),
-                 kernel=StubKernel())
+                 kernel=StubKernel(), ask=a_person_who_declines)
     return result, events, tools
 
 
@@ -447,7 +448,7 @@ def test_stopping_while_the_decision_is_open_is_recorded_as_stopped():
     tools = FakeTools(checks=[SELF_INTERSECTION_HELD, {"ok": True, "held": [], "failed": [0], "defects": []}])
     result = run("Make a 10mm box", llm=llm, tools=tools.registry, events=EventStream(),
                  cancelled=lambda: bool(stopped), decide=presses_stop,
-                 attachments=[RENDER_PNG], kernel=StubKernel())
+                 attachments=[RENDER_PNG], kernel=StubKernel(), ask=a_person_who_declines)
 
     assert result.blocked
     assert not result.ok, "a stopped run was recorded as a result the user took"

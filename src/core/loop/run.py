@@ -100,7 +100,7 @@ from core.loop.helpers import (
     _trailing_gap, _tried, _block, _stopped, _aborted, _budget_exhausted,
     _going_nowhere, _last_kernel_result, _disputes_of_unmet,
 )
-from core.loop.prompt import nobody_answering
+from core.nobody import nobody_answering, nobody_is_answering
 from core.loop.review import review, review_suspect
 
 
@@ -564,7 +564,20 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                               step=outcome["applied_here"])
             continue
 
+        if nobody_is_answering() and not applied:
+            return _block(events, "No Step could be built: %s" % "; ".join(
+                "%s (%s)" % (item["step"], item["why"]) for item in outcome.get("unbuilt") or ()),
+                          outcome["tried"], applied)
+
         described = outcome["description"] or described
+
+        if nobody_is_answering():
+            unbuilt = outcome.get("unbuilt") or []
+            progress.unmet = list(dict.fromkeys(
+                _not_reached(unbuilt, planned.acceptance) + plan_unmet))
+            return LoopResult(ok=True, steps_applied=applied, unmet=list(progress.unmet),
+                              reason="; ".join("Step not built: %s (%s)" % (item["step"], item["why"])
+                                               for item in unbuilt))
 
         views = _review_views(tools, events)
         suspected = review_suspect(intent, views, described, llm, events, attachments,
@@ -671,14 +684,31 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     unbuilt = []
     exploration = {} if exploration is None else exploration
     looks = looks if looks is not None else Looks(cache_path=TYPE_CACHE_PATH, freecad_version=_freecad_version())
-    probe, probed_step = _step_exploration(exploration, steps, start)
-    written = execute(steps, tools, llm, events, start, budgets=budgets,
-                      as_described=as_described, looks=looks, entries=entries,
-                      ledger=ledger, kernel=kernel, ops=ops, exploration=probe,
-                      design=design, supervisor=supervisor, plan_values=plan_values,
-                      base=base, changes=changes)
-    if probed_step is not None:
-        exploration[probed_step] = probe["turns"]
+
+    def written_from(position):
+        probe, probed_step = _step_exploration(exploration, steps, position)
+        written = execute(steps, tools, llm, events, position, budgets=budgets,
+                          as_described=as_described, looks=looks, entries=entries,
+                          ledger=ledger, kernel=kernel, ops=ops, exploration=probe,
+                          design=design, supervisor=supervisor, plan_values=plan_values,
+                          base=base, changes=changes)
+        if probed_step is not None:
+            exploration[probed_step] = probe["turns"]
+        return written
+
+    written = written_from(start)
+
+    def leave_out(why):
+        """The Step at `index` is marked unbuilt and passed over, and Execute is asked for the rest from the next one."""
+        nonlocal index, attempts, charged, free_trailing_gaps, written
+        cited = list(cites[index]) if index < len(cites) else []
+        unbuilt.append({"step": steps[index], "why": why, "entries": cited})
+        events.emit(UNBUILT, step=index + 1, total=len(steps), description=steps[index],
+                    why=why, entries=cited)
+        index += 1
+        attempts, charged, free_trailing_gaps = [], 0, 0
+        if index < len(steps) and not written.for_step(index + 1).code:
+            written = written_from(index)
 
     while index < start:
         progress.satisfied.extend(cites[index] if index < len(cites) else ())
@@ -700,6 +730,9 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
 
         outcome = written.for_step(index + 1)
         if not outcome.code and written.unbuildable:
+            if nobody_is_answering() and not written.forced:
+                leave_out(written.unbuildable)
+                continue
             if not _changes_the_shape(step, op=ops[index] if index < len(ops) else None):
                 cited = list(cites[index]) if index < len(cites) else []
                 unbuilt.append({"step": step, "why": written.unbuildable,
@@ -748,6 +781,9 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
             progress.tried = [_tried(step, a) for a in declared_attempts]
             if ledger is not None:
                 ledger.record(step, outcome.apply_failed)
+            if nobody_is_answering():
+                leave_out(outcome.apply_failed)
+                continue
             return {
                 "handback": "Step %d of %d could not be built after %d attempts: %s\n"
                             "The last traceback was:\n%s%s"
@@ -784,6 +820,9 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
             charged += 1
 
         if charged >= budgets.attempts_per_step:
+            if nobody_is_answering():
+                leave_out(attempts[-1].traceback)
+                continue
             return {
                 "handback": "Step %d of %d could not be built after %d attempts: %s\n"
                             "The last traceback was:\n%s%s"

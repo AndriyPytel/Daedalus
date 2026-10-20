@@ -102,5 +102,5 @@ def test_only_the_conversations_last_block_carries_a_cache_breakpoint():
 
     turn = _user_turn(messages)["message"]["content"]
 
-    assert turn[-1]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+    assert turn[-1]["cache_control"] == {"type": "ephemeral", "ttl": "5m"}
     assert all("cache_control" not in block for block in turn[:-1])

@@ -49,6 +49,7 @@ from core.design.gaps import (
     entries,
 )
 from core.loop.budgets import Budgets, revisions_ceiling
+from core.loop.gate import _DECIDE_AND_ASSUME
 from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, prompt
 from core.lint import lint
 from core.loop.run import run
@@ -56,7 +57,10 @@ from core.agent import agent
 from core.llm.session import Session
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
+from core.loop.gate import nobody_to_ask
 from tests.loop_helpers import (
+    request_in,
+    a_person_who_declines,
     prompts_of,
     RENDER_PNG,
     read,
@@ -794,7 +798,7 @@ def test_a_phase_is_answered_by_the_client_its_own_profile_names():
     events = EventStream()
 
     result = run("Make a box", llm=llm, tools=FakeTools().registry, events=events,
-                 kernel=StubKernel())
+                 kernel=StubKernel(), ask=a_person_who_declines)
 
     assert result.ok
     assert llm.asked == ["design", "plan", "execute", "execute", "review_suspect", "review"]
@@ -1010,7 +1014,7 @@ def test_plan_can_ask_instead_of_planning():
          plan_reply("Sketch the blank", "Pad it"),
          code_reply("a()", "b()"), suspect_reply(), assertion_reply(),
          verdict_reply("pass")],
-        intent=GEAR)
+        intent=GEAR, ask=a_person_who_declines)
 
     question = first_event(events, QUESTION)
     assert question is not None and question.data["text"] == MISSING
@@ -1045,7 +1049,7 @@ def test_the_users_answer_is_written_into_the_description_and_not_handed_to_plan
     assert told["the_question"] == MISSING
     assert told["the_answer_you_were_given"] == "module 2, 20 teeth, 10 thick, ⌀8 bore"
 
-    described = json.loads(llm.calls[3][-1]["content"])
+    described = request_in(llm.calls[3])
     assert "20 teeth (assumed)" in described["what_the_part_is"]
     assert "you_asked_and_were_answered" not in described
 
@@ -1053,33 +1057,17 @@ def test_the_users_answer_is_written_into_the_description_and_not_handed_to_plan
 def test_a_run_nobody_is_watching_gets_a_plan_settled_for_them():
     result, events, llm, _ = drive(
         [question_reply(MISSING),
-         design_reply({"features": [{"id": "teeth",
-                                     "module": dict(settled("2", "typical for this size"), mm=2)}]}),
          plan_reply("Sketch the blank"), code_reply("a()"),
-         suspect_reply(), assertion_reply(), verdict_reply("pass")],
-        intent=GEAR)
-
-    assert result.ok
-    assert first_event(events, ANSWER).data["by"] == "design"
-    assert first_event(events, ANSWER).data["text"]
-    to_plan = json.loads(llm.calls[3][-1]["content"])
-    assert "module" in json.dumps(to_plan["what_the_part_is"])
-
-
-def test_with_nobody_to_ask_and_nothing_design_can_settle_the_run_does_not_stall():
-    """
-    Level 1, Level 2 and headless runs have no user; they must still plan,
-    even when Design also has nothing to settle a question with.
-    """
-    result, events, llm, _ = drive(
-        [question_reply(MISSING), design_reply(),
-         plan_reply("Sketch it"), code_reply("a()"),
          suspect_reply(), verdict_reply("pass")],
-        intent=GEAR)
+        intent=GEAR, ask=nobody_to_ask)
 
     assert result.ok
-    assert first_event(events, ANSWER).data["by"] == "nobody"
-    assert "not_defined" in json.dumps(llm.calls[2])
+    assert [answer.data["by"] for answer in events_of(events, ANSWER)] == ["nobody"]
+    assert first_event(events, ANSWER).data["text"] == _DECIDE_AND_ASSUME
+    design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompts_of("design"))]
+    assert len(design_turns) == 1, "a Plan question went back to Design in a run nobody answers"
+    to_plan = request_in(llm.calls[2])
+    assert to_plan["nobody_answered"]["what_to_do"] == _DECIDE_AND_ASSUME
 
 
 def test_a_settle_attempt_that_changes_nothing_falls_through_and_asks_no_more():
@@ -1098,7 +1086,7 @@ def test_a_settle_attempt_that_changes_nothing_falls_through_and_asks_no_more():
          question_reply(MISSING), design_reply(module_already_settled),
          plan_reply("Sketch the blank"), code_reply("a()"),
          suspect_reply(), assertion_reply(), verdict_reply("pass")],
-        intent=GEAR)
+        intent=GEAR, ask=a_person_who_declines)
 
     assert result.ok, result.reason
     design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompts_of("design"))]
@@ -1126,7 +1114,7 @@ def test_the_plan_gate_lists_a_design_settled_value_as_an_assumption():
          question_reply("What is the length?"), design_reply(settled_length),
          plan_reply("Pad the profile 40 mm"), code_reply(code),
          suspect_reply(), verdict_reply("pass")],
-        intent=GEAR)
+        intent=GEAR, ask=a_person_who_declines)
 
     assert result.ok, result.reason
     assert tools.applied_codes() == [code]
@@ -1212,7 +1200,7 @@ def test_rereads_are_spent_only_on_questions_put_to_the_drawing():
         design_reply({"datums": [{"name": "the left end face", "is": "the flat face"}]}),
         plan_reply("Pad the profile", satisfies=everything(SETTLED)),
         code_reply("pad()"), suspect_reply(), verdict_reply("pass"),
-    ], attachments=[RENDER_PNG], budgets=Budgets(rereads=1))
+    ], attachments=[RENDER_PNG], budgets=Budgets(rereads=1), ask=a_person_who_declines)
 
     assert result.ok, result.reason
     design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompts_of("design"))]
@@ -1234,7 +1222,7 @@ def test_rereads_counts_re_reads_of_the_drawing_and_nothing_else():
         question_reply("q3"), design_reply(),
         plan_reply("Pad the profile", satisfies=everything(SETTLED)),
         code_reply("pad()"), suspect_reply(), verdict_reply("pass"),
-    ], attachments=[RENDER_PNG], budgets=Budgets(rereads=1))
+    ], attachments=[RENDER_PNG], budgets=Budgets(rereads=1), ask=a_person_who_declines)
 
     assert result.ok, result.reason
     design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompts_of("design"))]
@@ -1273,7 +1261,7 @@ def test_a_question_about_the_drawing_goes_to_the_sheet_before_the_user():
     assert asked_again["the_question"] == THROUGH_OR_NOT
     assert asked_again["the_part_as_you_described_it"] == distilled(A_PART)
 
-    to_plan = json.loads(llm.calls[3][-1]["content"])
+    to_plan = request_in(llm.calls[3])
     changed = to_plan["what_the_part_is"]
     added = [entry for entry in changed if entry["section"] == "features"]
     assert added == [{"section": "features", "kind": "added", "id": "pocket-front",
@@ -1296,13 +1284,13 @@ def test_a_value_already_described_is_not_overwritten_by_a_later_pass():
                                     "position": {"the left end face": read("25 mm")}}]}),
         plan_reply("Sketch it", satisfies=everything(A_PART)), code_reply("a()"),
         suspect_reply(), assertion_reply(), verdict_reply("pass"),
-    ], attachments=[RENDER_PNG])
+    ], attachments=[RENDER_PNG], ask=a_person_who_declines)
 
     grown = events.last(DESIGN).data["model"]
     assert grown["features"][0]["position"]["the left end face"] == read("15 mm")
     assert grown["conflicts"][0]["was_also_said"] == read("25 mm")
 
-    shown = json.loads(llm.calls[3][-1]["content"])["what_the_part_is"]
+    shown = request_in(llm.calls[3])["what_the_part_is"]
     conflicts_shown = [entry for entry in shown if entry["section"] == "conflicts"]
     assert conflicts_shown, "the disagreement never reached the Plan Gate"
     assert conflicts_shown[0]["now"]["stands"] == read("15 mm")

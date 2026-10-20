@@ -5,7 +5,8 @@ from dataclasses import replace
 
 from core.events import ANSWER
 from core.loop.budgets import Budgets
-from core.loop.prompt import nobody_answering, prompt
+from core.loop.prompt import prompt
+from core.nobody import nobody_answering
 from tests.event_helpers import events_of
 from tests.loop_helpers import (
     A_PART,

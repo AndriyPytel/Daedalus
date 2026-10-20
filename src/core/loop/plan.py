@@ -11,6 +11,7 @@ from core.design.merge import (
 )
 from core.design.report import render
 from core.design.gaps import _TO_BE_READ_AGAIN, _each_value, entries
+from core.design.presence_checks import placements_twice
 from core.design.settlement_checks import described_twice
 from core.events import ANSWER, CHANGE_SET, DESIGN, QUESTION
 
@@ -23,11 +24,15 @@ from core.loop.execute import (
     _LOOK_IT_UP,
     _SAID_NOTHING,
     _addressed,
+    _kind_of_step,
     _look,
     _lookable,
 )
 from core.loop.gate import _DECIDE, _DECIDE_AND_ASSUME, _a_question_for_the_build
-from core.loop.prompt import PLAN_PHASE, _pictures, prompt
+from core.nobody import nobody_is_answering
+from core.llm import cache_control_supported
+from core.llm.roles import patient_for
+from core.loop.prompt import PLAN_PHASE, _pictures, _the_evidence, prompt
 from core.kernel.kernel_worker import RESERVED_STEP_NAMES
 
 from core.agent.agent import run_declaring
@@ -68,12 +73,14 @@ class Plan:
 
 def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set=None,
          unanswered=(), revising=(), history=(), looking=(), looked=(), tried="",
-         supervisor=None, kernel=None, undo_depth=None, must_decide=False, base=None):
+         supervisor=None, kernel=None, undo_depth=None, must_decide=False, base=None,
+         attachments=()):
     """
     Produce an ordered list of Steps from the Intent and a Snapshot. Plan
-    never sees the picture; it is handed the part Design describes, one
-    key and the user's own words -- two keys once let the newer always
-    win and lost a value read off SECTION B-B. A revision before anything
+    is handed the part Design describes, one key and the user's own words
+    -- two keys once let the newer always win and lost a value read off
+    SECTION B-B -- and the drawing too, in *attachments*, where nobody
+    answers. A revision before anything
     is applied is handed the Plan it rewrites (`revising`) or drops Steps
     a bare complaint never named; a revision after Steps have landed is
     handed those read-only (`history`), writes only the continuation
@@ -109,7 +116,14 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
     if looked:
         request["what_the_tools_say"] = list(looked)
 
+    if nobody_is_answering():
+        llm = patient_for(llm, PLAN_PHASE)
     task = json.dumps(request, indent=2, default=str)
+    if attachments:
+        evidence = _the_evidence(attachments)
+        if evidence and cache_control_supported(getattr(llm, "model", None)):
+            evidence = evidence[:-1] + [dict(evidence[-1], cache_control={"type": "ephemeral"})]
+        task = evidence + [{"type": "text", "text": task}]
     reply, _ = run_declaring(
         pc.PLAN, {}, llm, task, kernel=kernel, supervisor=supervisor, stream=events,
         system=prompt(PLAN_PHASE, editing=bool(base)), design=the_part or {})
@@ -259,21 +273,32 @@ def _a_feature_and_its_leaf(address):
 
 def _unconsumed(the_part, satisfies, standing=()):
     """
-    The entries of the description that no Step of the Plan accounts for.
+    The entries of the description that no Step of the Plan accounts for: only what the drawing fixes, `read` or `derived`, counts.
 
-    Only what the drawing fixes -- `read` or `derived` -- counts. A Step citing
-    a feature's main value, any address but plane, edges, position or angle,
-    covers that feature's bookkeeping addresses.
+    A Step citing a feature's main value covers its plane, edges, position and angle. Where nobody answers, a feature described twice needs only one of its two cited.
     """
     cited = {_as_written(entry) for entry in list(satisfies) + list(standing)}
     cited_features = {feature for feature, leaf in map(_a_feature_and_its_leaf, cited)
                       if feature and leaf not in _BOOKKEEPING}
+    twins = _twins_of(the_part, cited_features) if nobody_is_answering() else set()
     return [entry["about"] for entry in entries(the_part)
             if entry["flag"] in ("read", "derived")
+            and _a_feature_and_its_leaf(entry["about"])[0] not in twins
             and not any(said == entry["about"] or said.startswith(entry["about"] + ":")
                         for said in cited)
             and not (_a_feature_and_its_leaf(entry["about"])[0] in cited_features
                      and _a_feature_and_its_leaf(entry["about"])[1] in _BOOKKEEPING)]
+
+
+def _twins_of(the_part, cited_features):
+    """The features `twice_placed` finds described again beside a feature that is cited."""
+    twins = set()
+    for one, other, _, differing, opposing in placements_twice(the_part):
+        pair = [("features", str(feature.get("id"))) for feature in (one, other)]
+        if differing or (not opposing and one.get("kind") and one.get("kind") == other.get("kind")):
+            twins.update(twin for twin, cited in ((pair[1], pair[0]), (pair[0], pair[1]))
+                         if cited in cited_features)
+    return twins
 
 
 def _rollback_field(raw, applied, undo_depth=None) -> tuple:
@@ -433,16 +458,6 @@ _A_LATER_FEATURE = re.compile(r"\b(?:pocket|hole|groove|thread|notch|slot|cut|bo
 _INHERITED_INSIDE = re.compile(r"(?=.*\binherit)(?=.*\b(?:inside|inner|internal)\b)", re.I | re.S)
 
 
-def _kind_of_step(prose, op):
-    first = prose.split(None, 1)[0] if prose.strip() else ""
-    word = re.sub(r"[^a-z]", "", (op or first).lower())
-    if word in ("fillet", "chamfer", "draft"):
-        return word
-    if word in ("pocket", "hole", "thickness") or "pattern" in word or word == "multitransform":
-        return "thickness" if word == "thickness" else "cut"
-    return None
-
-
 def _fillet_before_a_cut(steps, ops):
     """
     The Fillet, Chamfer or Draft Steps planned before a Pocket, Hole, pattern or Thickness Step
@@ -501,6 +516,7 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
     """
     grown, for_the_build, change_set = the_part, False, None
     nobody_answered = 0
+    patience = 0 if nobody_is_answering() else budgets.unanswered_questions
     undo_depth = tools.call("undo_depth")["depth"] if history else None
     while True:
         if cancelled():
@@ -512,15 +528,17 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                        looked=asking.looked_up,
                        tried=ledger.render() if ledger else "", supervisor=supervisor,
                        undo_depth=undo_depth, kernel=kernel,
-                       must_decide=nobody_answered > budgets.unanswered_questions,
-                       base=base)
+                       must_decide=nobody_answered > patience or nobody_is_answering(),
+                       base=base, attachments=attachments if nobody_is_answering() else ())
         change_set = None
         if planned.look:
             asking.looked_up.append(_look(tools, planned.look, events))
             for_the_build = False
             continue
         mixed = _two_directions_in_one_step(planned)
-        if mixed and asking.re_aimed < budgets.revisions:
+        if mixed and nobody_is_answering():
+            events.emit(ANSWER, by="nobody", text=_one_direction_per_step(mixed))
+        elif mixed and asking.re_aimed < budgets.revisions:
             asking.re_aimed += 1
             feedback, revising = _one_direction_per_step(mixed), planned.steps
             continue
@@ -535,7 +553,8 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
             asking.looks += 1
             for_the_build = True
             continue
-        elif asking.read_again < budgets.rereads and _pictures(attachments):
+        elif asking.read_again < budgets.rereads and _pictures(attachments) \
+                and not nobody_is_answering():
             asking.read_again += 1
             from_the_drawing, _ = design({"intent": intent,
                                           "the_part_as_you_described_it": grown,
@@ -551,7 +570,7 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
             events.emit(ANSWER, text=_SAID_NOTHING, by="drawing")
 
         settled = None
-        if asking.settled < budgets.settles:
+        if asking.settled < budgets.settles and not nobody_is_answering():
             settled, _ = design({"intent": intent,
                                  "the_part_as_you_described_it": grown,
                                  "the_question": _settle_it(planned.question)},
@@ -567,11 +586,11 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
             grown = before
 
         nobody_answered += 1
-        if nobody_answered > budgets.unanswered_questions + 1:
+        if nobody_answered > patience + 1:
             raise PhaseError("Plan kept asking after it was told to decide and write "
                              "`assumed`: %s" % planned.question)
         events.emit(ANSWER, by="nobody",
-                    text=_DECIDE_AND_ASSUME if nobody_answered > budgets.unanswered_questions
+                    text=_DECIDE_AND_ASSUME if nobody_answered > patience
                     else _DECIDE)
         if planned.question not in asking.unanswered:
             asking.unanswered.append(planned.question)

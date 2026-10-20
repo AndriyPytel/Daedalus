@@ -20,9 +20,10 @@ class Budgets:
     `trailing_gap_retries` bounds the free continuation for a reply that
     stops -- 23 such replies across 13 sessions, 57% within the last two
     Steps, up to 266s call duration; `readings` repeats a Design page-sized
-    group's own reading that many times, merged the same grow-only way,
-    because a dimension digit at the provider's pixel cap is a stochastic
-    read; `record_conflicts` false drops the disagreement's record at the
+    group's own reading that many times, merged the same grow-only way --
+    left `None`, three where a person answers and one where nobody does,
+    since the most complete single reading holds what the union of three
+    does; `record_conflicts` false drops the disagreement's record at the
     Gate while the held reading still stands, isolating what recording a
     conflict itself contributes when the rest of a run, `readings`
     included, is held the same; `preflight` false hands every Step's code
@@ -37,7 +38,7 @@ class Budgets:
     rereads: int = 3
     settles: int = 2
     unanswered_questions: int = 3
-    readings: int = 3
+    readings: int | None = None
     trailing_gap_retries: int = 1
     record_conflicts: bool = True
     preflight: bool = True
