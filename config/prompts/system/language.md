@@ -62,12 +62,19 @@ a `pad` where the material stands proud of the neighbouring face and a
 the step the material is on, never on the word "step" itself, which this
 Plan already uses for something else.
 
+A drawing that shows a flat pattern and formed views describes the formed part;
+the flat pattern only gives developed lengths. Build the formed part.
+
 A bent sheet part is built from its walls and its bends. Each wall is a `pad`
 of the sheet thickness in its own plane, placed where the fold puts it, not in
 the flat pattern's plane. Each bend between two walls is a `revolve` of the
 sheet-thickness section (inner radius R, outer R + thickness) by the bend
 angle about the bend axis. Flat-pattern lengths are developed lengths: a
 wall's own length is its flat length minus its share of the bend allowance.
+
+A thin-walled or cored body is shelled or pocketed: pad the outside, then take
+the inside out with a `thickness` or a `pocket`. Never pad the envelope solid
+and leave the cavity out.
 
 ## A Step is one sentence
 

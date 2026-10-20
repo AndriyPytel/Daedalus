@@ -162,3 +162,11 @@ def test_plan_and_execute_are_told_how_a_bend_is_built_and_design_is_not_charged
         assert "`revolve`" in composed and "bend allowance" in composed, phase
         assert "own plane" in composed, phase
     assert "bend allowance" not in prompt(DESIGN_PHASE)
+
+
+def test_plan_and_execute_build_the_formed_part_and_shell_a_cored_body():
+    for phase in (PLAN_PHASE, EXECUTE_PHASE):
+        composed = " ".join(prompt(phase).split())
+        assert "Build the formed part." in composed, phase
+        assert "Never pad the envelope solid" in composed, phase
+    assert "describes the formed part" in " ".join(prompt(DESIGN_PHASE).split())
