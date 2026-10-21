@@ -12,7 +12,8 @@ def test_plan_is_told_how_to_remove_a_feature_a_sketch_cannot_cut_only_on_an_edi
     editing = " ".join(prompt("plan", editing=True).split())
     building = " ".join(prompt("plan").split())
 
-    assert RULE in editing and "a PolarPattern cannot copy what exists only inside BaseFeature" in editing
+    assert RULE in editing and "plan one Step that rebuilds the kept part and the copies as one solid and makes it the Body's base" in editing
+    assert "Give no radius, centre or offset of your own for the region" in editing
     assert RULE not in building
 
 
