@@ -18,3 +18,10 @@ def test_plan_has_the_rule_only_where_nobody_answers(rule):
     asked = " ".join(prompt("plan").split())
 
     assert rule in headless and rule not in asked
+
+
+def test_plan_computes_an_outline_from_a_details_numbers_as_a_closed_list_of_points_in_every_mode():
+    said = " ".join(prompt("plan").split())
+
+    assert ("An outline drawn from a detail's numbers -- a pocket, a web field, a plate profile -- is computed "
+            "in your kernel as a closed list of points and named in the Step's values") in said

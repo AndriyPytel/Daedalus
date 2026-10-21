@@ -156,6 +156,8 @@ under it (`logs/sessions/247c2aaed0734866a8aa9d169f7303bd.jsonl`) — that
 class of drift is why a Step never carries the number again once it has a
 name.
 
+An outline drawn from a detail's numbers -- a pocket, a web field, a plate profile -- is computed in your kernel as a closed list of points and named in the Step's values; a Step that lists a detail's bare numbers for Execute to arrange is never built.
+
 {{asking}}**A computation that will not come out is a disagreement between two
 entries, and settling it is not yours.** Where the number your code gives
 contradicts an entry of the description, you have found a conflict the

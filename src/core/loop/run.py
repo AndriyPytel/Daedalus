@@ -970,7 +970,11 @@ def _could_not_be_built(steps, deferred, obsolete=""):
             + "\nWhere the reason is a number the description does not give, choose that "
               "number, bind it as a value in your kernel and name it in the Step's values, "
               "and keep the Step's extent: a rewritten Step removes or adds the same material "
-              "as the one it replaces, never a smaller feature in its place.")
+              "as the one it replaces, never a smaller feature in its place. Where the reason is a "
+              "shape -- an outline whose numbers do not say which edge or corner each belongs to "
+              "-- compute that outline yourself in your kernel as a closed list of points, "
+              "choosing what the numbers leave open, and name it in the Step's values: Execute "
+              "draws what you computed and never arranges numbers itself.")
 
 
 def _changes_the_shape(step, op=None):
