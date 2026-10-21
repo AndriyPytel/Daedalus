@@ -21,9 +21,9 @@ class Budgets:
     stops -- 23 such replies across 13 sessions, 57% within the last two
     Steps, up to 266s call duration; `readings` repeats a Design page-sized
     group's own reading that many times, merged the same grow-only way --
-    left `None`, three where a person answers and one where nobody does,
-    since the most complete single reading holds what the union of three
-    does; `record_conflicts` false drops the disagreement's record at the
+    left `None`, three; where nobody answers the three run side by side
+    and the one with the most printed numbers stands, since the most complete
+    single reading holds what the union of three does; `record_conflicts` false drops the disagreement's record at the
     Gate while the held reading still stands, isolating what recording a
     conflict itself contributes when the rest of a run, `readings`
     included, is held the same; `preflight` false hands every Step's code

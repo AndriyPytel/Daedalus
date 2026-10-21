@@ -22,6 +22,7 @@ from core.loop.prompt import (
     prompt,
 )
 from core.loop.results import Stopped
+from core.nobody import nobody_is_answering
 
 from core.agent.agent import run_declaring
 from core.agent import phase_contract as pc
@@ -144,17 +145,28 @@ _LOCATE_THE_EDIT = read_prompt("locate_the_edit.md")
 
 def _asked_about_a_group(label, views, intent, llm, events, attachments, readings=1,
                          record_conflicts=True, base=None):
-    """One page-sized group's Design turn, read *readings* times and merged
-    into one group-local model — a dimension digit at the provider's pixel
-    cap is a stochastic read, so repeating the turn and merging catches a
-    misreading as a conflict instead of a single silent value. The
-    printed-callout list rides along even though `views` narrows the
-    pictures, because a callout printed once can explain a feature in a
-    view this group never sees."""
+    """One page-sized group's Design turn, read *readings* times -- a dimension digit at the
+    provider's pixel cap is a stochastic read. Merged into one group-local model, so a misreading
+    is a conflict instead of a silent value; where nobody answers the readings run side by side
+    and the one with the most printed numbers stands whole. The printed-callout list rides along
+    even though `views` narrows the pictures, because a callout printed once can explain a
+    feature in a view this group never sees."""
+    def read_once(client):
+        return design(_body(intent, base), client, events, attachments, views=views,
+                      phase="%s: %s" % (DESIGN_PHASE, label), keep_printed=True)
+
+    if nobody_is_answering() and readings > 1:
+        with ThreadPoolExecutor(max_workers=readings) as pool:
+            futures = [pool.submit(contextvars.copy_context().run, read_once, copy.copy(llm))
+                       for _ in range(readings)]
+            replies = [future.result() for future in futures]
+        fullest = max((this for this, _ in replies),
+                      key=lambda this: len(this.get("printed_on_the_sheet") or ()))
+        return fullest, next((asked for _, asked in replies if asked), "")
+
     grown, question = {}, ""
     for _ in range(max(1, readings)):
-        this, asked = design(_body(intent, base), llm, events, attachments, views=views,
-                             phase="%s: %s" % (DESIGN_PHASE, label), keep_printed=True)
+        this, asked = read_once(llm)
         grown = merge(grown, this, record_conflicts)
         question = question or asked
     return grown, question
