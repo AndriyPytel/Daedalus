@@ -35,11 +35,13 @@ def test_design_is_told_an_overall_is_not_the_largest_number_of_a_chain():
 
 
 def test_design_reads_a_section_along_a_rib_as_the_rib_and_keeps_a_shown_feature_out_of_not_defined():
-    rib = "A section whose cutting plane runs along a rib or spoke shows that rib"
+    rib = ("find its cutting line in the view that carries it,** and write in that value's `from` "
+           "what the line crosses there")
     feature = "`not_defined` holds a value, never a whole feature"
     with nobody_answering():
         headless = " ".join(prompt("design").split())
     asked = " ".join(prompt("design").split())
 
     assert rib in headless and rib in asked
+    assert "where no printed number gives a floor between the ribs, the recess goes through" in asked
     assert feature in headless and feature not in asked

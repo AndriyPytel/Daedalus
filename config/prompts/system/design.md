@@ -591,7 +591,7 @@ the view that draws it. Only where no other view draws the opening at all
 does the section become evidence for its shape, and then it is `derived` at
 best, `assumed` where the slice alone cannot fix it, with `because` saying so.
 
-A section whose cutting plane runs along a rib or spoke shows that rib: material hatched across a recess there is the rib's own thickness, not a floor under the whole recess. Whether the recess between the ribs goes through is read off the view that looks straight at it, or a section between the ribs, never off the one cut along a rib.
+**Before you take a depth or a thickness off a section, find its cutting line in the view that carries it,** and write in that value's `from` what the line crosses there: a hole, a rib or spoke, or the space between two ribs. A section along a rib or spoke shows the rib: the material hatched there is the rib's own thickness, never a floor under the recesses on either side of it. Whether those recesses have a floor is read off a section between the ribs or a view that looks into them. A rib the top view draws as a strip of its own is not as thick as any floor around it, since then no line would mark it, and where no printed number gives a floor between the ribs, the recess goes through.
 
 **Say which axis is which in every view, and which face every feature sits on.**
 A view shows two of the part's three directions and looks along the third, and
