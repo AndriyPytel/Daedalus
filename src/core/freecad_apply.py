@@ -1698,6 +1698,16 @@ def _register_document(registry, active, dispatch=_direct):
         return base_addresses(active()) or {"base": {}, "now": []}
 
     @registry.tool(
+        "shape_valid",
+        "Whether every modelled solid of the Document is a valid shape to OCC. Driven by "
+        "the loop at the end of a run, never by a phase.",
+    )
+    def shape_valid():
+        return {"valid": all(obj.Shape.isValid() for obj in active().Objects
+                             if not obj.InList and _measurable(obj) is not None
+                             and obj.Shape.Solids)}
+
+    @registry.tool(
         "overall_size",
         "How big the finished part is. Driven by the loop once before Review, "
         "never by a phase.",

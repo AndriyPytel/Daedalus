@@ -595,9 +595,12 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
             unbuilt = skipped
             progress.unmet = list(dict.fromkeys(
                 _not_reached(unbuilt, planned.acceptance) + plan_unmet))
-            return LoopResult(ok=True, steps_applied=applied, unmet=list(progress.unmet),
-                              reason="; ".join("Step not built: %s (%s)" % (item["step"], item["why"])
-                                               for item in unbuilt))
+            kept = _the_last_valid_shape(tools, events, applied)
+            return LoopResult(ok=True, steps_applied=kept, unmet=list(progress.unmet),
+                              reason="; ".join(["Step not built: %s (%s)" % (item["step"], item["why"])
+                                                for item in unbuilt]
+                                               + (["final shape invalid, saved Step %d" % kept]
+                                                  if kept < applied else [])))
 
         views = _review_views(tools, events)
         suspected = review_suspect(intent, views, described, llm, events, attachments,
@@ -911,6 +914,23 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                 {cited for at in retried for cited in (cites[at] if at < len(cites)
                                                        else ())}),
             "retried_names": sorted(retried_names)}
+
+
+def _the_last_valid_shape(tools, events, applied):
+    """
+    Undoes Steps from the end until the Document's solid is a valid shape, and returns how many Steps are left.
+
+    The first Step is never undone: a Document with no solid has no STEP to save.
+    """
+    if "shape_valid" not in tools:
+        return applied
+    kept = applied
+    while kept > 1 and not tools.call("shape_valid")["valid"]:
+        tools.call("undo_step")
+        kept -= 1
+    if kept < applied:
+        events.emit(ANSWER, by="nobody", text="final shape invalid, saved Step %d" % kept)
+    return kept
 
 
 _COMPARE = ("Compare each view with the drawing. Name each feature the part lacks or gets wrong, "

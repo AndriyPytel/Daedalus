@@ -330,7 +330,7 @@ class FakeTools:
     APPLIED = {"status": "applied", "created": ["Box"], "description": DESCRIPTION}
 
     def __init__(self, applies=(), views=None, checks=(), undo_capacity=None, base=None,
-                 faces=()):
+                 faces=(), shapes=None):
         """
         What is in the Document by now. A Snapshot frozen at empty could not
         show that a regeneration is written against the Steps that did apply.
@@ -350,6 +350,7 @@ class FakeTools:
         self.undo_capacity = undo_capacity
         self.base = base
         self.faces = list(faces)
+        self.shapes = None if shapes is None else list(shapes)
         self.views = views
         self.checks = list(checks)
         self.calls = []
@@ -447,6 +448,12 @@ class FakeTools:
                 self._applied_groups.append(group)
                 self.created.extend(group)
             return result
+
+        if self.shapes is not None:
+            @registry.tool("shape_valid", "Whether the solid is a valid shape.")
+            def shape_valid():
+                self.calls.append(("shape_valid", {}))
+                return {"valid": self.shapes.pop(0) if len(self.shapes) > 1 else self.shapes[0]}
 
         @registry.tool("undo_step", "Undo the last Step's transaction.")
         def undo_step():
@@ -664,12 +671,12 @@ def needs_drawing(*paths):
 
 def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=a_person_who_declines,
           views=None, checks=(), attachments=(), decide=None, outstanding=(),
-          the_part_path=None, kernel=None, undo_capacity=None, base=None, faces=()):
+          the_part_path=None, kernel=None, undo_capacity=None, base=None, faces=(), shapes=None):
     """Run the loop over scripted turns and hand back everything to assert on."""
     needs_drawing(*attachments)
     llm = scripted(turns, attachments, resuming=bool(the_part_path))
     tools = FakeTools(applies, views=views, checks=checks, undo_capacity=undo_capacity,
-                      base=base, faces=faces)
+                      base=base, faces=faces, shapes=shapes)
     events = EventStream()
     kwargs = {"ask": ask}
     if decide is not None:
