@@ -73,3 +73,13 @@ def test_a_views_name_is_matched_to_a_standard_view_by_substring_and_a_bare_sect
     assert _direction("Section A-A, right") == "right"
     assert _direction("section B-B") == "front"
     assert _direction("detail C") is None
+
+
+def test_the_reading_prompt_keeps_overall_to_one_printed_dimension_and_the_wall_to_a_printed_wall():
+    from core.prompts import read_prompt
+
+    text = read_prompt("read_table.md")
+
+    assert "never a flat-pattern length and never a sum" in text
+    assert "null unless a dimension is printed between the two faces of one wall" in text
+    assert len(text) < 3072
