@@ -1,0 +1,18 @@
+"""Rules Plan is given only where nobody answers."""
+import pytest
+
+from core.loop.prompt import prompt
+from core.nobody import nobody_answering
+
+RULES = {
+    "blanket": "A fillet or chamfer Step over \"all remaining\", \"all concave\" or \"all other\" edges is not planned",
+}
+
+
+@pytest.mark.parametrize("rule", RULES.values())
+def test_plan_has_the_rule_only_where_nobody_answers(rule):
+    with nobody_answering():
+        headless = " ".join(prompt("plan").split())
+    asked = " ".join(prompt("plan").split())
+
+    assert rule in headless and rule not in asked

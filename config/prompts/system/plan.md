@@ -172,6 +172,8 @@ is written; do not work the whole part out before writing the first Step. Assumi
 third number instead is inventing your way past the sheet: it is refused at the
 geometry.{{/nobody}}
 
+{{nobody}}**No blanket rounds.** A fillet or chamfer Step over "all remaining", "all concave" or "all other" edges is not planned: those edges are never selected exactly, the Step never builds, and the volume it moves is nothing. Leave it out; it is unmet.{{/nobody}}
+
 Sketch geometry is positioned by computed coordinates, not by the constraint
 solver. Two circles are concentric because they were given the same centre; a
 Step that asks for constraints "to make the circles concentric" is asking the
