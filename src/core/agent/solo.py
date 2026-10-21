@@ -34,7 +34,7 @@ def _answer(result):
 
 
 def run_solo(intent, *, llm, kernel, tools, events, attachments=(), cancelled=None,
-             max_turns=60, refresh=None, system=None, opening=None, gate=None):
+             max_turns=60, refresh=None, system=None, opening=None, gate=None, recheck=None):
     """
     Run *intent* to `finish`, the turn ceiling or *cancelled*, and hand back
     `(LoopResult, checkpoint)`, the checkpoint being the kernel's Document as it
@@ -42,7 +42,7 @@ def run_solo(intent, *, llm, kernel, tools, events, attachments=(), cancelled=No
     tool asks about the Document, so the Document it reads is the kernel's.
     *system* is the prompt text where it is not `solo.md`, *opening* is the first message where it is not the
     intent and the attachments, and *gate*, asked once at the first `finish`, answers with
-    the content to send back instead of finishing and the names of the views it draws, or `None`.
+    the content to send back instead of finishing and the names of the views it draws, or `None`; *recheck*, asked once at the next `finish` after the gate answered, answers with content or `None`.
     """
     events.emit(INTENT, text=intent)
     if attachments:
@@ -53,7 +53,7 @@ def run_solo(intent, *, llm, kernel, tools, events, attachments=(), cancelled=No
         block for block in map(_as_image, attachments) if block]
     renders = tempfile.mkdtemp(prefix="fcc-solo-")
     state = {"applied": 0, "failures": 0, "checkpoint": None, "stale": False, "renders": 0,
-             "gated": gate is None}
+             "gated": gate is None, "answered": False}
 
     def built(reason, ok=True):
         return LoopResult(ok=state["applied"] > 0 and ok, reason=reason,
@@ -126,9 +126,17 @@ def run_solo(intent, *, llm, kernel, tools, events, attachments=(), cancelled=No
                 state["gated"] = True
                 answer = gate()
                 if answer:
+                    state["answered"] = True
                     content, views = answer
                     events.emit(TOOL_RESULT, name="finish_gate", result={
                         "returned": True, "views": views,
+                        "text": "\n".join(b["text"] for b in content if b.get("type") == "text")})
+                    continue
+            elif "finish" in message and state["answered"] and recheck is not None:
+                state["answered"] = False
+                content = recheck()
+                if content:
+                    events.emit(TOOL_RESULT, name="finish_recheck", result={
                         "text": "\n".join(b["text"] for b in content if b.get("type") == "text")})
                     continue
             if "finish" in message:
