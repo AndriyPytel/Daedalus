@@ -30,7 +30,7 @@ from core.loop.execute import (
 )
 from core.loop.gate import _DECIDE, _DECIDE_AND_ASSUME, _a_question_for_the_build
 from core.nobody import nobody_is_answering
-from core.llm.roles import patient_for
+from core.llm.roles import at_effort, patient_for
 from core.loop.prompt import PLAN_PHASE, _pictures, prompt, with_the_drawing
 from core.kernel.kernel_worker import RESERVED_STEP_NAMES
 
@@ -125,7 +125,7 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
         request["what_the_tools_say"] = list(looked)
 
     if nobody_is_answering():
-        llm = patient_for(llm, PLAN_PHASE)
+        llm = at_effort(patient_for(llm, PLAN_PHASE), PLAN_PHASE, "low")
     task = json.dumps(request, indent=2, default=str)
     task = with_the_drawing(task, attachments, llm)
     reply, _ = run_declaring(

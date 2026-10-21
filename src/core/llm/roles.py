@@ -42,3 +42,13 @@ def patient_for(llm, role):
     patient = copy.copy(llm)
     (patient.for_role(role) if isinstance(patient, RoleClient) else patient).timeout = _CEILING["xhigh"]
     return patient
+
+
+def at_effort(llm, role, effort):
+    """*llm*, or a copy of it whose client for *role* runs at *effort*, when that client has an effort to set."""
+    client = llm.for_role(role) if isinstance(llm, RoleClient) else llm
+    if getattr(client, "effort", effort) == effort or not hasattr(client, "effort"):
+        return llm
+    other = copy.copy(llm)
+    (other.for_role(role) if isinstance(other, RoleClient) else other).effort = effort
+    return other

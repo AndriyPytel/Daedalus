@@ -379,7 +379,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                       _unconsumed(part.the_part, planned.satisfies, satisfied_so_far)
                       if entry not in plan_unmet]
         for entry in unconsumed:
-            if entry in patched:
+            if entry in patched or nobody_is_answering():
                 plan_unmet.append(entry)
         unconsumed = [entry for entry in unconsumed if entry not in plan_unmet]
         progress.unmet = list(dict.fromkeys(list(progress.unmet) + plan_unmet))
