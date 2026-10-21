@@ -740,7 +740,8 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                         as_described=as_described, looks=looks, entries=entries, ledger=ledger,
                         kernel=kernel, ops=ops, exploration=probe, design=design,
                         supervisor=supervisor, plan_values=plan_values, base=base,
-                        changes=changes, attachments=attachments, beside=shown)
+                        changes=changes, attachments=attachments, beside=shown,
+                        no_code=read_prompt("declare_the_further_steps.md").strip())
         for further in named.further:
             steps.append(str(further["do"]).strip())
             cites.append([])

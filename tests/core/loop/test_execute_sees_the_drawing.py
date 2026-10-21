@@ -63,3 +63,12 @@ def test_only_the_comparison_turn_carries_the_drawing_among_the_execute_turns():
     pictured = [isinstance(content, list) and any(b.get("type") == "image_url" for b in content)
                 for content in opening]
     assert pictured == [False, True, False]
+
+
+def test_code_sent_in_the_comparison_turn_is_refused_and_lands_nothing():
+    result, _, llm, tools = _run(nobody_to_ask, [
+        json.dumps({"code": "boss()", "step": 2, "label": "Boss"}),
+        _named("Pad the boss 5 mm"), code_reply("boss2()", first=2)])
+
+    assert result.ok and tools.applied_codes() == ["pad()", "boss2()"]
+    assert any("Declare the further Steps" in json.dumps(call[-1]["content"]) for call in llm.calls)

@@ -46,6 +46,10 @@ from one the model chose to make -- a verdict on a Step it never had a turn
 left to attempt."""
 
 
+_CODE_REFUSALS = 3
+"""Code calls a phase given `no_code` may send before it is taken to have nothing to declare."""
+
+
 _RUNS_PER_STEP = 2
 """Code runs on one Step that may fail to land before a run nobody answers leaves it out."""
 
@@ -76,7 +80,7 @@ def _a_python_level_error(traceback):
 def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
               kernel=None, supervisor=None, stream=None, system=None,
               on_declaration=None, exploration=None, design=None, repair_ceiling=None,
-              already_delivered=(), ledger="", plan_values=None, preflight=True):
+              already_delivered=(), ledger="", plan_values=None, preflight=True, no_code=""):
     """
     Run *phase* as a multi-turn agent against its own kernel, returning
     `(declared, session, declarations)`. *on_declaration*, called the moment a
@@ -115,6 +119,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
     first_step = True
     declared_failure = None
     left_out = {}
+    refused_code = 0
     pending_retry = None
     last_failure = None
     repairs = 0
@@ -171,6 +176,12 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                 feedback = ({"delegate_answered": answer} if answer is not None
                             else {"delegate_refused": supervisor.refusals[-1]["reason"]})
                 text = _say(session, llm, json.dumps(feedback), phase=phase, stream=stream)
+                continue
+            if "code" in message and no_code:
+                refused_code += 1
+                if refused_code > _CODE_REFUSALS:
+                    return {"further_steps": []}, session, declarations
+                text = replied_with({"ok": False, "status": "refused", "traceback": no_code})
                 continue
             if "code" in message:
                 if declaration_demanded:
