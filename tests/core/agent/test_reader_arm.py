@@ -100,3 +100,10 @@ def test_the_table_carries_no_wall_thickness_even_when_the_reading_writes_one():
 
     assert table["thin_walled"] is True and "wall_thickness" not in table
     assert "wall_thickness" not in read_prompt("read_table.md")
+
+
+def test_the_builder_prompt_carries_the_through_rule_the_gate_repeats():
+    from core.agent.reader import THROUGH_RULE
+    from core.prompts import read_prompt
+
+    assert THROUGH_RULE in read_prompt("reader.md")

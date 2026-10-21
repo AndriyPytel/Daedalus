@@ -9,6 +9,7 @@ You are given the sheet whole and small, then its close-up crops at the sheet's 
 - A drawing that shows a flat pattern and formed views describes the formed part; the flat pattern only gives developed lengths. Build the formed part: bend the sheet to its printed angles and radii, never the flat blank.
 - A shell, a tray, a cover or a cored casting is hollow: shell it or pocket it to the printed wall. Never pad the whole envelope solid.
 - Hidden lines and sections show cavities, and every hole and opening drawn is a hole in the solid.
+- A pocket, slot or window goes through only where a section or hidden lines show it go through; otherwise cut it to its printed depth.
 
 ## Editing
 

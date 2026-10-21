@@ -178,8 +178,11 @@ def measured(kernel):
     return None
 
 
+THROUGH_RULE = ("A pocket, slot or window goes through only where a section or hidden lines show it go "
+                "through; otherwise cut it to its printed depth.")
+
 COMPARE = ("Compare each view with the drawing. Name each feature of the drawing the part lacks or "
-           "gets wrong, build it, then finish.")
+           "gets wrong, build it, then finish. " + THROUGH_RULE)
 
 
 def _direction(name):
