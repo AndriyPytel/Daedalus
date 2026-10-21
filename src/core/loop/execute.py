@@ -148,7 +148,7 @@ class Written:
 def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_described="",
             looks=None, entries=(), ledger=None, supervisor=None, kernel=None, ops=(),
             exploration=None, design=None, plan_values=None, base=None, changes=(),
-            attachments=(), beside=()):
+            attachments=(), beside=(), runs_of=None):
     """
     Run every Step from `start` to the end of the Plan as one agent phase,
     against one kernel held open for the whole call. `Written` comes from
@@ -317,7 +317,7 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
                 on_declaration=on_declaration, exploration=exploration,
                 repair_ceiling=budgets.attempts_per_step,
                 already_delivered=range(1, start + 1),
-                plan_values=plan_values, preflight=budgets.preflight,
+                plan_values=plan_values, preflight=budgets.preflight, runs_of=runs_of,
             )
 
         forced = bool(reply.pop(_FORCED_BY_BUDGET, False)) and bool(supervisor.run_outcome or supervisor.reserved())

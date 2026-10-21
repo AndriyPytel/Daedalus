@@ -41,3 +41,17 @@ def test_the_step_whose_own_runs_failed_twice_is_left_out_not_the_first():
 
     assert list(written.left_out) == ["3"] and {1, 2} <= set(written.steps)
     assert 3 not in written.steps
+
+
+def test_a_step_failing_once_in_each_of_two_phases_is_left_out_in_the_second():
+    runs_of = {}
+    done = json.dumps({"declare": {"steps": []}})
+    with nobody_answering():
+        first = execute(STEPS, FakeTools().registry,
+                        ScriptedLLMClient([_code(1, "bad()"), done]), EventStream(),
+                        kernel=_BadCodeFails(), runs_of=runs_of)
+        second = execute(STEPS, FakeTools().registry,
+                         ScriptedLLMClient([_code(1, "bad()"), _code(1, "bad()"), done]), EventStream(),
+                         kernel=_BadCodeFails(), runs_of=runs_of)
+
+    assert not first.left_out and list(second.left_out) == ["1"]

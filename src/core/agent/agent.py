@@ -76,7 +76,7 @@ def _a_python_level_error(traceback):
 def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
               kernel=None, supervisor=None, stream=None, system=None,
               on_declaration=None, exploration=None, design=None, repair_ceiling=None,
-              already_delivered=(), ledger="", plan_values=None, preflight=True):
+              already_delivered=(), ledger="", plan_values=None, preflight=True, runs_of=None):
     """
     Run *phase* as a multi-turn agent against its own kernel, returning
     `(declared, session, declarations)`. *on_declaration*, called the moment a
@@ -115,7 +115,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
     first_step = True
     declared_failure = None
     left_out = {}
-    runs_of = {}
+    runs_of = {} if runs_of is None else runs_of
     pending_retry = None
     last_failure = None
     repairs = 0

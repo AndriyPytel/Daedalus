@@ -701,6 +701,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     described = {}
     deferred = []
     landed = []
+    runs_of = {}
     attempts = []
     charged = 0
     free_trailing_gaps = 0
@@ -717,7 +718,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                           as_described=as_described, looks=looks, entries=entries,
                           ledger=ledger, kernel=kernel, ops=ops, exploration=probe,
                           design=design, supervisor=supervisor, plan_values=plan_values,
-                          base=base, changes=changes)
+                          base=base, changes=changes, runs_of=runs_of)
         if probed_step is not None:
             exploration[probed_step] = probe["turns"]
         return written
@@ -740,7 +741,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                         as_described=as_described, looks=looks, entries=entries, ledger=ledger,
                         kernel=kernel, ops=ops, exploration=probe, design=design,
                         supervisor=supervisor, plan_values=plan_values, base=base,
-                        changes=changes, attachments=attachments, beside=shown)
+                        changes=changes, attachments=attachments, beside=shown, runs_of=runs_of)
         added = sorted(number for number in later.steps if number > count)
         for number in added:
             steps.append("Further Step from comparing with the drawing: %s" % (
