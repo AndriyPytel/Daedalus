@@ -679,6 +679,8 @@ Two dimensions that cannot both be true is a `conflicts` entry, not a
 operation the drawing does not show — adding material to a face to reconcile a
 thickness of 40 with one of 50 is inventing a feature, not describing one.
 
+{{nobody}}`not_defined` holds a value, never a whole feature: a feature a view shows -- a scallop, a seat, a slot -- is listed in `features` even when no size is printed, its size measured to scale and flagged `assumed` with `because`.{{/nobody}}
+
 ## The description only ever grows
 
 You are called more than once, and every time you are called you write into the
