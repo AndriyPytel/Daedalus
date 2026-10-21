@@ -297,11 +297,17 @@ def test_every_surveyed_owned_typeid_is_accepted_under_its_op_in_op_typeids():
     assert not missing, missing
 
 
+TOOL_BODY_FEATURE_OPS = ("body", "common", "cut", "fuse")
+"""The ops whose Step may create the code-built `Part::Feature` a tool Body holds."""
+
+
 def test_op_typeids_gives_no_typeid_to_two_ops_outside_the_two_named_exceptions():
     owner = {}
     collisions = []
     for op, typeids in OP_TYPEIDS.items():
         for typeid in typeids:
+            if typeid == "Part::Feature":
+                continue
             if typeid in owner and owner[typeid] != op:
                 collisions.append((typeid, owner[typeid], op))
             owner[typeid] = op
@@ -315,10 +321,10 @@ def test_op_typeids_gives_no_typeid_to_two_ops_outside_the_two_named_exceptions(
 
 
 def test_excluded_typeids_are_not_accepted_under_any_op():
-    """`Part::Feature` is the one exception, accepted under `body` alone: the code-built shape a tool Body holds."""
+    """`Part::Feature` is the one exception, accepted under `TOOL_BODY_FEATURE_OPS` only: the code-built shape a tool Body holds."""
     wrongly_accepted = [typeid for typeid in EXCLUDED_TYPEIDS
                          for op, typeids in OP_TYPEIDS.items() if typeid in typeids
-                         and (typeid, op) != ("Part::Feature", "body")]
+                         and not (typeid == "Part::Feature" and op in TOOL_BODY_FEATURE_OPS)]
 
     assert not wrongly_accepted, wrongly_accepted
 
@@ -388,11 +394,15 @@ def test_kernel_summary_carries_the_type_of_a_partdesign_boolean():
     assert "boolean_type" not in second
 
 
-def test_only_a_body_step_may_create_the_part_feature_a_tool_body_holds():
+def test_only_a_body_cut_common_or_fuse_step_may_create_the_part_feature_a_tool_body_holds():
     from core.lint import op_typeid_mismatch
 
     created = ["Blade", "ToolBody"]
     objects = [{"name": "Blade", "type": "Part::Feature"}, {"name": "ToolBody", "type": "PartDesign::Body"}]
 
-    assert op_typeid_mismatch("body", created, objects) is None
+    for op in TOOL_BODY_FEATURE_OPS:
+        assert op_typeid_mismatch(op, created, objects) is None
     assert op_typeid_mismatch("pocket", created, objects) == "Part::Feature"
+    assert OP_TYPEIDS["pocket"] == ("PartDesign::Pocket",)
+    assert [op for op, typeids in OP_TYPEIDS.items() if "Part::Feature" in typeids] == \
+        ["body", "fuse", "cut", "common"]

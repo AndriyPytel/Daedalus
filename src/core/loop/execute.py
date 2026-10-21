@@ -315,7 +315,7 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
                 pc.EXECUTE, {"plan": steps}, llm, task, working_dir=working_dir,
                 document=document, design=design,
                 kernel=kernel, supervisor=supervisor, stream=events,
-                system=prompt(EXECUTE_PHASE),
+                system=prompt(EXECUTE_PHASE, editing=bool(base)),
                 ledger=ledger.render() if ledger else "",
                 on_declaration=on_declaration, exploration=exploration,
                 repair_ceiling=budgets.attempts_per_step,

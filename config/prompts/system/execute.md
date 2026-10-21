@@ -251,6 +251,8 @@ feature that performs the operation — a helix for a thread, a hole for a hole 
 not a `Part` boolean wearing a PartDesign name. If the shape genuinely belongs
 outside a Body, build it as a `Part::Feature` and say that is what it is.
 
+{{editing}}A region a Step bounds by faces of the base is built in code from those faces' own surfaces, never from a sketch that approximates them: `Part.makeTorus`, `makeCylinder` or `makeCone` with the radius, centre and axis read off `face.Surface`, combined by cut and fuse, and reaching at least 1 mm past every face it only has to clear. Cut the base by it with a fuzzy value, `base.cut(region, 1e-4)` or `generalFuse`, and before any later Step uses the result, check it splits into the expected number of solids. A Groove or Pocket whose edges lie exactly on faces of the base splits them into faces OCC calls unorientable. Where the region's boundary is a face the base keeps, remove the material by a Boolean with that code-built region, never by a Groove of a sketch drawn on the same face.{{/editing}}
+
 **A feature that moved no material did not happen.** Preflight refuses a Step
 whose new PartDesign feature came out the same volume as the feature it was
 built on, because that is the one failure FreeCAD does not report: a Pocket
