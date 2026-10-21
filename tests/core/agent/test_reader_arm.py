@@ -83,3 +83,12 @@ def test_the_reading_prompt_keeps_overall_to_one_printed_dimension_and_the_wall_
     assert "never a flat-pattern length and never a sum" in text
     assert "null unless a dimension is printed between the two faces of one wall" in text
     assert len(text) < 3072
+
+
+def test_the_builder_prompt_says_names_do_not_persist_and_no_longer_argues_for_finishing_early():
+    from core.prompts import read_prompt
+
+    text = read_prompt("reader.md")
+
+    assert "fresh namespace" in text
+    assert "turns are counted" not in text and "refine after" not in text

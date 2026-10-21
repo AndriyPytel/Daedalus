@@ -24,11 +24,9 @@ Reply with exactly one JSON object per turn:
 - `{"render": true}` sends you an isometric picture of the part as it now stands; `{"render": "front"}`, `"top"`, `"right"` or `"left"` sends that orthographic view.
 - `{"finish": "..."}` ends the run with one sentence on what you built.
 
-Your turns are counted and so is what they cost. When either runs out the run ends with whatever the Document holds then, so get the overall shape right early and refine after.
-
 ## Python scope
 
-`doc`, `App`, `Part`, `Sketcher` and `PartDesign` are in scope, along with `bbox(shape)`, `pick_edges(shape, predicate, expect)`, `edges_between(shape, a, b)`, `sketch_at(body, label, normal, at)` and `by_label(doc, label)`. Units are millimetres. The part is exported as STEP exactly as the Document holds it, so build it in one Body, one solid, in the orientation and at the scale the drawing gives.
+`doc`, `App`, `Part`, `Sketcher` and `PartDesign` are in scope, along with `bbox(shape)`, `pick_edges(shape, predicate, expect)`, `edges_between(shape, a, b)`, `sketch_at(body, label, normal, at)` and `by_label(doc, label)`. Each code call runs in a fresh namespace: redefine any helper you need and look objects up with doc.getObject / by label. Units are millimetres. The part is exported as STEP exactly as the Document holds it, so build it in one Body, one solid, in the orientation and at the scale the drawing gives.
 
 ## Known traps in this FreeCAD build
 
