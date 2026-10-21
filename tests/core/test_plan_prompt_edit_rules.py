@@ -21,6 +21,8 @@ BUILT = "A region a Step bounds by faces of the base is built in code from those
 
 
 def test_execute_is_told_to_build_a_region_from_the_bases_own_surfaces_only_on_an_edit():
+    assert "revolved in segments" not in " ".join(prompt("execute", editing=True).split())
+    assert "a revolution of its half-section traced off those faces' surfaces -- fuse the copies to it" in " ".join(prompt("execute", editing=True).split())
     assert "OCC leaves that face unorientable at every fuzzy value" in " ".join(prompt("execute", editing=True).split())
     assert BUILT in " ".join(prompt("execute", editing=True).split())
     assert BUILT not in " ".join(prompt("execute").split())
