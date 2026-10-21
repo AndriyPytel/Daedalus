@@ -52,3 +52,10 @@ def test_design_reads_goes_through_and_never_assumes_it():
 
     assert "`goes_through: true` is read, never assumed: a hole, slot or window goes through only where a view shows it" in said
     assert "Where nothing shows it, it is blind, with a depth measured to scale or assumed, flagged and with `because`" in said
+
+
+def test_design_reads_a_wall_from_face_to_face_not_off_a_step_in_its_outer_face():
+    said = " ".join(prompt("design").split())
+
+    assert "A wall's thickness is the hatched band between its inner and its outer face in a section, read from face to face" in said
+    assert "is one of the two read wrong: measure the band to scale before either goes in" in said

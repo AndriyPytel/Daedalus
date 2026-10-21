@@ -617,6 +617,8 @@ it by measurement — the pixel scale of the view, a sum of dimensions that must
 close — and record the disagreement under `conflicts`, `stands` being the
 measured one, not the nearer-looking number.
 
+A wall's thickness is the hatched band between its inner and its outer face in a section, read from face to face. A short dimension from an outer face to a step or recess in it is the depth of what is sunk there, not the wall. A wall you describe as thinner than a recess you sink into it, plus 1 mm, is one of the two read wrong: measure the band to scale before either goes in.
+
 **Where two readings satisfy the same numbers, say which one the view shows.** A
 drawing leaving that choice to the views is the ordinary case, not a fault in
 the drawing. A description that passes the choice downstream instead is where the
