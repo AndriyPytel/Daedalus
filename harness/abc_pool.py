@@ -7,8 +7,13 @@ and `analyze_step` spawns more, so everything stays under the `__main__` guard.
 """
 import argparse
 import csv
+import ctypes.util
+import json
+import os
 import random
 import re
+import subprocess
+import tempfile
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
@@ -20,6 +25,19 @@ COLUMNS = ["id", "unit", "solids", "faces", *TYPES, "other"]
 UNIT = re.compile(r"SI_UNIT\((?:\.(MILLI|CENTI)\.|\$),\.METRE\.\)|CONVERSION_BASED_UNIT\(\'(INCH)\'")
 UNIT_NAMES = {"MILLI": "mm", "CENTI": "cm", "INCH": "inch", None: "m"}
 HEADER_BYTES = 1 << 16
+SEED = 0
+CANDIDATES = 150
+FREECADCMD = "/Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd"
+HOMEBREW_CAIRO = "/opt/homebrew/lib/libcairo.2.dylib"
+SHEET_VIEWS = Path(__file__).resolve().parent / "sheet_views.py"
+OUT = Path("/tmp/myga-orchestrate-2026-10-20-1900/candidates")
+CANDIDATE_IDS = CACHE / "abc_0000_candidates.json"
+FILTER_STEPS = [
+    ("1 solid", lambda r: r["solids"] == 1),
+    ("150-1000 faces", lambda r: 150 <= r["faces"] <= 1000),
+    (">=1 torus", lambda r: r["torus"] >= 1),
+    ("bspline <= 40%", lambda r: 10 * r["bspline"] <= 4 * r["faces"]),
+]
 
 
 def step_unit(path):
@@ -89,12 +107,116 @@ def write_stats(chunk=CHUNK, out=STATS, workers=8):
     return len(files), len(rows)
 
 
+def load_stats(path=STATS):
+    with open(path, newline="") as handle:
+        return [{k: (v if k in ("id", "unit") else int(v)) for k, v in row.items()} for row in csv.DictReader(handle)]
+
+
+def passes_filter(row):
+    return all(test(row) for _, test in FILTER_STEPS)
+
+
+def funnel(rows):
+    steps = [("parts", len(rows))]
+    for name, test in FILTER_STEPS:
+        rows = [r for r in rows if test(r)]
+        steps.append((name, len(rows)))
+    return steps
+
+
+def pick_candidates(rows, count=CANDIDATES, seed=SEED, chunk=CHUNK):
+    """First `count` valid survivors of the seeded shuffle, and how many survivors were examined."""
+    from cadgenbench.common.validity import analyze_step
+
+    survivors = sorted(r["id"] for r in rows if passes_filter(r))
+    random.Random(seed).shuffle(survivors)
+    paths = {p.stem: p for p in Path(chunk).rglob("*.step")}
+    chosen, examined = [], 0
+    for part in survivors:
+        if len(chosen) == count:
+            break
+        examined += 1
+        if analyze_step(paths[part]).validation.is_valid:
+            chosen.append(part)
+    return chosen, examined
+
+
+def iso_view(step_path, work):
+    """TechDraw isometric visible and hidden edge SVG of the part, scaled to mm first."""
+    from OCP.Interface import Interface_Static
+    from OCP.STEPControl import STEPControl_AsIs, STEPControl_Writer
+
+    Interface_Static.SetCVal_s("xstep.cascade.unit", "MM")
+    mm_step = work / "part.step"
+    writer = STEPControl_Writer()
+    writer.Transfer(read_shape(step_path), STEPControl_AsIs)
+    writer.Write(str(mm_step))
+    views = work / "views.json"
+    env = {**os.environ, "DAE_STEP": str(mm_step), "DAE_VIEWS": str(views)}
+    subprocess.run(
+        [FREECADCMD, "-c", f"exec(open({str(SHEET_VIEWS)!r}).read())"],
+        env=env, check=True, capture_output=True, timeout=300,
+    )
+    return json.loads(views.read_text())["FrontTopLeft"]
+
+
+def preview_png(step_path, png_path, size=600):
+    with tempfile.TemporaryDirectory() as tmp:
+        view = iso_view(step_path, Path(tmp))
+    x0, y0, x1, y1 = view["bbox2d"]
+    pad = 0.05 * max(x1 - x0, y1 - y0)
+    box = f"{-(x1 - x0) / 2 - pad} {-(y1 - y0) / 2 - pad} {x1 - x0 + 2 * pad} {y1 - y0 + 2 * pad}"
+    stroke = max(x1 - x0, y1 - y0) / 400
+    svg = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{box}" width="{size}" height="{size}">'
+        f'<g fill="none" stroke="#000" stroke-width="{stroke:g}" stroke-linecap="round">{view["visible_svg"]}</g></svg>'
+    )
+    find = ctypes.util.find_library
+    ctypes.util.find_library = lambda name: HOMEBREW_CAIRO if name == "cairo" else find(name)
+    import cairosvg
+
+    cairosvg.svg2png(bytestring=svg.encode(), write_to=str(png_path), output_width=size, output_height=size, background_color="white")
+
+
+def contact_sheets(captions, out=OUT, columns=5, rows=6, cell=300):
+    from PIL import Image, ImageDraw
+
+    per_sheet = columns * rows
+    paths = []
+    for index in range(0, len(captions), per_sheet):
+        sheet = Image.new("RGB", (columns * cell, rows * (cell + 24)), "white")
+        draw = ImageDraw.Draw(sheet)
+        for slot, (part, faces) in enumerate(captions[index:index + per_sheet]):
+            x, y = (slot % columns) * cell, (slot // columns) * (cell + 24)
+            sheet.paste(Image.open(out / f"{part}.png").convert("RGB").resize((cell, cell)), (x, y))
+            draw.text((x + 4, y + cell + 6), f"{part}  {faces} faces", fill="black")
+        paths.append(out / f"contact_{index // per_sheet + 1:02d}.png")
+        sheet.save(paths[-1])
+    return paths
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[1])
-    parser.add_argument("command", choices=["stats"])
+    parser.add_argument("command", choices=["stats", "select", "previews"])
     args = parser.parse_args()
     if args.command == "stats":
         print(write_stats())
+    elif args.command == "select":
+        rows = load_stats()
+        for step in funnel(rows):
+            print(step)
+        chosen, examined = pick_candidates(rows)
+        CANDIDATE_IDS.write_text(json.dumps({"seed": SEED, "examined": examined, "ids": chosen}, indent=1))
+        print(f"{len(chosen)} valid candidates after examining {examined} survivors")
+    else:
+        paths = {p.stem: p for p in CHUNK.rglob("*.step")}
+        faces = {r["id"]: r["faces"] for r in load_stats()}
+        OUT.mkdir(parents=True, exist_ok=True)
+        ids = json.loads(CANDIDATE_IDS.read_text())["ids"]
+        for part in ids:
+            if not (OUT / f"{part}.png").exists():
+                preview_png(paths[part], OUT / f"{part}.png")
+        print([str(p) for p in contact_sheets([(part, faces[part]) for part in ids])])
 
 
 if __name__ == "__main__":

@@ -40,3 +40,21 @@ def test_face_counts_by_type(tmp_path):
     assert stats["torus"] == 0
     assert stats["unit"] == "mm"
     assert stats["id"] == "part"
+
+
+def _row(**kw):
+    row = {"id": "x", "unit": "mm", "solids": 1, "faces": 300, "torus": 2, "bspline": 10}
+    return {**row, **kw}
+
+
+@pytest.mark.parametrize("change, kept", [
+    ({}, True), ({"solids": 2}, False), ({"faces": 149}, False), ({"faces": 1001}, False),
+    ({"faces": 150}, True), ({"torus": 0}, False), ({"bspline": 121}, False), ({"bspline": 120}, True),
+])
+def test_geometric_filter(change, kept):
+    assert abc_pool.passes_filter(_row(**change)) is kept
+
+
+def test_funnel_counts_each_step_in_order():
+    rows = [_row(), _row(solids=2), _row(faces=50), _row(torus=0), _row(bspline=200)]
+    assert abc_pool.funnel(rows) == [("parts", 5), ("1 solid", 4), ("150-1000 faces", 3), (">=1 torus", 2), ("bspline <= 40%", 1)]
