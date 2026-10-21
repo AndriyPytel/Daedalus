@@ -107,6 +107,7 @@ from core.agent.reader import DRAWING_VIEWS, views_beside_crops
 from core.agent.subagent import RESERVE
 from core.loop.document import copied
 from core.nobody import nobody_answering, nobody_is_answering
+from core.prompts import read_prompt
 from core.loop.review import review, review_suspect
 
 
@@ -722,7 +723,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
         return written
 
     def comparison_follows():
-        """Where nobody answers, once per run: Execute is shown the part beside the drawing and writes what it lacks as further Steps, which `steps` takes on."""
+        """Where nobody answers, once per run: Execute is shown the part beside the drawing and names what it lacks, and `steps` takes those on to be built by an ordinary turn."""
         nonlocal written, index, attempts, charged, free_trailing_gaps
         if compare is None or compare or not nobody_is_answering() or deferred or cancelled() \
                 or not progress.applied:
@@ -735,22 +736,20 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
         if supervisor is not None:
             supervisor.turn_budget += RESERVE
         probe, _ = _step_exploration(exploration, steps, count)
-        later = execute(steps + [_COMPARE], tools, llm, events, count, budgets=budgets,
+        named = execute(steps + [_COMPARE], tools, llm, events, count, budgets=budgets,
                         as_described=as_described, looks=looks, entries=entries, ledger=ledger,
                         kernel=kernel, ops=ops, exploration=probe, design=design,
                         supervisor=supervisor, plan_values=plan_values, base=base,
                         changes=changes, attachments=attachments, beside=shown)
-        added = sorted(number for number in later.steps if number > count)
-        for number in added:
-            steps.append("Further Step from comparing with the drawing: %s" % (
-                later.steps[number].label or "build what the part lacks"))
+        for further in named.further:
+            steps.append(str(further["do"]).strip())
             cites.append([])
             ops.append(None)
             changes.append([])
-        if added:
-            written = later
+        if named.further:
+            written = written_from(count)
             attempts, charged, free_trailing_gaps = [], 0, 0
-        return bool(added)
+        return bool(named.further)
 
     written = written_from(start)
 
@@ -941,8 +940,7 @@ def _the_last_valid_shape(tools, events, applied):
     return kept
 
 
-_COMPARE = ("Compare each view with the drawing. Name each feature the part lacks or gets wrong, "
-            "build it as further Steps, then finish.")
+_COMPARE = read_prompt("compare_with_the_drawing.md").strip()
 
 
 def _could_not_be_built(steps, deferred, obsolete=""):

@@ -13,7 +13,6 @@ from tests.loop_helpers import (
     code_reply,
     design_reply,
     drive,
-    nothing_to_add,
     plan_reply,
     prompts_of,
     suspect_reply,
@@ -36,10 +35,13 @@ def _run(ask, replies):
                  attachments=[RENDER_PNG], ask=ask)
 
 
-def test_the_part_is_compared_with_the_drawing_once_where_nobody_answers():
-    result, _, llm, tools = _run(nobody_to_ask, [
-        json.dumps({"code": "boss()", "step": 2, "label": "Boss"}),
-        json.dumps({"declare": {"steps": [{"step": 2, "label": "Boss"}]}})])
+def _named(*further):
+    return json.dumps({"declare": {"further_steps": [{"label": "Further", "do": do} for do in further]}})
+
+
+def test_the_comparison_turn_names_further_steps_and_an_ordinary_turn_builds_them():
+    result, _, llm, tools = _run(nobody_to_ask, [_named("Pad the boss 5 mm"),
+                                                 code_reply("boss()", first=2)])
 
     assert result.ok and result.steps_applied == 2
     assert tools.applied_codes() == ["pad()", "boss()"]
@@ -54,10 +56,10 @@ def test_a_person_at_the_gate_gets_no_comparison():
 
 
 def test_only_the_comparison_turn_carries_the_drawing_among_the_execute_turns():
-    _, _, llm, _ = _run(nobody_to_ask, [nothing_to_add()])
+    _, _, llm, _ = _run(nobody_to_ask, [_named("Pad the boss 5 mm"), code_reply("boss()", first=2)])
 
     opening = [call[1]["content"] for call in llm.calls
                if len(call) == 2 and call[0]["content"].startswith(prompts_of("execute"))]
     pictured = [isinstance(content, list) and any(b.get("type") == "image_url" for b in content)
                 for content in opening]
-    assert pictured == [False, True]
+    assert pictured == [False, True, False]
