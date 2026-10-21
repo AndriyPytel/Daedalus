@@ -109,6 +109,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
     delivered_steps = set(already_delivered)
     first_step = True
     declared_failure = None
+    left_out = {}
     pending_retry = None
     last_failure = None
     repairs = 0
@@ -208,9 +209,11 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                     text = replied_with(refused)
                     continue
                 if message.get("step") is not None:
+                    left_out.update(message.get("leaves_out") or {})
                     previous_step = _step_beside(message["step"], sources.get("plan"), forward=False)
                     if (previous_step is not None and previous_step not in delivered_steps
-                            and previous_step != declared_failure):
+                            and previous_step != declared_failure
+                            and str(previous_step) not in left_out):
                         refused = {"ok": False, "status": "refused", "step": message["step"],
                                   "traceback": "Step %s has neither landed nor been declared. "
                                                 "Write Step %s first."

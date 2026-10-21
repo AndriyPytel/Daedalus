@@ -368,9 +368,10 @@ and declare it together, never explore your way to it first:
 `step` is that Step's own number from the Plan. That is the code that gets
 checkpointed and, later, replayed once into the user's Document — a code turn
 with no `step` never is. A Step you cannot build as written is a Step you
-leave out — write nothing for it and move on to the Step after it; there is
-no whole reply to resend, because you were never committed to all of them at
-once. You may hand a bounded, self-contained sub-question to a depth-1
+leave out — write nothing for it, and name it in the next Step you send:
+`{"code": "...", "step": 4, "label": "...", "leaves_out": {"3": "why it cannot be built"}}`;
+say it again in `unbuildable` when you declare. There is no whole reply to
+resend, because you were never committed to all of them at once. You may hand a bounded, self-contained sub-question to a depth-1
 sub-agent (`{"delegate": "..."}`, DAE-307) — is this FreeCAD's spelling for a
 property, say — when that is genuinely faster than working it out yourself.
 
