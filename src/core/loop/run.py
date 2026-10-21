@@ -952,7 +952,7 @@ _COMPARE = read_prompt("compare_with_the_drawing.md").strip()
 def _could_not_be_built(steps, deferred, obsolete=""):
     """What Plan is told about the material Steps Execute could not build in one pass, with its reason for each and, if any, why the rest then looked out of date."""
     return ("These Steps could not be built as written. Rewrite each so it can be built, "
-            "using the reason given, and send back the Steps that must still be built; "
+            "using the reason given, and send it back among the Steps still to build; "
             "what is already built is History.\n"
             + "\n".join("- %s\n  Execute: %s" % (steps[item["index"]], item["why"])
                        for item in deferred)
