@@ -768,7 +768,8 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                         why=why, entries=cited)
         index += 1
         attempts, charged, free_trailing_gaps = [], 0, 0
-        if index < len(steps) and not written.for_step(index + 1).code:
+        if index < len(steps) and not any(written.for_step(number).code
+                                          for number in range(index + 1, len(steps) + 1)):
             written = written_from(index)
 
     while index < start:
@@ -797,6 +798,10 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
         outcome = written.for_step(index + 1)
         if not outcome.code and str(index + 1) in written.left_out and nobody_is_answering():
             leave_out(written.left_out[str(index + 1)])
+            continue
+        if not outcome.code and nobody_is_answering() and any(
+                written.for_step(number).code for number in range(index + 2, len(steps) + 1)):
+            leave_out(written.unbuildable or "Execute went past it")
             continue
         if not outcome.code and written.unbuildable:
             if nobody_is_answering() and not written.forced:
