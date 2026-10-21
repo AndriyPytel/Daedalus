@@ -58,3 +58,13 @@ def test_geometric_filter(change, kept):
 def test_funnel_counts_each_step_in_order():
     rows = [_row(), _row(solids=2), _row(faces=50), _row(torus=0), _row(bspline=200)]
     assert abc_pool.funnel(rows) == [("parts", 5), ("1 solid", 4), ("150-1000 faces", 3), (">=1 torus", 2), ("bspline <= 40%", 1)]
+
+
+@pytest.mark.parametrize("entity, name", [
+    ("#35 = ( CONVERSION_BASED_UNIT( 'METRE', #77 )LENGTH_UNIT(  )NAMED_UNIT( #80 ) );", "m"),
+    ("#35 = ( LENGTH_UNIT( )NAMED_UNIT( * )SI_UNIT( .MILLI., .METRE. ) );", "mm"),
+])
+def test_step_unit_of_foreign_exporters(tmp_path, entity, name):
+    path = tmp_path / "part.step"
+    path.write_text(f"ISO-10303-21;\nDATA;\n{entity}\nENDSEC;\n")
+    assert abc_pool.step_unit(path) == name

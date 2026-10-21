@@ -18,20 +18,18 @@ from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 CACHE = Path.home() / ".cache" / "abc"
-CHUNK = CACHE / "abc_0000"
-STATS = CACHE / "abc_0000_stats.csv"
+CHUNKS = ["abc_0000", "abc_0001"]
 TYPES = ["plane", "cylinder", "cone", "torus", "sphere", "bspline"]
 COLUMNS = ["id", "unit", "solids", "faces", *TYPES, "other"]
-UNIT = re.compile(r"SI_UNIT\((?:\.(MILLI|CENTI)\.|\$),\.METRE\.\)|CONVERSION_BASED_UNIT\(\'(INCH)\'")
-UNIT_NAMES = {"MILLI": "mm", "CENTI": "cm", "INCH": "inch", None: "m"}
-HEADER_BYTES = 1 << 16
+UNIT = re.compile(r"SI_UNIT\(\s*(?:\.(MILLI|CENTI)\.|\$)\s*,\s*\.METRE\.\s*\)|CONVERSION_BASED_UNIT\(\s*'(INCH|METRE)'")
+UNIT_NAMES = {"MILLI": "mm", "CENTI": "cm", "INCH": "inch", "METRE": "m", None: "m"}
 SEED = 0
 CANDIDATES = 150
 FREECADCMD = "/Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd"
 HOMEBREW_CAIRO = "/opt/homebrew/lib/libcairo.2.dylib"
 SHEET_VIEWS = Path(__file__).resolve().parent / "sheet_views.py"
 OUT = Path("/tmp/myga-orchestrate-2026-10-20-1900/candidates")
-CANDIDATE_IDS = CACHE / "abc_0000_candidates.json"
+CANDIDATE_IDS = CACHE / "abc_candidates.json"
 FILTER_STEPS = [
     ("1 solid", lambda r: r["solids"] == 1),
     ("150-1000 faces", lambda r: 150 <= r["faces"] <= 1000),
@@ -41,9 +39,9 @@ FILTER_STEPS = [
 
 
 def step_unit(path):
-    """Length unit named in the first 64 KiB of a STEP file, or "" when none is found."""
+    """Length unit named in a STEP file, or "" when none is found."""
     with open(path, "rb") as handle:
-        match = UNIT.search(handle.read(HEADER_BYTES).decode("latin-1"))
+        match = UNIT.search(handle.read().decode("latin-1"))
     if not match:
         return ""
     return UNIT_NAMES[match.group(1) or match.group(2)]
@@ -97,8 +95,17 @@ def safe_row(path):
         return None
 
 
-def write_stats(chunk=CHUNK, out=STATS, workers=8):
-    files = sorted(Path(chunk).rglob("*.step"))
+def stats_path(chunk):
+    return CACHE / f"{chunk}_stats.csv"
+
+
+def step_paths():
+    return {p.stem: p for chunk in CHUNKS for p in (CACHE / chunk).rglob("*.step")}
+
+
+def write_stats(chunk, workers=8):
+    files = sorted((CACHE / chunk).rglob("*.step"))
+    out = stats_path(chunk)
     with ProcessPoolExecutor(workers) as pool, open(out, "w", newline="") as handle:
         writer = csv.DictWriter(handle, COLUMNS)
         writer.writeheader()
@@ -107,9 +114,12 @@ def write_stats(chunk=CHUNK, out=STATS, workers=8):
     return len(files), len(rows)
 
 
-def load_stats(path=STATS):
-    with open(path, newline="") as handle:
-        return [{k: (v if k in ("id", "unit") else int(v)) for k, v in row.items()} for row in csv.DictReader(handle)]
+def load_stats():
+    rows = []
+    for chunk in CHUNKS:
+        with open(stats_path(chunk), newline="") as handle:
+            rows += [{k: (v if k in ("id", "unit") else int(v)) for k, v in row.items()} for row in csv.DictReader(handle)]
+    return rows
 
 
 def passes_filter(row):
@@ -124,13 +134,13 @@ def funnel(rows):
     return steps
 
 
-def pick_candidates(rows, count=CANDIDATES, seed=SEED, chunk=CHUNK):
+def pick_candidates(rows, count=CANDIDATES, seed=SEED):
     """First `count` valid survivors of the seeded shuffle, and how many survivors were examined."""
     from cadgenbench.common.validity import analyze_step
 
     survivors = sorted(r["id"] for r in rows if passes_filter(r))
     random.Random(seed).shuffle(survivors)
-    paths = {p.stem: p for p in Path(chunk).rglob("*.step")}
+    paths = step_paths()
     chosen, examined = [], 0
     for part in survivors:
         if len(chosen) == count:
@@ -198,9 +208,10 @@ def contact_sheets(captions, out=OUT, columns=5, rows=6, cell=300):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     parser.add_argument("command", choices=["stats", "select", "previews"])
+    parser.add_argument("chunk", nargs="?", choices=CHUNKS)
     args = parser.parse_args()
     if args.command == "stats":
-        print(write_stats())
+        print(write_stats(args.chunk))
     elif args.command == "select":
         rows = load_stats()
         for step in funnel(rows):
@@ -209,7 +220,7 @@ def main():
         CANDIDATE_IDS.write_text(json.dumps({"seed": SEED, "examined": examined, "ids": chosen}, indent=1))
         print(f"{len(chosen)} valid candidates after examining {examined} survivors")
     else:
-        paths = {p.stem: p for p in CHUNK.rglob("*.step")}
+        paths = step_paths()
         faces = {r["id"]: r["faces"] for r in load_stats()}
         OUT.mkdir(parents=True, exist_ok=True)
         ids = json.loads(CANDIDATE_IDS.read_text())["ids"]
