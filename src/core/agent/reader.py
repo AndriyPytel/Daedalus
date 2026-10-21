@@ -140,24 +140,20 @@ def mismatches(facts, table):
         return ["The Document holds no solid."]
     found = []
     extents = facts["extents"]
-    if table is not None:
-        given = [value for value in table["overall"].values() if value is not None]
+    if table is not None and not table["flat_pattern_present"]:
+        given = sorted(value for value in table["overall"].values() if value is not None)
         pool = sorted(extents)
         if len(given) == 3:
-            wrong = not all(_close(a, b) for a, b in zip(pool, sorted(given)))
+            pairs = zip(given, pool)
         else:
-            wrong = any(not any(_close(e, value) for e in pool) for value in given)
-        if wrong:
-            found.append("Overall size: the drawing gives %s, the solid measures %s mm." % (
-                " x ".join("%g" % value for value in sorted(given)),
-                " x ".join("%.1f" % e for e in pool)))
+            pairs = ((value, min(pool, key=lambda e: abs(e - value))) for value in given)
+        for read, built in pairs:
+            if not _close(built, read):
+                found.append("The table read %g mm for an overall dimension; the solid measures %.1f mm "
+                             "there. Check it on the crop." % (read, built))
     if facts["b0"] != 1:
         found.append("The Document holds %d separate solids; the part is one." % facts["b0"])
     if table is not None:
-        wanted = table["through_count"]
-        if wanted is not None and facts["b1"] != wanted:
-            found.append("Through openings: the reading counts %d, the solid has %d "
-                         "(independent openings through it)." % (wanted, facts["b1"]))
         box = extents[0] * extents[1] * extents[2]
         hollow = table["thin_walled"] or table["body_family"] in THIN_FAMILIES
         if hollow and box and facts["volume"] / box > HOLLOW_FILL:

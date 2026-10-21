@@ -285,7 +285,7 @@ def test_the_reader_arm_reads_the_drawing_once_then_builds_with_the_table_in_fro
 
 
 def test_the_finish_gate_returns_the_differences_only_and_a_second_finish_is_accepted(kernel, tmp_path):
-    table = dict(TABLE, through_count=4)
+    table = dict(TABLE, thin_walled=True)
     llm = ScriptedLLMClient([_say(**table), _say(code=BOX), _say(finish="a cube"),
                              _say(finish="still a cube")])
 
@@ -293,7 +293,7 @@ def test_the_finish_gate_returns_the_differences_only_and_a_second_finish_is_acc
 
     assert result.ok and len(llm.calls) == 4
     sent = _user_text(llm.calls[3])
-    assert "Through openings" in sent and "conform" not in sent.lower()
+    assert "thin-walled" in sent and "conform" not in sent.lower()
     assert "front view, then crop 1" in sent
     client.close()
 

@@ -30,14 +30,21 @@ def test_a_part_that_matches_the_table_has_no_differences():
     assert mismatches(PLATE, _table()) == []
 
 
-def test_the_differences_are_listed_largest_first_and_never_say_the_part_conforms():
+def test_a_wrong_count_is_not_a_difference_and_a_wrong_size_is_only_a_note_to_check_the_crop():
     table = _table(overall={"x": 120.0, "y": 50.0, "z": 10.0}, through_count=4, thin_walled=True)
 
     found = mismatches(dict(PLATE, volume=45000.0), table)
 
-    assert [line.split(":")[0].split(",")[0] for line in found] == [
-        "Overall size", "Through openings", "The drawing shows a thin-walled part"]
-    assert not any("conform" in line.lower() for line in found)
+    assert len(found) == 2
+    assert found[0].startswith("The table read 120 mm") and "Check it on the crop" in found[0]
+    assert found[1].startswith("The drawing shows a thin-walled part")
+    assert not any("conform" in line.lower() or "Through" in line for line in found)
+
+
+def test_a_size_read_off_a_flat_pattern_is_not_compared_with_the_formed_part():
+    table = _table(overall={"x": 300.0, "y": 150.0, "z": 3.0}, flat_pattern_present=True)
+
+    assert mismatches(dict(PLATE, extents=[290.0, 150.0, 70.0], volume=5000.0), table) == []
 
 
 def test_an_overall_size_within_two_percent_or_half_a_millimetre_is_not_a_difference():
