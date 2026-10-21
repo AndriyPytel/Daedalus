@@ -56,6 +56,7 @@ from core.loop.execute import (
     _A_PROPERTY_OF_THE_DOCUMENT,
     _FAILED_THIS_WAY,
     _MAY_START_AGAIN,
+    _ROUNDS,
     _SHAPES_THE_PART,
     _SKIPPED_A_STEP,
     _THICKNESS_FAILED,
@@ -64,6 +65,7 @@ from core.loop.execute import (
     _WHAT_NOW,
     _emit_plan,
     _freecad_version,
+    _kind_of_step,
     _review_views,
     _what_this_build_has,
     execute,
@@ -305,6 +307,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     plan_unmet = []
     rounds_patched = set()
     rollback_patched = [False]
+    batched = [False]
+    skipped = []
 
     def rewrite(cause, refused, feedback, tried, reason=None, step=None, patch=False):
         """
@@ -529,13 +533,20 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                                 exploration=exploration,
                                 design=distilled(part.the_part) if part.the_part else None,
                                 supervisor=supervisor, plan_values=dict(frozen_values),
-                                base=base, changes=full_changes)
+                                base=base, changes=full_changes, settled=batched[0])
+        if outcome.get("order") is not None:
+            full_steps = [full_steps[at] for at in outcome["order"]]
+            full_cites = [full_cites[at] for at in outcome["order"]]
+            batched[0] = True
         for offset in range(outcome["applied_here"] - carried):
-            history_log.append({"step": carried + offset + 1, "text": continuation[offset],
+            history_log.append({"step": carried + offset + 1, "text": full_steps[carried + offset],
                                "rolled_back": None})
         last_pass.steps, last_pass.cites, last_pass.applied = \
             full_steps, full_cites, outcome["applied_here"]
         applied = progress.applied
+        for item in outcome.get("unbuilt") or ():
+            progress.satisfied.extend(item["entries"])
+        skipped.extend(outcome.get("unbuilt") or ())
 
         if outcome.get("budget_exhausted"):
             return _budget_exhausted(events, outcome["budget_exhausted"],
@@ -566,13 +577,13 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
         if nobody_is_answering() and not applied:
             return _block(events, "No Step could be built: %s" % "; ".join(
-                "%s (%s)" % (item["step"], item["why"]) for item in outcome.get("unbuilt") or ()),
+                "%s (%s)" % (item["step"], item["why"]) for item in skipped),
                           outcome["tried"], applied)
 
         described = outcome["description"] or described
 
         if nobody_is_answering():
-            unbuilt = outcome.get("unbuilt") or []
+            unbuilt = skipped
             progress.unmet = list(dict.fromkeys(
                 _not_reached(unbuilt, planned.acceptance) + plan_unmet))
             return LoopResult(ok=True, steps_applied=applied, unmet=list(progress.unmet),
@@ -660,21 +671,22 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
                   as_described="", looks=None, entries=(), cites=(), ledger=None,
                   start=0, ops=(), kernel=None, exploration=None, design=None,
-                  supervisor=None, plan_values=None, base=None, changes=()):
+                  supervisor=None, plan_values=None, base=None, changes=(), settled=False):
     """
     One pass over the Plan: written by one Execute phase, applied one Step at a
     time. `budgets.attempts_per_step` bounds one Step; a spent Step hands back
     to Plan with its one `Ledger` entry written here, and `ops[i]` rides onto
-    `apply_step` as `op` so `core/lint.py` checks the TypeId. `exploration`
+    `apply_step` as `op` so `core/lint.py` checks the TypeId; `exploration`
     carries `agent.py`'s undeclared-turn count across a same-Step regeneration
-    and, threaded in by `_run` across its own replan loop, across a Plan
-    revision too, `outcome.apply_failed` here is exhausted from retrying in
-    place, `design`, distilled of its evidence, is carried read-only into
-    every Step's own namespace, and `plan_values` the same way beside it.
+    and across a Plan revision, `design` and `plan_values` ride read-only into
+    every Step's namespace. Where nobody answers, a failed round is left out at
+    once and a failed material Step waits for one batched handback unless that is *settled*.
     """
     if cancelled():
         raise Stopped()
     described = {}
+    deferred = []
+    landed = []
     attempts = []
     charged = 0
     free_trailing_gaps = 0
@@ -699,12 +711,17 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     written = written_from(start)
 
     def leave_out(why):
-        """The Step at `index` is marked unbuilt and passed over, and Execute is asked for the rest from the next one."""
+        """The Step at `index` is passed over, and Execute is asked for the rest from the next one."""
         nonlocal index, attempts, charged, free_trailing_gaps, written
         cited = list(cites[index]) if index < len(cites) else []
-        unbuilt.append({"step": steps[index], "why": why, "entries": cited})
-        events.emit(UNBUILT, step=index + 1, total=len(steps), description=steps[index],
-                    why=why, entries=cited)
+        op = ops[index] if index < len(ops) else None
+        if not settled and _kind_of_step(steps[index], op) not in _ROUNDS \
+                and _changes_the_shape(steps[index], op=op):
+            deferred.append({"index": index, "why": why})
+        else:
+            unbuilt.append({"step": steps[index], "why": why, "entries": cited})
+            events.emit(UNBUILT, step=index + 1, total=len(steps), description=steps[index],
+                        why=why, entries=cited)
         index += 1
         attempts, charged, free_trailing_gaps = [], 0, 0
         if index < len(steps) and not written.for_step(index + 1).code:
@@ -762,6 +779,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
 
         if outcome.code and not outcome.apply_failed:
             progress.applied += 1
+            landed.append(index)
             progress.satisfied.extend(cites[index] if index < len(cites) else ())
             if attempts or outcome.retried:
                 retried.add(index)
@@ -842,12 +860,26 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
         if probed_step is not None:
             exploration[probed_step] = probe["turns"]
 
+    if deferred:
+        return {"obsolete": None, "description": described, "tried": [], "unbuilt": unbuilt,
+                "applied_here": start + len(landed),
+                "order": list(range(start)) + landed,
+                "handback": _could_not_be_built(steps, deferred)}
     return {"obsolete": None, "handback": None, "description": described,
             "applied_here": index,
             "tried": [], "unbuilt": unbuilt, "retried": sorted(
                 {cited for at in retried for cited in (cites[at] if at < len(cites)
                                                        else ())}),
             "retried_names": sorted(retried_names)}
+
+
+def _could_not_be_built(steps, deferred):
+    """What Plan is told about every material Step Execute could not build in one pass, with Execute's reason for each."""
+    return ("These Steps could not be built as written. Rewrite each so it can be built, "
+            "using the reason given, and send back the Steps that must still be built; "
+            "what is already built is History.\n"
+            + "\n".join("- %s\n  Execute: %s" % (steps[item["index"]], item["why"])
+                       for item in deferred))
 
 
 def _changes_the_shape(step, op=None):
