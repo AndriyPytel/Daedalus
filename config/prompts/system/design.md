@@ -72,6 +72,9 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
   checked at all. It is never a datum's proof: an envelope checks the size of
   the part, and a datum's `proves` checks the datum's position, and a chain
   built on the wrong base can still hit the right envelope end to end.
+  An overall is printed as an overall; the largest number in a chain measured from a
+  datum is not the part's overall unless the chain ends at the far face. Where none is
+  printed, take it from the view's own extent (the bottom outline), not from the chain.
 - **`features`** is everything on the part — every hole, fillet, chamfer,
   pocket, boss, thread. Each one carries an `id` you choose and never reuse, a
   `kind` from the closed vocabulary below, a `region` when the drawing names

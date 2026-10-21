@@ -24,3 +24,11 @@ def test_design_is_told_to_correct_a_value_only_where_nobody_answers():
     assert "A correction replaces the old value" in headless and "`corrects`" in headless
     assert "A field already filled cannot change" not in headless
     assert "A field already filled cannot change" in asked and "A correction replaces" not in asked
+
+
+def test_design_is_told_an_overall_is_not_the_largest_number_of_a_chain():
+    said = " ".join(prompt("design").split())
+
+    assert ("the largest number in a chain measured from a datum is not the part's overall "
+            "unless the chain ends at the far face") in said
+    assert "take it from the view's own extent (the bottom outline), not from the chain" in said
