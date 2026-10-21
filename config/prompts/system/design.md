@@ -76,6 +76,7 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
   datum is not the part's overall unless the chain ends at the far face. Where none is
   printed, take it from the view's own extent (the bottom outline), not from the chain.
   Where a printed overall disagrees with a chain, a sum, or a thickness printed in another view, the printed overall stands in the envelope and the other goes under `conflicts` as `was_also_said`: an overall is one arrow from face to face, and a body thickness drawn in one view is not the part's extent where another view prints the part wider.
+  Once an overall stands, the feature whose faces make that extent is drawn to it: a profile that spans the direction with the value that lost is the same conflict, still unresolved.
 - **`features`** is everything on the part — every hole, fillet, chamfer,
   pocket, boss, thread. Each one carries an `id` you choose and never reuse, a
   `kind` from the closed vocabulary below, a `region` when the drawing names
