@@ -534,10 +534,13 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                                 design=distilled(part.the_part) if part.the_part else None,
                                 supervisor=supervisor, plan_values=dict(frozen_values),
                                 base=base, changes=full_changes, settled=batched[0])
-        if outcome.get("order") is not None:
-            full_steps = [full_steps[at] for at in outcome["order"]]
-            full_cites = [full_cites[at] for at in outcome["order"]]
-            batched[0] = True
+        order = list(range(carried)) + outcome["landed"]
+        order += [at for at in range(len(full_steps)) if at not in order]
+        full_steps = [full_steps[at] for at in order]
+        full_cites = [full_cites[at] for at in order]
+        full_ops = [full_ops[at] for at in order]
+        full_changes = [full_changes[at] for at in order]
+        batched[0] = batched[0] or bool(outcome.get("deferred"))
         for offset in range(outcome["applied_here"] - carried):
             history_log.append({"step": carried + offset + 1, "text": full_steps[carried + offset],
                                "rolled_back": None})
@@ -739,7 +742,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
 
         if written.obsolete:
             return {"obsolete": written.obsolete, "handback": None,
-                    "description": described, "applied_here": index,
+                    "description": described, "applied_here": start + len(landed), "landed": list(landed),
                     "tried": [_tried(step, a) for a in attempts]}
 
         if not attempts:
@@ -767,14 +770,14 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                         if rehearsals else _TURN_BUDGET_SPENT % (index + 1, len(steps)))
                 return {
                     "handback": None, "obsolete": None, "description": described,
-                    "applied_here": index, "tried": [],
+                    "applied_here": start + len(landed), "landed": list(landed), "tried": [],
                     "budget_exhausted": spent,
                 }
             return {
                 "handback": "Step %d of %d could not be built as written: %s\n%s"
                             % (index + 1, len(steps), step, written.unbuildable),
                 "tried": [], "obsolete": None, "description": described,
-                "applied_here": index,
+                "applied_here": start + len(landed), "landed": list(landed),
             }
 
         if outcome.code and not outcome.apply_failed:
@@ -809,7 +812,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                                outcome.apply_failed, _always_the_same_way(declared_attempts)),
                 "tried": [_tried(step, a) for a in declared_attempts],
                 "obsolete": None, "description": described,
-                "applied_here": index,
+                "applied_here": start + len(landed), "landed": list(landed),
             }
 
         ran_dry = _trailing_gap(written, index + 1, len(steps))
@@ -848,7 +851,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                                attempts[-1].traceback, _always_the_same_way(attempts)),
                 "tried": [_tried(step, a) for a in attempts],
                 "obsolete": None, "description": described,
-                "applied_here": index,
+                "applied_here": start + len(landed), "landed": list(landed),
             }
 
         if cancelled():
@@ -862,11 +865,10 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
 
     if deferred:
         return {"obsolete": None, "description": described, "tried": [], "unbuilt": unbuilt,
-                "applied_here": start + len(landed),
-                "order": list(range(start)) + landed,
+                "applied_here": start + len(landed), "landed": list(landed), "deferred": True,
                 "handback": _could_not_be_built(steps, deferred)}
     return {"obsolete": None, "handback": None, "description": described,
-            "applied_here": index,
+            "applied_here": start + len(landed), "landed": list(landed),
             "tried": [], "unbuilt": unbuilt, "retried": sorted(
                 {cited for at in retried for cited in (cites[at] if at < len(cites)
                                                        else ())}),
