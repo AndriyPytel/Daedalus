@@ -22,6 +22,7 @@ from core.lint import OP_TYPEIDS
 from core.loop.prompt import EXECUTE_PHASE, prompt, with_the_drawing
 from core.prompts import read_prompt
 from core.loop.looks import Looks
+from core.llm.roles import at_effort
 from core.nobody import nobody_is_answering
 from core.prompts import LOGS
 
@@ -162,6 +163,8 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
     numbers Plan froze at declare time, read by name from the same namespace.
     """
     budgets = budgets or Budgets()
+    if nobody_is_answering():
+        llm = at_effort(llm, EXECUTE_PHASE, "low")
     request = {"steps": [{"step": number, "do": prose}
                          for number, prose in enumerate(steps[start:], start=start + 1)],
                "document": tools.call("snapshot")}

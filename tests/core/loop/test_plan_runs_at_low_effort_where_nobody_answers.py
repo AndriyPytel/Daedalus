@@ -55,3 +55,18 @@ def test_a_gap_in_coverage_is_still_sent_back_to_plan_when_a_person_answers():
          verdict_reply("pass")], ask=a_person_who_declines)
 
     assert [e for e in events if e.kind == "plan_revised"]
+
+
+def test_an_execute_call_runs_at_low_effort_only_where_nobody_answers():
+    from core.loop.execute import execute
+    from tests.loop_helpers import FakeTools, StubKernel
+
+    for nobody, effort in ((True, "low"), (False, "medium")):
+        llm = _Dial([code_reply("pad()")[0], '{"declare": {"steps": []}}'])
+        llm.seen = []
+        if nobody:
+            with nobody_answering():
+                execute(["Pad it"], FakeTools().registry, llm, EventStream(), kernel=StubKernel())
+        else:
+            execute(["Pad it"], FakeTools().registry, llm, EventStream(), kernel=StubKernel())
+        assert set(llm.seen) == {effort}
