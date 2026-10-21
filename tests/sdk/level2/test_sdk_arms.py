@@ -273,11 +273,11 @@ def _reader(llm, kernel, sheet):
 
 
 def test_the_reader_arm_reads_the_drawing_once_then_builds_with_the_table_in_front_of_it(kernel, tmp_path):
-    llm = ScriptedLLMClient([_say(**TABLE), _say(code=BOX), _say(finish="a cube")])
+    llm = ScriptedLLMClient([_say(**TABLE), _say(code=BOX), _say(finish="a cube"), _say(finish="a cube")])
 
     client, result = _reader(llm, kernel, _sheet(tmp_path))
 
-    assert result.ok and len(llm.calls) == 3
+    assert result.ok and len(llm.calls) == 4
     opening = json.dumps(llm.calls[1][-1]["content"])
     assert "A first reading of the sheet" in opening and "Crop 1" in opening
     assert opening.count("image_url") >= 2
@@ -298,12 +298,17 @@ def test_the_finish_gate_returns_the_differences_only_and_a_second_finish_is_acc
     client.close()
 
 
-def test_a_part_that_matches_the_table_finishes_at_the_first_finish_without_a_word(kernel, tmp_path):
-    llm = ScriptedLLMClient([_say(**TABLE), _say(code=BOX), _say(finish="a cube")])
+def test_a_part_that_matches_the_table_is_still_answered_once_with_its_views_and_then_let_go(kernel, tmp_path):
+    table = dict(TABLE, views=[{"crop": 1, "view": "section A-A, right"}])
+    llm = ScriptedLLMClient([_say(**table), _say(code=BOX), _say(finish="a cube"), _say(finish="a cube")])
 
     client, result = _reader(llm, kernel, _sheet(tmp_path))
 
-    assert result.ok and len(llm.calls) == 3
+    assert result.ok and len(llm.calls) == 4
+    sent = _user_text(llm.calls[3])
+    assert "right view, then crop 1 (section A-A, right)" in sent
+    assert "Name each feature of the drawing the part lacks or gets wrong" in sent
+    assert "What was measured" not in sent
     client.close()
 
 

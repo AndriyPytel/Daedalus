@@ -1,7 +1,7 @@
 """
 Level 1 -- the reader arm's table is parsed tolerantly, and the finish gate lists differences only.
 """
-from core.agent.reader import mismatches, parse_table
+from core.agent.reader import _direction, mismatches, parse_table
 
 PLATE = {"solid": True, "extents": [100.0, 50.0, 10.0], "volume": 40000.0, "faces": 10,
          "b0": 1, "b1": 0, "b2": 0}
@@ -66,3 +66,10 @@ def test_the_overall_size_ignores_which_axis_the_part_was_built_along():
 
     assert mismatches(stood_up, _table()) == []
     assert len(mismatches(stood_up, _table(overall={"x": 120.0, "y": 50.0, "z": 10.0}))) == 1
+
+
+def test_a_views_name_is_matched_to_a_standard_view_by_substring_and_a_bare_section_is_drawn_from_the_front():
+    assert _direction("top (end view, upper) + front (lower)") == "top"
+    assert _direction("Section A-A, right") == "right"
+    assert _direction("section B-B") == "front"
+    assert _direction("detail C") is None

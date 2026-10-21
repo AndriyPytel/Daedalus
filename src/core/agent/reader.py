@@ -181,31 +181,42 @@ def measured(kernel):
     return None
 
 
+COMPARE = ("Compare each view with the drawing. Name each feature of the drawing the part lacks or "
+           "gets wrong, build it, then finish.")
+
+
+def _direction(name):
+    """The standard view a table's name for a view stands for, by the first of the five it mentions; a section with no direction in its name is drawn from the front."""
+    name = name.lower()
+    found = [(name.index(word), word) for word in DRAWING_VIEWS if word in name]
+    if found:
+        return min(found)[1]
+    return "front" if "section" in name else None
+
+
 def gate(kernel, sheet, table, renders):
     """
-    What to send back at the first `finish`: the differences found, and the part in each view the table names beside that view's crop; `None` where there are none.
+    What to send back at the first `finish`: the differences found, the part in each view the table names beside that view's crop, and the order to compare them; `None` where there is neither a difference nor a picture to compare.
     """
     facts = measured(kernel)
     found = mismatches(facts, table) if facts else []
-    if not found:
-        return None
-    blocks = [{"type": "text", "text": "Before you finish, here is how the solid differs from the "
-                                       "drawing. Only differences are listed; nothing else was "
-                                       "checked. Fix the largest first, then finish.\n- "
-                                       + "\n- ".join(found)}]
-    shown = set()
+    blocks, drawn_views = [], {}
     for entry in (table or {}).get("views") or ():
-        view, number = str(entry.get("view") or "").lower(), _count(entry.get("crop"))
-        if view not in DRAWING_VIEWS or view in shown or not number or number > len(sheet.crops):
+        view, number = _direction(str(entry.get("view") or "")), _count(entry.get("crop"))
+        if view is None or not number or number > len(sheet.crops):
             continue
-        shown.add(view)
-        drawn = kernel.check("pass", render_path=os.path.join(renders, "gate-%s.png" % view),
-                             render_view=view)
-        picture = _as_image(drawn.render) if drawn.ok else None
-        if picture:
-            blocks += [{"type": "text", "text": "Your part, %s view, then crop %d of the drawing:" % (view, number)},
-                       picture, _as_image(sheet.crops[number - 1].path)]
-    return blocks
+        if view not in drawn_views:
+            drawn = kernel.check("pass", render_path=os.path.join(renders, "gate-%s.png" % view),
+                                 render_view=view)
+            drawn_views[view] = _as_image(drawn.render) if drawn.ok else None
+        if drawn_views[view]:
+            blocks += [{"type": "text", "text": "Your part, %s view, then crop %d (%s) of the drawing:"
+                                                % (view, number, entry.get("view"))},
+                       drawn_views[view], _as_image(sheet.crops[number - 1].path)]
+    if not found and not blocks:
+        return None
+    listed = ("What was measured on the solid:\n- " + "\n- ".join(found) + "\n\n") if found else ""
+    return [{"type": "text", "text": listed + COMPARE}] + blocks
 
 
 def run_reader(intent, *, llm, kernel, tools, events, attachments=(), cancelled=None,
