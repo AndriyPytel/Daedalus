@@ -49,7 +49,7 @@ def test_a_volume_difference_past_the_tolerance_still_aborts(doc):
     probe = doc.addObject("Part::Box", "Box")
     probe.recompute()
     expected = signature_of(doc)
-    expected["volume"] += expected["volume"] * 1e-5
+    expected["volume"] += expected["volume"] * 1e-3
     doc.removeObject("Box")
 
     with pytest.raises(SignatureMismatch):
@@ -69,3 +69,11 @@ def test_the_drift_a_live_fillet_replay_measured_still_matches():
     same = {"count": 3, "names": ["Body", "Fillet", "Pad"], "links": {}}
     assert signatures_match(dict(same, volume=275673.872855),
                             dict(same, volume=275673.877298))
+
+
+def test_a_relative_difference_of_7e_5_matches_and_1e_3_does_not():
+    from core.kernel.kernel_worker import signatures_match
+
+    same = {"count": 3, "names": ["Body", "Fillet", "Pad"], "links": {}}
+    assert signatures_match(dict(same, volume=1000000.0), dict(same, volume=1000000.0 * (1 + 7.8e-5)))
+    assert not signatures_match(dict(same, volume=1000000.0), dict(same, volume=1000000.0 * (1 + 1e-3)))

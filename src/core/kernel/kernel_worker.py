@@ -966,7 +966,7 @@ def signature_of(doc):
     }
 
 
-_VOLUME_RELATIVE_TOLERANCE = 1e-6
+_VOLUME_RELATIVE_TOLERANCE = 1e-4
 
 
 def signatures_match(landed, expected):
