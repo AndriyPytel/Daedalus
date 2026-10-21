@@ -51,7 +51,7 @@ _CODE_REFUSALS = 3
 
 
 _RUNS_PER_STEP = 2
-"""Code runs on one Step that may fail to land before a run nobody answers leaves it out."""
+"""Code runs carrying one Step number that may fail to land before a run nobody answers leaves it out."""
 
 
 _DECLARATION_LIMIT = 15
@@ -119,6 +119,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
     first_step = True
     declared_failure = None
     left_out = {}
+    runs_of = {}
     refused_code = 0
     pending_retry = None
     last_failure = None
@@ -187,17 +188,14 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                 if declaration_demanded:
                     raise AgentGaveUp(
                         "%s ran %d turns without declaring" % (phase, since_declaration))
-                if (nobody_is_answering() and phase == pc.EXECUTE
-                        and since_declaration >= _RUNS_PER_STEP):
-                    in_hand = _the_step_in_hand(sources.get("plan"), delivered_steps, left_out)
-                    if in_hand is not None:
-                        left_out[str(in_hand)] = "%d code runs did not land it" % since_declaration
-                        since_declaration = 0
-                        pending_retry = None
-                        text = replied_with({"ok": False, "status": "refused", "left_out": in_hand,
-                                             "traceback": read_prompt("step_left_out.md").strip()
-                                                          % in_hand})
-                        continue
+                if (nobody_is_answering() and phase == pc.EXECUTE and message.get("step") is not None
+                        and runs_of.get(message["step"], 0) >= _RUNS_PER_STEP):
+                    left_out[str(message["step"])] = "%d code runs did not land it" % runs_of[message["step"]]
+                    pending_retry = None
+                    text = replied_with({"ok": False, "status": "refused", "left_out": message["step"],
+                                         "traceback": read_prompt("step_left_out.md").strip()
+                                                      % message["step"]})
+                    continue
                 since_declaration += 1
                 if since_declaration > _DECLARATION_LIMIT:
                     declaration_demanded = True
@@ -275,6 +273,8 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                     result = working_kernel.check(
                         message["code"], exploring=not builds, **kernel_kwargs)
                 last_failure = None if result.ok else result.traceback
+                if message.get("step") is not None and not result.ok:
+                    runs_of[message["step"]] = runs_of.get(message["step"], 0) + 1
                 first_step = False
                 if fix is not None:
                     if result.ok and (result.checkpoint or skipped):
@@ -343,6 +343,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                     delivered = (on_declaration(declaration) if on_declaration is not None
                                 else {"delivered": True})
                     if not delivered.get("delivered"):
+                        runs_of[message["step"]] = runs_of.get(message["step"], 0) + 1
                         resync = delivered.get("resync")
                         working_kernel.check("pass", document=(
                             resync if resync is not None
@@ -471,16 +472,6 @@ def _step_beside(step, plan, forward):
         return min(later) if later else None
     earlier = [number for number in numbers if number < step]
     return max(earlier) if earlier else None
-
-
-def _the_step_in_hand(plan, delivered, left_out):
-    """The first Step of *plan* that has neither landed nor been left out, or `None`."""
-    if all(isinstance(item, dict) and "step" in item for item in plan or ()):
-        numbers = [item["step"] for item in plan or ()]
-    else:
-        numbers = range(1, len(plan or ()) + 1)
-    return next((number for number in numbers
-                 if number not in delivered and str(number) not in left_out), None)
 
 
 def _applied(declaration):

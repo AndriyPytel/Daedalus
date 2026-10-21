@@ -1,6 +1,7 @@
-"""Where nobody answers, a Step that two code runs have not landed is left out and Execute moves on."""
+"""Where nobody answers, a Step whose own code runs have twice not landed is left out; probes never count."""
 import json
 
+from core import kernel
 from core.events import EventStream
 from core.llm import ScriptedLLMClient
 from core.loop.execute import execute
@@ -10,26 +11,33 @@ from tests.loop_helpers import FakeTools, StubKernel
 STEPS = ["First", "Second", "Third"]
 
 
-def _turns():
+class _BadCodeFails(StubKernel):
+    def check(self, code, **kwargs):
+        result = super().check(code, **kwargs)
+        return kernel.KernelResult(ok=False, traceback="boom") if "bad()" in code else result
+
+
+def _code(step, code=None):
+    return json.dumps({"code": code or "s%d()" % step, "step": step, "label": "Step"})
+
+
+def _written(turns, mode=nobody_answering):
+    with mode():
+        return execute(STEPS, FakeTools().registry, ScriptedLLMClient(turns), EventStream(),
+                       kernel=_BadCodeFails())
+
+
+def test_probes_never_leave_the_first_step_out():
     probe = json.dumps({"code": "print(1)"})
-    return [json.dumps({"code": "first()", "step": 1, "label": "Step"}), probe, probe,
-            json.dumps({"code": "second()", "step": 2, "label": "Step"}),
-            json.dumps({"code": "third()", "step": 3, "label": "Step"}),
-            json.dumps({"declare": {"steps": [{"step": 1}, {"step": 3}]}})]
-
-
-def test_the_third_run_on_a_step_leaves_it_out_and_the_next_step_is_accepted():
-    llm = ScriptedLLMClient(_turns())
-    with nobody_answering():
-        written = execute(STEPS, FakeTools().registry, llm, EventStream(), kernel=StubKernel())
-
-    assert list(written.left_out) == ["2"] and 2 not in written.steps and 3 in written.steps
-
-
-def test_a_person_at_the_gate_gets_no_cap():
-    llm = ScriptedLLMClient(_turns()[:3] + [json.dumps({"code": "second()", "step": 2, "label": "Step"}),
-                                           json.dumps({"code": "third()", "step": 3, "label": "Step"}),
-                                           json.dumps({"declare": {"steps": []}})])
-    written = execute(STEPS, FakeTools().registry, llm, EventStream(), kernel=StubKernel())
+    written = _written([probe, probe, probe, _code(1), _code(2), _code(3),
+                        json.dumps({"declare": {"steps": []}})])
 
     assert not written.left_out and {1, 2, 3} <= set(written.steps)
+
+
+def test_the_step_whose_own_runs_failed_twice_is_left_out_not_the_first():
+    written = _written([_code(1), _code(2), _code(3, "bad()"), _code(3, "bad()"), _code(3, "bad()"),
+                        json.dumps({"declare": {"steps": []}})])
+
+    assert list(written.left_out) == ["3"] and {1, 2} <= set(written.steps)
+    assert 3 not in written.steps
