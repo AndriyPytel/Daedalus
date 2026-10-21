@@ -713,8 +713,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                           as_described=as_described, looks=looks, entries=entries,
                           ledger=ledger, kernel=kernel, ops=ops, exploration=probe,
                           design=design, supervisor=supervisor, plan_values=plan_values,
-                          base=base, changes=changes,
-                          attachments=attachments if nobody_is_answering() else ())
+                          base=base, changes=changes)
         if probed_step is not None:
             exploration[probed_step] = probe["turns"]
         return written

@@ -13,7 +13,9 @@ from tests.loop_helpers import (
     code_reply,
     design_reply,
     drive,
+    nothing_to_add,
     plan_reply,
+    prompts_of,
     suspect_reply,
     verdict_reply,
 )
@@ -49,3 +51,13 @@ def test_a_person_at_the_gate_gets_no_comparison():
     _, _, llm, _ = _run(a_person_who_declines, [suspect_reply(), verdict_reply("pass")])
 
     assert not [call for call in llm.calls if "Compare each view" in json.dumps(call[-1]["content"])]
+
+
+def test_only_the_comparison_turn_carries_the_drawing_among_the_execute_turns():
+    _, _, llm, _ = _run(nobody_to_ask, [nothing_to_add()])
+
+    opening = [call[1]["content"] for call in llm.calls
+               if len(call) == 2 and call[0]["content"].startswith(prompts_of("execute"))]
+    pictured = [isinstance(content, list) and any(b.get("type") == "image_url" for b in content)
+                for content in opening]
+    assert pictured == [False, True]
