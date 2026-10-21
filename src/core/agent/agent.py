@@ -27,6 +27,7 @@ from core.agent.phase_contract import spawn
 from core.agent.subagent import SessionTreeSupervisor, delegate
 from core.freecad_apply import discard
 from core.lint import lint
+from core.nobody import nobody_is_answering
 from core.loop.prompt import _CUT_OFF_ATTEMPTS, _LEDGER_HEADING, _object_of, prompt
 from core.prompts import read_prompt
 
@@ -43,6 +44,10 @@ _FORCED_BY_BUDGET = "_forced_by_budget"
 True, so a caller can tell the declaration `budget_last_call.md` compelled
 from one the model chose to make -- a verdict on a Step it never had a turn
 left to attempt."""
+
+
+_RUNS_PER_STEP = 2
+"""Code runs on one Step that may fail to land before a run nobody answers leaves it out."""
 
 
 _DECLARATION_LIMIT = 15
@@ -152,6 +157,8 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                 if pending_retry is not None and not (
                         declared.get("unbuildable") or declared.get("obsolete")):
                     declarations.append(pending_retry)
+                if left_out and isinstance(declared, dict):
+                    declared["leaves_out"] = dict(left_out)
                 return declared, session, declarations
             if "delegate" in message:
                 if supervisor is None:
@@ -169,6 +176,17 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                 if declaration_demanded:
                     raise AgentGaveUp(
                         "%s ran %d turns without declaring" % (phase, since_declaration))
+                if (nobody_is_answering() and phase == pc.EXECUTE
+                        and since_declaration >= _RUNS_PER_STEP):
+                    in_hand = _the_step_in_hand(sources.get("plan"), delivered_steps, left_out)
+                    if in_hand is not None:
+                        left_out[str(in_hand)] = "%d code runs did not land it" % since_declaration
+                        since_declaration = 0
+                        pending_retry = None
+                        text = replied_with({"ok": False, "status": "refused", "left_out": in_hand,
+                                             "traceback": read_prompt("step_left_out.md").strip()
+                                                          % in_hand})
+                        continue
                 since_declaration += 1
                 if since_declaration > _DECLARATION_LIMIT:
                     declaration_demanded = True
@@ -442,6 +460,16 @@ def _step_beside(step, plan, forward):
         return min(later) if later else None
     earlier = [number for number in numbers if number < step]
     return max(earlier) if earlier else None
+
+
+def _the_step_in_hand(plan, delivered, left_out):
+    """The first Step of *plan* that has neither landed nor been left out, or `None`."""
+    if all(isinstance(item, dict) and "step" in item for item in plan or ()):
+        numbers = [item["step"] for item in plan or ()]
+    else:
+        numbers = range(1, len(plan or ()) + 1)
+    return next((number for number in numbers
+                 if number not in delivered and str(number) not in left_out), None)
 
 
 def _applied(declaration):

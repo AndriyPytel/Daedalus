@@ -139,6 +139,7 @@ class Written:
     said: str = None
     forced: bool = False
     rehearsals: dict = field(default_factory=dict)
+    left_out: dict = field(default_factory=dict)
 
     def for_step(self, number) -> ExecuteOutcome:
         return self.steps.get(number) or ExecuteOutcome()
@@ -329,14 +330,18 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
                            unbuildable=str(reply.get("unbuildable") or reply.get("obsolete"))
                            if (reply.get("unbuildable") or reply.get("obsolete")) else None,
                            said=_said(reply, declarations, start), forced=forced,
-                           rehearsals=rehearsals)
+                           rehearsals=rehearsals,
+                           left_out=dict(reply.get("leaves_out") or {}))
         if reply.get("obsolete"):
-            return Written(obsolete=str(reply["obsolete"]), forced=forced, rehearsals=rehearsals)
+            return Written(obsolete=str(reply["obsolete"]), forced=forced, rehearsals=rehearsals,
+                           left_out=dict(reply.get("leaves_out") or {}))
         if reply.get("unbuildable"):
             return Written(unbuildable=str(reply["unbuildable"]), forced=forced,
-                           rehearsals=rehearsals)
+                           rehearsals=rehearsals,
+                           left_out=dict(reply.get("leaves_out") or {}))
         return Written(said=_said(reply, declarations, start), forced=forced,
-                       rehearsals=rehearsals)
+                       rehearsals=rehearsals,
+                           left_out=dict(reply.get("leaves_out") or {}))
     finally:
         shutil.rmtree(working_dir, ignore_errors=True)
 

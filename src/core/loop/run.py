@@ -795,6 +795,9 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
             events.emit(STEP_STARTED, index=index + 1, total=len(steps), description=step)
 
         outcome = written.for_step(index + 1)
+        if not outcome.code and str(index + 1) in written.left_out and nobody_is_answering():
+            leave_out(written.left_out[str(index + 1)])
+            continue
         if not outcome.code and written.unbuildable:
             if nobody_is_answering() and not written.forced:
                 leave_out(written.unbuildable)
