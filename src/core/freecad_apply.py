@@ -1427,8 +1427,11 @@ def base_inventory(doc):
 
 
 def _base_feature(doc):
-    base = next((obj.BaseFeature for obj in doc.Objects
+    from core.edit_guard import original_base
+
+    body = next((obj for obj in doc.Objects
                  if obj.TypeId == "PartDesign::Body" and obj.BaseFeature is not None), None)
+    base = original_base(doc, body) if body is not None else None
     return base if base is not None and _measurable(base) is not None else None
 
 

@@ -38,6 +38,7 @@ from core.sessions import Sessions
 _LAZY = {
     "manifold": ("core.manifold", None),
     "repair_base": ("core.manifold", "repair_base"),
+    "ORIGINAL_BASE": ("core.edit_guard", "ORIGINAL_BASE"),
     "rewrite_step": ("core.manifold", "rewrite_step"),
     "average": ("core.measure", "_average"),
     "pass_rate": ("core.measure", "_pass_rate"),

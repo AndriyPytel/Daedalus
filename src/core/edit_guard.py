@@ -8,6 +8,14 @@ _UNASKED_LOSS = 0.5
 _UNASKED_GAIN = 2.0
 
 
+ORIGINAL_BASE = "ImportedBase"
+
+
+def original_base(doc, body):
+    """The imported part an edit started from: the object labelled `ORIGINAL_BASE` where there is one, else the Body's own BaseFeature, so a Step that swaps the Body's BaseFeature for a code-built solid is still measured against what was imported."""
+    return next(iter(doc.getObjectsByLabel(ORIGINAL_BASE)), None) or body.BaseFeature
+
+
 class Measures:
     """
     Reads a shape's volume, validity and exact bounding box straight off the shape.

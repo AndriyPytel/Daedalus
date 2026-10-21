@@ -64,6 +64,7 @@ def base_document(step_path):
         print("base repair   :", note)
     if repaired is not base.Shape:
         base.Shape = repaired
+    base.Label = sdk.ORIGINAL_BASE
     body = doc.addObject("PartDesign::Body", "Body")
     body.BaseFeature = base
     doc.recompute()

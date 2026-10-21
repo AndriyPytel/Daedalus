@@ -317,14 +317,14 @@ def no_collateral(doc, volume_change=None, moved=None, measures=None):
     Raises an AssertionError naming every way the Body's shape is not its BaseFeature edited as asked: more than one solid, invalid, a volume change other than *volume_change* mm3, a bounding box side outside *moved* that moved, checked only when *moved* is given.
     Does nothing where no Body has a BaseFeature, so a run that edits nothing is unaffected.
     """
-    from core.edit_guard import Measures, collateral, measured
+    from core.edit_guard import Measures, collateral, measured, original_base
 
     body = next((obj for obj in doc.Objects
                  if obj.TypeId == "PartDesign::Body" and obj.BaseFeature is not None), None)
     if body is None:
         return
     measures = measures or Measures()
-    reasons = collateral(measured(body.BaseFeature.Shape, measures), measured(body.Shape, measures),
+    reasons = collateral(measured(original_base(doc, body).Shape, measures), measured(body.Shape, measures),
                          volume_change, moved)
     assert not reasons, "these did not hold: no collateral change. " + "; ".join(reasons)
 
