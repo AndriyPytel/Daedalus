@@ -58,7 +58,7 @@ OP_TYPEIDS = {
     "datum-point": ("PartDesign::Point",),
     "local-coordinate-system": ("PartDesign::CoordinateSystem",),
     "sub-shape-binder": ("PartDesign::SubShapeBinder", "PartDesign::ShapeBinder"),
-    "body": ("PartDesign::Body",),
+    "body": ("PartDesign::Body", "Part::Feature"),
     "fuse": ("Part::MultiFuse", "Part::Fuse"),
     "cut": ("Part::Cut",),
     "common": ("Part::Common", "Part::MultiCommon"),
@@ -72,7 +72,7 @@ _SCAFFOLDING_OPS = ("sketch", "datum-plane", "datum-line", "datum-point",
                     "local-coordinate-system", "sub-shape-binder", "body")
 
 _SCAFFOLD_TYPEIDS = frozenset(
-    typeid for op in _SCAFFOLDING_OPS for typeid in OP_TYPEIDS[op]
+    typeid for op in _SCAFFOLDING_OPS for typeid in OP_TYPEIDS[op] if typeid != "Part::Feature"
 )
 
 

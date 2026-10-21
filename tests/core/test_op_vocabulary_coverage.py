@@ -315,8 +315,10 @@ def test_op_typeids_gives_no_typeid_to_two_ops_outside_the_two_named_exceptions(
 
 
 def test_excluded_typeids_are_not_accepted_under_any_op():
+    """`Part::Feature` is the one exception, accepted under `body` alone: the code-built shape a tool Body holds."""
     wrongly_accepted = [typeid for typeid in EXCLUDED_TYPEIDS
-                         for typeids in OP_TYPEIDS.values() if typeid in typeids]
+                         for op, typeids in OP_TYPEIDS.items() if typeid in typeids
+                         and (typeid, op) != ("Part::Feature", "body")]
 
     assert not wrongly_accepted, wrongly_accepted
 
@@ -384,3 +386,13 @@ def test_kernel_summary_carries_the_type_of_a_partdesign_boolean():
     first, second = summarise(Doc)
     assert first["boolean_type"] == "Cut"
     assert "boolean_type" not in second
+
+
+def test_only_a_body_step_may_create_the_part_feature_a_tool_body_holds():
+    from core.lint import op_typeid_mismatch
+
+    created = ["Blade", "ToolBody"]
+    objects = [{"name": "Blade", "type": "Part::Feature"}, {"name": "ToolBody", "type": "PartDesign::Body"}]
+
+    assert op_typeid_mismatch("body", created, objects) is None
+    assert op_typeid_mismatch("pocket", created, objects) == "Part::Feature"
