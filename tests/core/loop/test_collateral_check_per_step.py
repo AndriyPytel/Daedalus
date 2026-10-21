@@ -4,6 +4,7 @@ After a Step builds on an edit, an address of the base part that is gone and tha
 from core.events import APPLIED, PREFLIGHT_FAILED, EventStream
 from core.llm import ScriptedLLMClient
 from core.loop.execute import execute
+from core.nobody import nobody_answering
 from tests.event_helpers import events_of
 from tests.loop_helpers import (FakeTools, _turns_of, StubKernel, code_reply, design_reply, drive,
                                 plan_reply, suspect_reply, verdict_reply)
@@ -41,6 +42,14 @@ def test_a_step_that_removes_a_face_it_did_not_name_is_undone_and_handed_back_wi
     assert undone == ["undo_step"]
     assert [event.data["gate"] for event in events_of(events, PREFLIGHT_FAILED)] == ["collateral"]
     assert A in said and "It did not name: %s" % A in said
+
+
+def test_where_nobody_answers_a_step_that_removes_a_face_it_did_not_name_stays():
+    with nobody_answering():
+        written, undone, events = _executed([A, B], [], [B])
+
+    assert undone == [] and written.for_step(1).apply_failed is None
+    assert not events_of(events, PREFLIGHT_FAILED)
 
 
 def test_a_face_moved_to_another_address_is_gone():

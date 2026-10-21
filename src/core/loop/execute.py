@@ -243,7 +243,8 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
                                           "signature": declaration.get("signature")}
         wanted = set(changes[index]) if base and fix is None and index is not None \
             and index < len(changes) else set()
-        unasked = sorted(wanted - _changed_addresses(design)) if base and fix is None else []
+        unasked = sorted(wanted - _changed_addresses(design)) \
+            if base and fix is None and not nobody_is_answering() else []
         if unasked:
             return handed_back(number, declaration, _UNASKED % (
                 number, "; ".join(unasked), "; ".join(sorted(_changed_addresses(design))) or "none"),
@@ -262,7 +263,7 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         if result.get("status") == "applied" and before is not None:
             after = tools.call("base_addresses")
             gone = set(before["now"]) & set(before["base"]) - set(after["now"])
-            if gone - wanted:
+            if gone - wanted and not nobody_is_answering():
                 tools.call("undo_step")
                 return handed_back(number, declaration, _COLLATERAL % (
                     number, "; ".join(sorted(gone)), "; ".join(sorted(wanted)) or "none",
