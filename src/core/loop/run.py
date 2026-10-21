@@ -966,7 +966,11 @@ def _could_not_be_built(steps, deferred, obsolete=""):
             + "\n".join("- %s\n  Execute: %s" % (steps[item["index"]], item["why"])
                        for item in deferred)
             + ("\nExecute then found the Steps after them out of date: %s" % obsolete
-               if obsolete else ""))
+               if obsolete else "")
+            + "\nWhere the reason is a number the description does not give, choose that "
+              "number, bind it as a value in your kernel and name it in the Step's values, "
+              "and keep the Step's extent: a rewritten Step removes or adds the same material "
+              "as the one it replaces, never a smaller feature in its place.")
 
 
 def _changes_the_shape(step, op=None):
