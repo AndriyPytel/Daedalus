@@ -170,3 +170,10 @@ def test_plan_and_execute_build_the_formed_part_and_shell_a_cored_body():
         assert "Build the formed part." in composed, phase
         assert "Never pad the envelope solid" in composed, phase
     assert "describes the formed part" in " ".join(prompt(DESIGN_PHASE).split())
+
+
+def test_plan_and_execute_cut_a_pocket_to_its_printed_depth_unless_the_drawing_shows_it_through():
+    for phase in (PLAN_PHASE, EXECUTE_PHASE):
+        composed = " ".join(prompt(phase).split())
+        assert ("A pocket, slot or window goes through only where a section or hidden "
+                "lines show it go through; otherwise cut it to its printed depth.") in composed, phase

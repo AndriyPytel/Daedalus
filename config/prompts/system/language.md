@@ -76,6 +76,9 @@ A thin-walled or cored body is shelled or pocketed: pad the outside, then take
 the inside out with a `thickness` or a `pocket`. Never pad the envelope solid
 and leave the cavity out.
 
+A pocket, slot or window goes through only where a section or hidden lines show it go
+through; otherwise cut it to its printed depth.
+
 ## A Step is one sentence
 
 A Step names one operation. It is phrased as an instruction, not the outcome
