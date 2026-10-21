@@ -236,6 +236,19 @@ def _the_evidence(attachments, views=None, keep_printed=False, pictures=True):
     return shown
 
 
+def with_the_drawing(task, attachments, llm, beside=()):
+    """
+    *task* (the request's text) as content blocks led by the drawing, the cache breakpoint on the last block of it, then any *beside* blocks; the text alone where nothing is attached.
+    """
+    from core.llm import cache_control_supported
+    evidence = _the_evidence(attachments) if attachments else []
+    if evidence and cache_control_supported(getattr(llm, "model", None)):
+        evidence = evidence[:-1] + [dict(evidence[-1], cache_control={"type": "ephemeral"})]
+    if not evidence and not beside:
+        return task
+    return evidence + list(beside) + [{"type": "text", "text": task}]
+
+
 def _pieces_of(sheet, views):
     """*sheet*'s own `shown()`, narrowed to `views` — the one place both
     `_the_evidence` and the page-budget estimate in `_group_tokens` read it,

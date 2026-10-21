@@ -5,6 +5,7 @@ from core.events import PLAN_REVISED, UNBUILT
 from core.loop.gate import nobody_to_ask
 from tests.event_helpers import events_of
 from tests.loop_helpers import (
+    nothing_to_add,
     code_reply,
     drive,
     plan_reply,
@@ -23,7 +24,7 @@ def test_the_steps_nothing_could_build_go_back_to_plan_once_with_their_reasons_a
          *_step_one_then_unbuildable("the slot has no face to sit on"),
          code_reply("hole()", first=3),
          plan_reply("Pocket the slot from the top face"),
-         code_reply("slot()", first=3)],
+         code_reply("slot()", first=3), nothing_to_add()],
         ask=nobody_to_ask)
 
     assert result.ok and result.steps_applied == 3
@@ -39,7 +40,7 @@ def test_a_step_that_still_cannot_be_built_after_the_one_revision_is_left_out():
         [plan_reply("Pad the outline", "Pocket the slot"),
          *_step_one_then_unbuildable("no face"),
          plan_reply("Pocket the slot from the top face"),
-         json.dumps({"declare": {"unbuildable": "still no face"}})],
+         json.dumps({"declare": {"unbuildable": "still no face"}}), nothing_to_add()],
         ask=nobody_to_ask)
 
     assert result.ok and result.steps_applied == 1

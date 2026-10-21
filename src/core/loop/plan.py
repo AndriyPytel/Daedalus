@@ -30,9 +30,8 @@ from core.loop.execute import (
 )
 from core.loop.gate import _DECIDE, _DECIDE_AND_ASSUME, _a_question_for_the_build
 from core.nobody import nobody_is_answering
-from core.llm import cache_control_supported
 from core.llm.roles import patient_for
-from core.loop.prompt import PLAN_PHASE, _pictures, _the_evidence, prompt
+from core.loop.prompt import PLAN_PHASE, _pictures, prompt, with_the_drawing
 from core.kernel.kernel_worker import RESERVED_STEP_NAMES
 
 from core.agent.agent import run_declaring
@@ -128,11 +127,7 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
     if nobody_is_answering():
         llm = patient_for(llm, PLAN_PHASE)
     task = json.dumps(request, indent=2, default=str)
-    if attachments:
-        evidence = _the_evidence(attachments)
-        if evidence and cache_control_supported(getattr(llm, "model", None)):
-            evidence = evidence[:-1] + [dict(evidence[-1], cache_control={"type": "ephemeral"})]
-        task = evidence + [{"type": "text", "text": task}]
+    task = with_the_drawing(task, attachments, llm)
     reply, _ = run_declaring(
         pc.PLAN, {}, llm, task, kernel=kernel, supervisor=supervisor, stream=events,
         system=prompt(PLAN_PHASE, editing=bool(base)), design=the_part or {})

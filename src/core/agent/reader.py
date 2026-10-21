@@ -185,6 +185,29 @@ def measured(kernel):
     return None
 
 
+def views_beside_crops(kernel, sheet, entries, renders, document=None, crops_only=True):
+    """
+    The part rendered in each view *entries* names, as content blocks, each beside the crop of the drawing the entry numbers. With *crops_only* false an entry without a crop shows the render alone.
+    """
+    blocks, shown = [], set()
+    for entry in entries or ():
+        view, number = str(entry.get("view") or "").lower(), _count(entry.get("crop"))
+        has_crop = bool(sheet and number and number <= len(sheet.crops))
+        if view not in DRAWING_VIEWS or view in shown or (crops_only and not has_crop):
+            continue
+        shown.add(view)
+        extra = {"document": document} if document is not None else {}
+        drawn = kernel.check("pass", render_path=os.path.join(renders, "gate-%s.png" % view),
+                             render_view=view, **extra)
+        picture = _as_image(drawn.render) if drawn.ok else None
+        if picture and has_crop:
+            blocks += [{"type": "text", "text": "Your part, %s view, then crop %d of the drawing:" % (view, number)},
+                       picture, _as_image(sheet.crops[number - 1].path)]
+        elif picture:
+            blocks += [{"type": "text", "text": "Your part, %s view:" % view}, picture]
+    return blocks
+
+
 def gate(kernel, sheet, table, renders):
     """
     What to send back at the first `finish`: the differences found, and the part in each view the table names beside that view's crop; `None` where there are none.
@@ -197,19 +220,7 @@ def gate(kernel, sheet, table, renders):
                                        "drawing. Only differences are listed; nothing else was "
                                        "checked. Fix the largest first, then finish.\n- "
                                        + "\n- ".join(found)}]
-    shown = set()
-    for entry in (table or {}).get("views") or ():
-        view, number = str(entry.get("view") or "").lower(), _count(entry.get("crop"))
-        if view not in DRAWING_VIEWS or view in shown or not number or number > len(sheet.crops):
-            continue
-        shown.add(view)
-        drawn = kernel.check("pass", render_path=os.path.join(renders, "gate-%s.png" % view),
-                             render_view=view)
-        picture = _as_image(drawn.render) if drawn.ok else None
-        if picture:
-            blocks += [{"type": "text", "text": "Your part, %s view, then crop %d of the drawing:" % (view, number)},
-                       picture, _as_image(sheet.crops[number - 1].path)]
-    return blocks
+    return blocks + views_beside_crops(kernel, sheet, (table or {}).get("views"), renders)
 
 
 def run_reader(intent, *, llm, kernel, tools, events, attachments=(), cancelled=None,

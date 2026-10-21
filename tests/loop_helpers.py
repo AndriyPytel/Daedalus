@@ -211,6 +211,11 @@ def a_person_who_declines(question):
     return ""
 
 
+def nothing_to_add():
+    """The comparison turn of a run nobody answers, when Execute finds nothing the part lacks."""
+    return json.dumps({"declare": {"steps": []}})
+
+
 def design_reply(model=None, question="", thinking=None):
     """
     One Design turn: what it adds to the part, and what it wants a person asked.

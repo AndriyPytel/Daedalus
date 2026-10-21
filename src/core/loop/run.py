@@ -2,6 +2,7 @@
 import contextlib
 import os
 import re
+import tempfile
 from dataclasses import dataclass, field
 
 from core.design import part_file
@@ -102,6 +103,9 @@ from core.loop.helpers import (
     _trailing_gap, _tried, _block, _stopped, _aborted, _budget_exhausted,
     _going_nowhere, _last_kernel_result, _disputes_of_unmet,
 )
+from core.agent.reader import DRAWING_VIEWS, views_beside_crops
+from core.agent.subagent import RESERVE
+from core.loop.document import copied
 from core.nobody import nobody_answering, nobody_is_answering
 from core.loop.review import review, review_suspect
 
@@ -308,6 +312,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     rounds_patched = set()
     rollback_patched = [False]
     batched = [False]
+    fired = []
     skipped = []
 
     def rewrite(cause, refused, feedback, tried, reason=None, step=None, patch=False):
@@ -533,7 +538,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                                 exploration=exploration,
                                 design=distilled(part.the_part) if part.the_part else None,
                                 supervisor=supervisor, plan_values=dict(frozen_values),
-                                base=base, changes=full_changes, settled=batched[0])
+                                base=base, changes=full_changes, settled=batched[0],
+                                attachments=attachments, compare=fired)
         order = list(range(carried)) + outcome["landed"]
         order += [at for at in range(len(full_steps)) if at not in order]
         full_steps = [full_steps[at] for at in order]
@@ -674,7 +680,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
                   as_described="", looks=None, entries=(), cites=(), ledger=None,
                   start=0, ops=(), kernel=None, exploration=None, design=None,
-                  supervisor=None, plan_values=None, base=None, changes=(), settled=False):
+                  supervisor=None, plan_values=None, base=None, changes=(), settled=False,
+                  attachments=(), compare=None):
     """
     One pass over the Plan: written by one Execute phase, applied one Step at a
     time. `budgets.attempts_per_step` bounds one Step; a spent Step hands back
@@ -706,10 +713,42 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                           as_described=as_described, looks=looks, entries=entries,
                           ledger=ledger, kernel=kernel, ops=ops, exploration=probe,
                           design=design, supervisor=supervisor, plan_values=plan_values,
-                          base=base, changes=changes)
+                          base=base, changes=changes,
+                          attachments=attachments if nobody_is_answering() else ())
         if probed_step is not None:
             exploration[probed_step] = probe["turns"]
         return written
+
+    def comparison_follows():
+        """Where nobody answers, once per run: Execute is shown the part beside the drawing and writes what it lacks as further Steps, which `steps` takes on."""
+        nonlocal written, index, attempts, charged, free_trailing_gaps
+        if compare is None or compare or not nobody_is_answering() or deferred or cancelled() \
+                or not progress.applied:
+            return False
+        compare.append(True)
+        count = len(steps)
+        with tempfile.TemporaryDirectory(prefix="fcc-compare-") as renders, copied(tools) as document:
+            shown = views_beside_crops(kernel, None, [{"view": view} for view in DRAWING_VIEWS],
+                                       renders, document=document, crops_only=False)
+        if supervisor is not None:
+            supervisor.turn_budget += RESERVE
+        probe, _ = _step_exploration(exploration, steps, count)
+        later = execute(steps + [_COMPARE], tools, llm, events, count, budgets=budgets,
+                        as_described=as_described, looks=looks, entries=entries, ledger=ledger,
+                        kernel=kernel, ops=ops, exploration=probe, design=design,
+                        supervisor=supervisor, plan_values=plan_values, base=base,
+                        changes=changes, attachments=attachments, beside=shown)
+        added = sorted(number for number in later.steps if number > count)
+        for number in added:
+            steps.append("Further Step from comparing with the drawing: %s" % (
+                later.steps[number].label or "build what the part lacks"))
+            cites.append([])
+            ops.append(None)
+            changes.append([])
+        if added:
+            written = later
+            attempts, charged, free_trailing_gaps = [], 0, 0
+        return bool(added)
 
     written = written_from(start)
 
@@ -735,7 +774,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
         events.emit(APPLIED, step=index + 1, label="", created=[])
         index += 1
 
-    while index < len(steps):
+    while index < len(steps) or comparison_follows():
         if cancelled():
             raise Stopped()
         step = steps[index]
@@ -873,6 +912,10 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                 {cited for at in retried for cited in (cites[at] if at < len(cites)
                                                        else ())}),
             "retried_names": sorted(retried_names)}
+
+
+_COMPARE = ("Compare each view with the drawing. Name each feature the part lacks or gets wrong, "
+            "build it as further Steps, then finish.")
 
 
 def _could_not_be_built(steps, deferred):

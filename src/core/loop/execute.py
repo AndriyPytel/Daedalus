@@ -19,7 +19,7 @@ from core.agent.subagent import SessionTreeSupervisor
 from core.loop.budgets import Budgets
 from core.loop.describe import _RAN_OUT_OF_ROOM
 from core.lint import OP_TYPEIDS
-from core.loop.prompt import EXECUTE_PHASE, prompt
+from core.loop.prompt import EXECUTE_PHASE, prompt, with_the_drawing
 from core.prompts import read_prompt
 from core.loop.looks import Looks
 from core.nobody import nobody_is_answering
@@ -146,7 +146,8 @@ class Written:
 
 def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_described="",
             looks=None, entries=(), ledger=None, supervisor=None, kernel=None, ops=(),
-            exploration=None, design=None, plan_values=None, base=None, changes=()):
+            exploration=None, design=None, plan_values=None, base=None, changes=(),
+            attachments=(), beside=()):
     """
     Run every Step from `start` to the end of the Plan as one agent phase,
     against one kernel held open for the whole call. `Written` comes from
@@ -191,7 +192,7 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         request["what_you_looked_at"] = looked
 
     supervisor = supervisor or SessionTreeSupervisor()
-    task = json.dumps(request, indent=2, default=str)
+    task = with_the_drawing(json.dumps(request, indent=2, default=str), attachments, llm, beside)
     refused = {}
     tried = {}
     free_refusal_spent = set()

@@ -3,19 +3,18 @@ from core.events import PLAN_REVISED, UNBUILT
 from tests.event_helpers import events_of
 from core.loop.gate import nobody_to_ask
 from tests.loop_helpers import (
+    nothing_to_add,
     code_reply,
     drive,
     failed,
     plan_reply,
-    suspect_reply,
-    verdict_reply,
 )
 
 
 def test_a_round_that_fails_once_is_left_out_and_the_run_goes_on_unrevised():
     result, events, _, tools = drive(
         [plan_reply("Pad the outline 10 mm", "Fillet the four corner edges at R2"),
-         code_reply("pad()", "fillet()"), suspect_reply(), verdict_reply("pass")],
+         code_reply("pad()", "fillet()"), nothing_to_add()],
         applies=[None, failed("Fillet (Part::Fillet): FilletId is not part of the shape")], ask=nobody_to_ask)
 
     assert result.ok and result.steps_applied == 1

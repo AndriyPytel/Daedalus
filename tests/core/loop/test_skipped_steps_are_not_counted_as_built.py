@@ -3,7 +3,7 @@ import json
 
 from core.loop.budgets import Budgets
 from core.loop.gate import nobody_to_ask
-from tests.loop_helpers import code_reply, drive, failed, plan_reply
+from tests.loop_helpers import nothing_to_add, code_reply, drive, failed, plan_reply
 
 
 def test_a_rollback_after_a_skipped_round_undoes_only_the_steps_that_landed():
@@ -16,7 +16,7 @@ def test_a_rollback_after_a_skipped_round_undoes_only_the_steps_that_landed():
          json.dumps({"declare": {"obsolete": "the outline is not what the boss sits on"}}),
          plan_reply("Pad the outline 12 mm", "Pad the boss 5 mm",
                     rollback={"to": 0, "why": "the outline was the wrong size"}),
-         code_reply("pad12()", "boss()")],
+         code_reply("pad12()", "boss()"), nothing_to_add()],
         applies=[None, failed("FilletId is not part of the shape")],
         budgets=Budgets(attempts_per_step=1), ask=nobody_to_ask)
 
