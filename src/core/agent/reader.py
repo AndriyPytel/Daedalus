@@ -80,7 +80,6 @@ def parse_table(text):
         "hole_patterns": _dicts(said.get("hole_patterns")),
         "through_count": _count(said.get("through_count")),
         "thin_walled": thin is True or str(thin).lower() in ("true", "yes"),
-        "wall_thickness": _number(said.get("wall_thickness")),
         "flat_pattern_present": said.get("flat_pattern_present") is True,
     }
 
@@ -157,10 +156,8 @@ def mismatches(facts, table):
         box = extents[0] * extents[1] * extents[2]
         hollow = table["thin_walled"] or table["body_family"] in THIN_FAMILIES
         if hollow and box and facts["volume"] / box > HOLLOW_FILL:
-            found.append("The drawing shows a thin-walled part%s, but the solid fills %.0f%% of its "
-                         "bounding box; shell or pocket it." % (
-                             " (wall %g mm)" % table["wall_thickness"] if table["wall_thickness"] else "",
-                             100 * facts["volume"] / box))
+            found.append("The drawing shows a thin-walled part, but the solid fills %.0f%% of its "
+                         "bounding box; shell or pocket it." % (100 * facts["volume"] / box))
         if table["flat_pattern_present"] and min(extents) < FLAT_BLANK_ASPECT * max(extents):
             found.append("The drawing shows a flat pattern and formed views; the solid is a flat plate "
                          "(%s mm). Build the formed part." % " x ".join("%.1f" % e for e in extents))

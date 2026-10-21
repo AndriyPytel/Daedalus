@@ -75,13 +75,12 @@ def test_a_views_name_is_matched_to_a_standard_view_by_substring_and_a_bare_sect
     assert _direction("detail C") is None
 
 
-def test_the_reading_prompt_keeps_overall_to_one_printed_dimension_and_the_wall_to_a_printed_wall():
+def test_the_reading_prompt_keeps_overall_to_one_printed_dimension():
     from core.prompts import read_prompt
 
     text = read_prompt("read_table.md")
 
     assert "never a flat-pattern length and never a sum" in text
-    assert "null unless a dimension is printed between the two faces of one wall" in text
     assert len(text) < 3072
 
 
@@ -92,3 +91,12 @@ def test_the_builder_prompt_says_names_do_not_persist_and_no_longer_argues_for_f
 
     assert "fresh namespace" in text
     assert "turns are counted" not in text and "refine after" not in text
+
+
+def test_the_table_carries_no_wall_thickness_even_when_the_reading_writes_one():
+    from core.prompts import read_prompt
+
+    table = parse_table('{"thin_walled": true, "wall_thickness": 1.5}')
+
+    assert table["thin_walled"] is True and "wall_thickness" not in table
+    assert "wall_thickness" not in read_prompt("read_table.md")
