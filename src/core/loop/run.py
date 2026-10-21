@@ -413,6 +413,13 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
             continue
 
         no_number = _cited_without_a_number(part.the_part, planned.cites)
+        if no_number and nobody_is_answering():
+            planned.cites = [[entry for entry in cited
+                              if _as_written(entry).partition(": ")[0] not in no_number]
+                             for cited in planned.cites]
+            planned.satisfies = [entry for entry in planned.satisfies
+                                 if _as_written(entry).partition(": ")[0] not in no_number]
+            no_number = []
         if no_number:
             again = bool(numberless & set(no_number))
             numberless.update(no_number)

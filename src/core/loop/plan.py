@@ -378,8 +378,9 @@ def _no_number_to_build_on(addresses) -> str:
     return ("These addresses of the description have no number, so no Step can build on them:\n"
             + "\n".join("- " + address for address in addresses)
             + "\nThis is a patch. Take each address out of the `satisfies` and the prose of "
-              "every Step citing it, or write the Step with a number you decide and say it is "
-              "assumed. Send back your Plan with every other Step unchanged and in the same order.")
+              "every Step citing it. A Step may still build it with a number you decide, bound "
+              "in your kernel and named in its values, but it does not cite the address. Send "
+              "back your Plan with every other Step unchanged and in the same order.")
 
 
 def _plan_the_rest(unconsumed, history=False) -> str:
