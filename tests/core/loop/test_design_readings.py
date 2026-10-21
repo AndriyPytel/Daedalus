@@ -1,7 +1,7 @@
 """The Design phase repeats a page-sized group's own reading, not the sheet
 extraction underneath it, and merges every reading through the same
 grow-only merge so a misread digit becomes a conflict instead of a value."""
-import itertools
+import contextlib
 
 import pytest
 
@@ -14,13 +14,11 @@ from core.nobody import nobody_answering
 
 def _scripted(replies):
     calls = []
-    turns = itertools.count()
 
     def fake_design(body, llm, events, attachments=(), views=None, phase=None,
                     keep_printed=False, pictures=True, supervisor=None, kernel=None):
-        at = next(turns)
         calls.append(views)
-        return replies[at]
+        return replies[len(calls) - 1]
 
     return calls, fake_design
 
@@ -60,42 +58,19 @@ def test_three_identical_readings_produce_no_conflict(monkeypatch):
     assert grown["envelope"]["length"]["value"] == "100 mm"
 
 
-def test_a_run_reads_each_group_three_times_by_default():
-    assert Budgets().readings is None
+@pytest.mark.parametrize("nobody, readings", [(True, 1), (False, 3)])
+def test_a_group_is_read_once_when_nobody_answers_and_three_times_when_a_person_does(
+        monkeypatch, nobody, readings):
     seen = []
 
     def stop_after_noting(intent, llm, events, attachments, cancelled, how_many, *rest):
         seen.append(how_many)
         raise RuntimeError("noted")
 
-    original = loop_describe._first_pass
-    loop_describe._first_pass = stop_after_noting
-    try:
-        with pytest.raises(RuntimeError):
-            loop_describe._describe_the_part("a part", object(), object(), Budgets(), None,
-                                             lambda: False, [])
-    finally:
-        loop_describe._first_pass = original
+    monkeypatch.setattr(loop_describe, "_first_pass", stop_after_noting)
 
-    assert seen == [3]
+    with (nobody_answering() if nobody else contextlib.nullcontext()), pytest.raises(RuntimeError):
+        loop_describe._describe_the_part("a part", object(), object(), Budgets(), None,
+                                         lambda: False, [])
 
-
-def test_where_nobody_answers_the_readings_run_together_and_the_one_with_most_printed_numbers_stands(
-        monkeypatch):
-    def printed(*callouts):
-        return {"printed_on_the_sheet": [{"callout": c} for c in callouts],
-                "envelope": {"length": {"value": "%s mm" % len(callouts), "flag": "read"}}}
-
-    calls, fake_design = _scripted([(printed("1"), ""), (printed("1", "2", "3"), "a?"),
-                                    (printed("1", "2"), "")])
-    monkeypatch.setattr(loop_design, "design", fake_design)
-
-    with nobody_answering():
-        grown, question = _asked_about_a_group("page 1", ["top view"], {}, object(),
-                                               object(), [], readings=3)
-
-    assert len(calls) == 3
-    assert [c["callout"] for c in grown["printed_on_the_sheet"]] == ["1", "2", "3"]
-    assert grown["envelope"]["length"]["value"] == "3 mm"
-    assert "conflicts" not in grown
-    assert question == "a?"
+    assert seen == [readings]

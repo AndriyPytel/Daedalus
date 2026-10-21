@@ -37,6 +37,7 @@ from core.design.report import (
     render,
 )
 from core.events import ANSWER, DESIGN, PART, QUESTION
+from core.nobody import nobody_is_answering
 from core.sheets import sheet_reader
 
 from core.loop.design import _first_pass, _reconciled, design
@@ -138,7 +139,8 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
     to the sheet once whether or not the first pass asked anything, and a
     first-pass question reaches a person only if the sheet settled nothing.
     """
-    readings = 3 if budgets.readings is None else budgets.readings
+    readings = budgets.readings if budgets.readings is not None \
+        else 1 if nobody_is_answering() else 3
     the_part, question, grouped = _first_pass(intent, llm, events, attachments, cancelled,
                                                readings, budgets.record_conflicts, base)
     the_part = merge({}, the_part, budgets.record_conflicts)
