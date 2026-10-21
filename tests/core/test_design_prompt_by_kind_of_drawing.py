@@ -32,3 +32,11 @@ def test_design_is_told_an_overall_is_not_the_largest_number_of_a_chain():
     assert ("the largest number in a chain measured from a datum is not the part's overall "
             "unless the chain ends at the far face") in said
     assert "take it from the view's own extent (the bottom outline), not from the chain" in said
+
+
+def test_design_reads_a_section_along_a_rib_as_the_rib_in_every_mode():
+    rib = "A section whose cutting plane runs along a rib or spoke shows that rib"
+    with nobody_answering():
+        headless = " ".join(prompt("design").split())
+
+    assert rib in headless and rib in " ".join(prompt("design").split())

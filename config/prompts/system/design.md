@@ -591,6 +591,8 @@ the view that draws it. Only where no other view draws the opening at all
 does the section become evidence for its shape, and then it is `derived` at
 best, `assumed` where the slice alone cannot fix it, with `because` saying so.
 
+A section whose cutting plane runs along a rib or spoke shows that rib: material hatched across a recess there is the rib's own thickness, not a floor under the whole recess. Whether the recess between the ribs goes through is read off the view that looks straight at it, or a section between the ribs, never off the one cut along a rib.
+
 **Say which axis is which in every view, and which face every feature sits on.**
 A view shows two of the part's three directions and looks along the third, and
 a part built mirrored, turned or on the wrong face is one where that was never
