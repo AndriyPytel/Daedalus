@@ -316,22 +316,6 @@ def test_a_part_that_matches_the_table_is_still_answered_once_with_its_views_and
     client.close()
 
 
-def test_a_part_that_gained_through_openings_after_the_check_is_told_once_to_confirm_them(kernel, tmp_path):
-    drill = ("c = doc.addObject('Part::Cylinder', 'Hole')\nc.Radius = 2\nc.Height = 30\n"
-             "c.Placement.Base = App.Vector(5, 5, -10)\ncut = doc.addObject('Part::Cut', 'Cut')\n"
-             "cut.Base = doc.getObject('Box')\ncut.Tool = c\ndoc.recompute()")
-    llm = ScriptedLLMClient([_say(**TABLE), _say(code=BOX), _say(finish="a cube"), _say(code=drill),
-                             _say(finish="drilled"), _say(finish="drilled")])
-
-    client, result = _reader(llm, kernel, _sheet(tmp_path))
-
-    assert result.ok and len(llm.calls) == 6
-    sent = _user_text(llm.calls[5])
-    assert "added 1 through openings; confirm each one in a section or hidden lines" in sent
-    assert "added" not in _user_text(llm.calls[4])
-    client.close()
-
-
 def test_a_failed_reading_is_retried_once_and_the_build_goes_on_without_a_table(kernel, tmp_path):
     llm = ScriptedLLMClient(["no idea", "still no idea", _say(code=BOX), _say(finish="a cube")])
 

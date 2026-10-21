@@ -194,14 +194,12 @@ def _direction(name):
     return "front" if "section" in name else None
 
 
-def gate(kernel, sheet, table, renders, seen=None):
+def gate(kernel, sheet, table, renders):
     """
-    What to send back at the first `finish`: the differences found, the part in each view the table names beside that view's crop, and the order to compare them, with the names of the views drawn, and *seen* told how many through openings the solid had; `None` where there is neither a difference nor a picture to compare.
+    What to send back at the first `finish`: the differences found, the part in each view the table names beside that view's crop, and the order to compare them, with the names of the views drawn; `None` where there is neither a difference nor a picture to compare.
     """
     facts = measured(kernel)
     found = mismatches(facts, table) if facts else []
-    if facts and seen is not None:
-        seen["b1"] = facts["b1"]
     blocks, drawn_views = [], {}
     for entry in (table or {}).get("views") or ():
         view, number = _direction(str(entry.get("view") or "")), _count(entry.get("crop"))
@@ -221,17 +219,6 @@ def gate(kernel, sheet, table, renders, seen=None):
     return [{"type": "text", "text": listed + COMPARE}] + blocks, sorted(view for view, picture in drawn_views.items() if picture)
 
 
-def recheck(kernel, seen):
-    """The one message sent at the finish after the gate answered if the part gained through openings since, counted on the agent's own solid and not the table; else `None`."""
-    facts = measured(kernel)
-    added = facts["b1"] - seen["b1"] if facts and facts.get("solid") and "b1" in seen else 0
-    if added <= 0:
-        return None
-    return [{"type": "text", "text": "Your changes after the check added %d through openings; confirm each "
-                                     "one in a section or hidden lines, and make it blind where the "
-                                     "drawing does not show it through." % added}]
-
-
 def run_reader(intent, *, llm, kernel, tools, events, attachments=(), cancelled=None,
                max_turns=60, refresh=None, base=False):
     """
@@ -240,11 +227,9 @@ def run_reader(intent, *, llm, kernel, tools, events, attachments=(), cancelled=
     sheet = None if base else next(
         (found for found in map(sheet_reader.read, attachments) if found), None)
     table = read_table(sheet, llm, events) if sheet is not None else None
-    seen = {}
     with tempfile.TemporaryDirectory(prefix="fcc-gate-") as renders:
         return run_solo(intent, llm=llm, kernel=kernel, tools=tools, events=events,
                         attachments=attachments, cancelled=cancelled, max_turns=max_turns,
                         refresh=refresh, system=read_prompt("reader.md"),
                         opening=opening(intent, sheet, table, attachments, base),
-                        gate=lambda: gate(kernel, sheet, table, renders, seen),
-                        recheck=lambda: recheck(kernel, seen))
+                        gate=lambda: gate(kernel, sheet, table, renders))
