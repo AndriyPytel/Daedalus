@@ -196,7 +196,7 @@ def _direction(name):
 
 def gate(kernel, sheet, table, renders):
     """
-    What to send back at the first `finish`: the differences found, the part in each view the table names beside that view's crop, and the order to compare them; `None` where there is neither a difference nor a picture to compare.
+    What to send back at the first `finish`: the differences found, the part in each view the table names beside that view's crop, and the order to compare them, with the names of the views drawn; `None` where there is neither a difference nor a picture to compare.
     """
     facts = measured(kernel)
     found = mismatches(facts, table) if facts else []
@@ -216,7 +216,7 @@ def gate(kernel, sheet, table, renders):
     if not found and not blocks:
         return None
     listed = ("What was measured on the solid:\n- " + "\n- ".join(found) + "\n\n") if found else ""
-    return [{"type": "text", "text": listed + COMPARE}] + blocks
+    return [{"type": "text", "text": listed + COMPARE}] + blocks, sorted(view for view, picture in drawn_views.items() if picture)
 
 
 def run_reader(intent, *, llm, kernel, tools, events, attachments=(), cancelled=None,

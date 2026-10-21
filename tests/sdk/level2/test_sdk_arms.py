@@ -309,6 +309,9 @@ def test_a_part_that_matches_the_table_is_still_answered_once_with_its_views_and
     assert "right view, then crop 1 (section A-A, right)" in sent
     assert "Name each feature of the drawing the part lacks or gets wrong" in sent
     assert "What was measured" not in sent
+    logged = next(event.data["result"] for event in client.seen
+                  if event.kind == "tool_result" and event.data.get("name") == "finish_gate")
+    assert logged["views"] == ["right"] and "Name each feature of the drawing" in logged["text"]
     client.close()
 
 

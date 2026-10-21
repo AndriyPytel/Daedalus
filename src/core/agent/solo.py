@@ -42,7 +42,7 @@ def run_solo(intent, *, llm, kernel, tools, events, attachments=(), cancelled=No
     tool asks about the Document, so the Document it reads is the kernel's.
     *system* is the prompt text where it is not `solo.md`, *opening* is the first message where it is not the
     intent and the attachments, and *gate*, asked once at the first `finish`, answers with
-    what to send back instead of finishing, or `None`.
+    the content to send back instead of finishing and the names of the views it draws, or `None`.
     """
     events.emit(INTENT, text=intent)
     if attachments:
@@ -124,9 +124,12 @@ def run_solo(intent, *, llm, kernel, tools, events, attachments=(), cancelled=No
             message = _parsed(_say(session, llm, content, phase="agent", stream=events))
             if "finish" in message and not state["gated"]:
                 state["gated"] = True
-                content = gate()
-                if content:
-                    events.emit(TOOL_RESULT, name="finish_gate", result={"returned": True})
+                answer = gate()
+                if answer:
+                    content, views = answer
+                    events.emit(TOOL_RESULT, name="finish_gate", result={
+                        "returned": True, "views": views,
+                        "text": "\n".join(b["text"] for b in content if b.get("type") == "text")})
                     continue
             if "finish" in message:
                 events.emit(COMPLETED, summary=str(message["finish"]))
