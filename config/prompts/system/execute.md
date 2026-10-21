@@ -46,7 +46,7 @@ pad.Length = height
 doc.recompute()
 
 box = bbox(pad.Shape)
-assert abs(box.ZLength - height) < 1e-6, "pad height %.3f, wanted %.3f" % (box.ZLength, height)
+assert abs(box.ZLength - height) < 0.01, "pad height %.3f, wanted %.3f" % (box.ZLength, height)
 ```
 
 declared as Step 3: `{"code": "...", "step": 3, "label": "Pad the boss"}`.
@@ -297,6 +297,8 @@ failure text is the assert's own message, so a bare `assert abs(x - y) < tol`
 fails with nothing beyond the raw exception — not which of the Step's checks
 it was or what value it saw. Say what failed and what it came out as:
 `assert abs(x - y) < tol, "outside diameter %.3f, wanted %.3f" % (x, y)`.
+Self-check tolerances are 0.01 mm for lengths and 0.5% for volumes, never 1e-6,
+and never tighter on tapered, drafted or patterned features.
 
 **What a feature moved is measured for you, on every reply.** `volume` gives
 each feature the Step created its own material before and after and the
