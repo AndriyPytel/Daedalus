@@ -83,7 +83,9 @@ def test_a_run_nobody_answers_plans_with_a_flagged_assumption_only_as_the_last_r
         system = " ".join(_system_of_the_first_plan(monkeypatch).split())
 
     assert "When `nobody_answered` tells you to decide, pick the value yourself, flag it `assumed`" in system
-    assert "say in that Step that you chose it and what you chose it from" in system
+    assert "bind it in your kernel under a name of its own (hump_length = 200.0)" in system
+    assert "list that name in the Step's \"values\"" in system
+    assert "say in the Step's prose that you assumed it and from what" in system
 
 
 def test_an_interactive_run_still_offers_question(monkeypatch):

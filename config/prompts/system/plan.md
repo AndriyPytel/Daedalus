@@ -410,8 +410,9 @@ planning around it ends the run with no Plan at all.
 {{nobody}}Nobody answers anything in this run: no person reads a question, and none
 goes back to the drawing for you. A `question` ends your turn without Steps, so
 ask only when no Step can be written at all. When `nobody_answered` tells you to
-decide, pick the value yourself, flag it `assumed`, put it in the Step's prose,
-and say in that Step that you chose it and what you chose it from.{{/nobody}}
+decide, pick the value yourself, flag it `assumed`, bind it in your kernel under a
+name of its own (hump_length = 200.0), list that name in the Step's "values", and say
+in the Step's prose that you assumed it and from what.{{/nobody}}
 
 ## How you work
 
