@@ -122,7 +122,9 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
         request["what_the_tools_say"] = list(looked)
 
     if nobody_is_answering():
-        llm = at_effort(patient_for(llm, PLAN_PHASE), PLAN_PHASE, "low")
+        llm = patient_for(llm, PLAN_PHASE)
+        if "the_drawing_is_a_bent_sheet" not in request:
+            llm = at_effort(llm, PLAN_PHASE, "low")
     task = json.dumps(request, indent=2, default=str)
     task = with_the_drawing(task, attachments, llm)
     reply, _ = run_declaring(
