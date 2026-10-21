@@ -85,6 +85,7 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
   read it in. Whatever dimension the drawing gives goes in its own field —
   `diameter`, `outer_diameter`, `radius`, `thickness`, `length`, `width`,
   `depth`, `angle`, `count`, `pitch`, `bolt_circle_diameter` — never in `kind`.
+  A feature whose shape is drawn in a DETAIL is one entry per DETAIL, and that entry carries every number printed in the detail; Plan never sees the drawing, and a feature that only names its detail is drawn as a guess.
   One that has an axis — a hole, a slot, a pocket — carries that axis in
   `axis`, and one that is a profile, an arc or a rounded end carries `plane`;
   both are values like any other, so a direction is checked on the finished

@@ -61,3 +61,10 @@ def test_design_reads_a_wall_from_face_to_face_not_off_a_step_in_its_outer_face(
 
     assert "A wall's thickness is the hatched band between its inner and its outer face in a section, read from face to face" in said
     assert "is one of the two read wrong: measure the band to scale before either goes in" in said
+
+
+def test_design_writes_one_entry_per_detail_carrying_every_number_printed_in_it():
+    said = " ".join(prompt("design").split())
+
+    assert ("A feature whose shape is drawn in a DETAIL is one entry per DETAIL, and that entry carries "
+            "every number printed in the detail") in said
