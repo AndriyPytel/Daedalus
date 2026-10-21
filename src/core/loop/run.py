@@ -781,6 +781,11 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
             raise Stopped()
         step = steps[index]
 
+        if written.obsolete and deferred and nobody_is_answering():
+            return {"obsolete": None, "description": described, "tried": [], "unbuilt": unbuilt,
+                    "applied_here": start + len(landed), "landed": list(landed), "deferred": True,
+                    "handback": _could_not_be_built(steps, deferred, written.obsolete)}
+
         if written.obsolete:
             return {"obsolete": written.obsolete, "handback": None,
                     "description": described, "applied_here": start + len(landed), "landed": list(landed),
@@ -937,13 +942,15 @@ _COMPARE = ("Compare each view with the drawing. Name each feature the part lack
             "build it as further Steps, then finish.")
 
 
-def _could_not_be_built(steps, deferred):
-    """What Plan is told about every material Step Execute could not build in one pass, with Execute's reason for each."""
+def _could_not_be_built(steps, deferred, obsolete=""):
+    """What Plan is told about the material Steps Execute could not build in one pass, with its reason for each and, if any, why the rest then looked out of date."""
     return ("These Steps could not be built as written. Rewrite each so it can be built, "
             "using the reason given, and send back the Steps that must still be built; "
             "what is already built is History.\n"
             + "\n".join("- %s\n  Execute: %s" % (steps[item["index"]], item["why"])
-                       for item in deferred))
+                       for item in deferred)
+            + ("\nExecute then found the Steps after them out of date: %s" % obsolete
+               if obsolete else ""))
 
 
 def _changes_the_shape(step, op=None):
