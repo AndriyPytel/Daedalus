@@ -71,6 +71,13 @@ class Plan:
     disputed: list = field(default_factory=list)
 
 
+_A_BENT_SHEET = (
+    "The drawing shows a flat pattern and formed views, and the description gives its lengths "
+    "in the flat pattern's frame. Plan the FORMED part the isometric shows: each wall a pad of "
+    "the sheet thickness in its own plane, placed where the fold puts it, each bend a revolve of "
+    "the sheet section about the bend axis by its printed angle. Never pad the flat blank in one plane.")
+
+
 def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set=None,
          unanswered=(), revising=(), history=(), looking=(), looked=(), tried="",
          supervisor=None, kernel=None, undo_depth=None, must_decide=False, base=None,
@@ -103,6 +110,8 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
     elif the_part:
         request["what_the_part_is"] = render(the_part)
         request["what_the_plan_must_satisfy"] = _acceptance_of(the_part)
+    if nobody_is_answering() and the_part and "flat pattern" in render(the_part).lower():
+        request["the_drawing_is_a_bent_sheet"] = _A_BENT_SHEET
     if feedback:
         request["what_went_wrong_last_time"] = feedback
     if tried:
