@@ -93,6 +93,7 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
   entry for the whole pattern: the Assertion reads the number of through
   openings off these two fields, so a hole left unflagged or a pattern without
   its count is a through count that disagrees with the part.
+  `goes_through: true` is read, never assumed: a hole, slot or window goes through only where a view shows it -- a section cutting it open face to face, hidden lines across the whole thickness, the far side seen through it. Where nothing shows it, it is blind, with a depth measured to scale or assumed, flagged and with `because`.
   A round one — a hole, a counterbore, a circular boss — also carries
   `round_in`, the one view it is drawn round in, the view whose circle gave you
   the direction. Name that view exactly as the reader names it in the list of

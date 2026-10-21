@@ -176,6 +176,8 @@ geometry.{{/nobody}}
 
 {{nobody}}A recess printed N mm deep into a wall means the wall is thicker than N; never plan a wall thinner than the deepest recess cut into it plus 1 mm.{{/nobody}}
 
+{{nobody}}A depth you assume for a pocket into a wall or flange leaves material behind it -- no more than half that wall -- unless the description says it goes through: an opening nobody showed is a loop the part does not have.{{/nobody}}
+
 Sketch geometry is positioned by computed coordinates, not by the constraint
 solver. Two circles are concentric because they were given the same centre; a
 Step that asks for constraints "to make the circles concentric" is asking the

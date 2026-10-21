@@ -45,3 +45,10 @@ def test_design_reads_a_section_along_a_rib_as_the_rib_and_keeps_a_shown_feature
     assert rib in headless and rib in asked
     assert "where no printed number gives a floor between the ribs, the recess goes through" in asked
     assert feature in headless and feature not in asked
+
+
+def test_design_reads_goes_through_and_never_assumes_it():
+    said = " ".join(prompt("design").split())
+
+    assert "`goes_through: true` is read, never assumed: a hole, slot or window goes through only where a view shows it" in said
+    assert "Where nothing shows it, it is blind, with a depth measured to scale or assumed, flagged and with `because`" in said
