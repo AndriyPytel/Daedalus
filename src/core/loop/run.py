@@ -723,7 +723,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
         return written
 
     def comparison_follows():
-        """Where nobody answers, once per run: Execute is shown the part beside the drawing and names what it lacks, and `steps` takes those on to be built by an ordinary turn."""
+        """Where nobody answers, once per run: Execute is shown the part beside the drawing and writes what it lacks as further Steps, which `steps` takes on."""
         nonlocal written, index, attempts, charged, free_trailing_gaps
         if compare is None or compare or not nobody_is_answering() or deferred or cancelled() \
                 or not progress.applied:
@@ -736,21 +736,22 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
         if supervisor is not None:
             supervisor.turn_budget += RESERVE
         probe, _ = _step_exploration(exploration, steps, count)
-        named = execute(steps + [_COMPARE], tools, llm, events, count, budgets=budgets,
+        later = execute(steps + [_COMPARE], tools, llm, events, count, budgets=budgets,
                         as_described=as_described, looks=looks, entries=entries, ledger=ledger,
                         kernel=kernel, ops=ops, exploration=probe, design=design,
                         supervisor=supervisor, plan_values=plan_values, base=base,
-                        changes=changes, attachments=attachments, beside=shown,
-                        no_code=read_prompt("declare_the_further_steps.md").strip())
-        for further in named.further:
-            steps.append(str(further["do"]).strip())
+                        changes=changes, attachments=attachments, beside=shown)
+        added = sorted(number for number in later.steps if number > count)
+        for number in added:
+            steps.append("Further Step from comparing with the drawing: %s" % (
+                later.steps[number].label or "build what the part lacks"))
             cites.append([])
             ops.append(None)
             changes.append([])
-        if named.further:
-            written = written_from(count)
+        if added:
+            written = later
             attempts, charged, free_trailing_gaps = [], 0, 0
-        return bool(named.further)
+        return bool(added)
 
     written = written_from(start)
 

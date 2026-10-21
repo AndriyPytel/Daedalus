@@ -1,5 +1,1 @@
-Compare each view with the drawing. Name each feature the part lacks or gets wrong. Write no code: declare them, one entry each, as a sentence a user would perform with its numbers, and nothing else:
-
-    {"declare": {"further_steps": [{"label": "short name", "do": "Pad the left lug 12 mm ..."}]}}
-
-Declare an empty list when the part matches the drawing.
+Compare each view with the drawing. Name each feature the part lacks or gets wrong, build it as further Steps, then finish. Do not name a fillet or chamfer over all remaining, all concave or all other edges; name only a feature absent from the Document, never one already built.

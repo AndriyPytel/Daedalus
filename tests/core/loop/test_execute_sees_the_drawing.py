@@ -13,6 +13,7 @@ from tests.loop_helpers import (
     code_reply,
     design_reply,
     drive,
+    nothing_to_add,
     plan_reply,
     prompts_of,
     suspect_reply,
@@ -35,13 +36,10 @@ def _run(ask, replies):
                  attachments=[RENDER_PNG], ask=ask)
 
 
-def _named(*further):
-    return json.dumps({"declare": {"further_steps": [{"label": "Further", "do": do} for do in further]}})
-
-
-def test_the_comparison_turn_names_further_steps_and_an_ordinary_turn_builds_them():
-    result, _, llm, tools = _run(nobody_to_ask, [_named("Pad the boss 5 mm"),
-                                                 code_reply("boss()", first=2)])
+def test_the_part_is_compared_with_the_drawing_once_where_nobody_answers():
+    result, _, llm, tools = _run(nobody_to_ask, [
+        json.dumps({"code": "boss()", "step": 2, "label": "Boss"}),
+        json.dumps({"declare": {"steps": [{"step": 2, "label": "Boss"}]}})])
 
     assert result.ok and result.steps_applied == 2
     assert tools.applied_codes() == ["pad()", "boss()"]
@@ -56,19 +54,18 @@ def test_a_person_at_the_gate_gets_no_comparison():
 
 
 def test_only_the_comparison_turn_carries_the_drawing_among_the_execute_turns():
-    _, _, llm, _ = _run(nobody_to_ask, [_named("Pad the boss 5 mm"), code_reply("boss()", first=2)])
+    _, _, llm, _ = _run(nobody_to_ask, [nothing_to_add()])
 
     opening = [call[1]["content"] for call in llm.calls
                if len(call) == 2 and call[0]["content"].startswith(prompts_of("execute"))]
     pictured = [isinstance(content, list) and any(b.get("type") == "image_url" for b in content)
                 for content in opening]
-    assert pictured == [False, True, False]
+    assert pictured == [False, True]
 
 
-def test_code_sent_in_the_comparison_turn_is_refused_and_lands_nothing():
-    result, _, llm, tools = _run(nobody_to_ask, [
-        json.dumps({"code": "boss()", "step": 2, "label": "Boss"}),
-        _named("Pad the boss 5 mm"), code_reply("boss2()", first=2)])
+def test_the_comparison_is_told_not_to_name_a_blanket_round_or_a_feature_already_built():
+    from core.prompts import read_prompt
 
-    assert result.ok and tools.applied_codes() == ["pad()", "boss2()"]
-    assert any("Declare the further Steps" in json.dumps(call[-1]["content"]) for call in llm.calls)
+    said = " ".join(read_prompt("compare_with_the_drawing.md").split())
+    assert "Do not name a fillet or chamfer over all remaining, all concave or all other edges" in said
+    assert "never one already built" in said

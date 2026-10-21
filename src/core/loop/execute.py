@@ -140,7 +140,6 @@ class Written:
     forced: bool = False
     rehearsals: dict = field(default_factory=dict)
     left_out: dict = field(default_factory=dict)
-    further: list = field(default_factory=list)
 
     def for_step(self, number) -> ExecuteOutcome:
         return self.steps.get(number) or ExecuteOutcome()
@@ -149,7 +148,7 @@ class Written:
 def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_described="",
             looks=None, entries=(), ledger=None, supervisor=None, kernel=None, ops=(),
             exploration=None, design=None, plan_values=None, base=None, changes=(),
-            attachments=(), beside=(), no_code=""):
+            attachments=(), beside=()):
     """
     Run every Step from `start` to the end of the Plan as one agent phase,
     against one kernel held open for the whole call. `Written` comes from
@@ -318,7 +317,7 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
                 on_declaration=on_declaration, exploration=exploration,
                 repair_ceiling=budgets.attempts_per_step,
                 already_delivered=range(1, start + 1),
-                plan_values=plan_values, preflight=budgets.preflight, no_code=no_code,
+                plan_values=plan_values, preflight=budgets.preflight,
             )
 
         forced = bool(reply.pop(_FORCED_BY_BUDGET, False)) and bool(supervisor.run_outcome or supervisor.reserved())
@@ -327,23 +326,22 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
 
         written = _written(declarations, start)
         if written:
-            outcome = Written(steps=written,
-                              unbuildable=str(reply.get("unbuildable") or reply.get("obsolete"))
-                              if (reply.get("unbuildable") or reply.get("obsolete")) else None,
-                              said=_said(reply, declarations, start), forced=forced,
-                              rehearsals=rehearsals)
-        elif reply.get("obsolete"):
-            outcome = Written(obsolete=str(reply["obsolete"]), forced=forced, rehearsals=rehearsals)
-        elif reply.get("unbuildable"):
-            outcome = Written(unbuildable=str(reply["unbuildable"]), forced=forced,
-                              rehearsals=rehearsals)
-        else:
-            outcome = Written(said=_said(reply, declarations, start), forced=forced,
-                              rehearsals=rehearsals)
-        outcome.left_out = dict(reply.get("leaves_out") or {})
-        outcome.further = [step for step in reply.get("further_steps") or ()
-                           if isinstance(step, dict) and str(step.get("do") or "").strip()]
-        return outcome
+            return Written(steps=written,
+                           unbuildable=str(reply.get("unbuildable") or reply.get("obsolete"))
+                           if (reply.get("unbuildable") or reply.get("obsolete")) else None,
+                           said=_said(reply, declarations, start), forced=forced,
+                           rehearsals=rehearsals,
+                           left_out=dict(reply.get("leaves_out") or {}))
+        if reply.get("obsolete"):
+            return Written(obsolete=str(reply["obsolete"]), forced=forced, rehearsals=rehearsals,
+                           left_out=dict(reply.get("leaves_out") or {}))
+        if reply.get("unbuildable"):
+            return Written(unbuildable=str(reply["unbuildable"]), forced=forced,
+                           rehearsals=rehearsals,
+                           left_out=dict(reply.get("leaves_out") or {}))
+        return Written(said=_said(reply, declarations, start), forced=forced,
+                       rehearsals=rehearsals,
+                           left_out=dict(reply.get("leaves_out") or {}))
     finally:
         shutil.rmtree(working_dir, ignore_errors=True)
 
