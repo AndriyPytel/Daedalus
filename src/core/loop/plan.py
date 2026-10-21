@@ -29,6 +29,7 @@ from core.loop.execute import (
     _lookable,
 )
 from core.loop.gate import _DECIDE, _DECIDE_AND_ASSUME, _a_question_for_the_build
+from core.prompts import read_prompt
 from core.nobody import nobody_is_answering
 from core.llm.roles import at_effort, patient_for
 from core.loop.prompt import PLAN_PHASE, _pictures, prompt, with_the_drawing
@@ -70,11 +71,7 @@ class Plan:
     disputed: list = field(default_factory=list)
 
 
-_A_BENT_SHEET = (
-    "The drawing shows a flat pattern and formed views, and the description gives its lengths "
-    "in the flat pattern's frame. Plan the FORMED part the isometric shows: each wall a pad of "
-    "the sheet thickness in its own plane, placed where the fold puts it, each bend a revolve of "
-    "the sheet section about the bend axis by its printed angle. Never pad the flat blank in one plane.")
+_A_BENT_SHEET = read_prompt("bent_sheet.md").strip()
 
 
 def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set=None,

@@ -1,0 +1,1 @@
+The drawing shows a flat pattern and formed views, and the description gives its lengths in the flat pattern's frame. Plan the FORMED part the isometric shows: each wall a pad of the sheet thickness in its own plane, placed where the fold puts it, each bend a revolve of the sheet section about the bend axis by its printed angle. Never pad the flat blank in one plane.
