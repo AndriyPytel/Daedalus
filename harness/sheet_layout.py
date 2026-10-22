@@ -85,6 +85,8 @@ def _units(records):
             continue
         if d["kind"] == "symmetry" or d["feature"].startswith("pair"):
             units.setdefault(("chain", d["axis"], "pair"), []).append(i)
+        elif d["kind"] == "running":
+            units.setdefault(("chain", d["axis"], "running"), []).append(i)
         elif d["kind"] == "linear" and d["feature"].startswith("level"):
             chains.setdefault(d["axis"], []).append(i)
         else:
@@ -155,7 +157,7 @@ def _details(records, views, scale):
     for letter in LETTERS[:MAX_DETAILS]:
         best = None
         for name in {d["view"] for d in records if d["kind"] not in ("note", "symmetry")}:
-            members = [i for i, d in enumerate(records) if d["view"] == name and d["kind"] not in ("note", "symmetry", "envelope") and i not in taken]
+            members = [i for i, d in enumerate(records) if d["view"] == name and d["kind"] not in ("note", "symmetry", "envelope", "running") and i not in taken]
             anchors = {i: _anchors(records[i], views, scale) for i in members}
             for i in members:
                 for centre in anchors[i]:

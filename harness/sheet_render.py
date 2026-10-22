@@ -12,11 +12,8 @@ import re
 import numpy as np
 
 import sheet_layout
+from sheet_geometry import AREA, CHAR_WIDTH, KEEP_OUT, PAD, TEXT_MM, inside, rects_meet, segments_meet_rect, text_rect
 
-AREA = (20.0, 10.0, 584.0, 358.0)
-KEEP_OUT = (404.0, 360.0, 584.0, 410.0)
-TEXT_MM = 3.5
-CHAR_WIDTH = 0.6
 ARROW_LENGTH = 3.0
 ARROW_HALF_WIDTH = 0.6
 FIRST_STACK = 8.0
@@ -38,7 +35,6 @@ SCALE_FIELD = np.array([534.0, 371.2])
 HOMEBREW_CAIRO = "/opt/homebrew/lib/libcairo.2.dylib"
 ANGLES = [25 + 15 * i for i in range(24)]
 REACHES = [8.0, 16.0, 28.0]
-PAD = 0.2
 HATCH = '<pattern id="hatch" patternUnits="userSpaceOnUse" width="2.5" height="2.5" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="2.5" stroke="#000" stroke-width="0.25"/></pattern>'
 
 
@@ -85,40 +81,6 @@ def _readable_angle(direction):
     return angle
 
 
-def _text_rect(at, label, angle=0.0):
-    half = len(label) * TEXT_MM * CHAR_WIDTH / 2
-    corners = np.array([[-half, -TEXT_MM], [half, -TEXT_MM], [half, 0.3], [-half, 0.3]])
-    turn = math.radians(angle)
-    rotation = np.array([[math.cos(turn), -math.sin(turn)], [math.sin(turn), math.cos(turn)]])
-    points = corners @ rotation.T + at
-    return (points[:, 0].min() - PAD, points[:, 1].min() - PAD, points[:, 0].max() + PAD, points[:, 1].max() + PAD)
-
-
-def _rects_meet(a, b):
-    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
-
-
-def _inside(rect, frame):
-    return rect[0] >= frame[0] and rect[1] >= frame[1] and rect[2] <= frame[2] and rect[3] <= frame[3]
-
-
-def _segments_meet_rect(segments, rect):
-    if not len(segments):
-        return np.zeros(0, dtype=bool)
-    x0, y0, x1, y1 = segments.T
-    dx, dy = x1 - x0, y1 - y0
-    low, high = np.zeros(len(x0)), np.ones(len(x0))
-    alive = np.ones(len(x0), dtype=bool)
-    for p, q in ((-dx, x0 - rect[0]), (dx, rect[2] - x0), (-dy, y0 - rect[1]), (dy, rect[3] - y0)):
-        parallel = p == 0
-        alive &= ~(parallel & (q < 0))
-        with np.errstate(divide="ignore", invalid="ignore"):
-            ratio = np.where(parallel, 0.0, q / np.where(parallel, 1.0, p))
-        low = np.where(~parallel & (p < 0), np.maximum(low, ratio), low)
-        high = np.where(~parallel & (p > 0), np.minimum(high, ratio), high)
-    return alive & (low <= high)
-
-
 class Items:
     """Texts and line segments on one sheet, each owned by the dimension that drew it; segments are bucketed in a grid."""
 
@@ -158,12 +120,12 @@ class Items:
     def text_hits(self, text, skip=None):
         rect, owner = text["rect"], text["owner"]
         hits = []
-        if not _inside(rect, AREA) or _rects_meet(rect, KEEP_OUT):
+        if not inside(rect, AREA) or rects_meet(rect, KEEP_OUT):
             hits.append("frame")
-        hits += ["text" for j, other in enumerate(self.texts) if j != skip and other["owner"] != owner and _rects_meet(rect, other["rect"])]
+        hits += ["text" for j, other in enumerate(self.texts) if j != skip and other["owner"] != owner and rects_meet(rect, other["rect"])]
         ids = self.near(rect)
         if len(ids):
-            meets = _segments_meet_rect(self.segments[ids], rect) & (self.segment_owner[ids] != owner)
+            meets = segments_meet_rect(self.segments[ids], rect) & (self.segment_owner[ids] != owner)
             if meets.any():
                 hits += ["line" if o >= 0 else "edge" for o in np.unique(self.segment_owner[ids][meets])]
         return hits
@@ -180,7 +142,7 @@ def overlaps(items):
 
 
 def _score(candidate, items):
-    if any(not _inside(t["rect"], AREA) or _rects_meet(t["rect"], KEEP_OUT) for t in candidate["texts"]):
+    if any(not inside(t["rect"], AREA) or rects_meet(t["rect"], KEEP_OUT) for t in candidate["texts"]):
         return FRAME_SCORE
     hits = sum(len(items.text_hits(t)) for t in candidate["texts"])
     segments = candidate["segments"]
@@ -192,7 +154,7 @@ def _score(candidate, items):
         close = (rects[:, 0] < high2[0]) & (rects[:, 2] > low2[0]) & (rects[:, 1] < high2[1]) & (rects[:, 3] > low2[1])
         for j in np.nonzero(close)[0]:
             if items.texts[j]["owner"] != candidate["owner"]:
-                hits += int(_segments_meet_rect(segments, rects[j]).any())
+                hits += int(segments_meet_rect(segments, rects[j]).any())
     dim_rects = items.dim_line_rects()
     crowd = 0
     for r in candidate["dim_rects"]:
@@ -271,7 +233,7 @@ def _linear_candidates(owner, a, b, label, outward):
         parts.append(_text(at, label, angle))
         px, py = (-0.05, 1.5) if abs(hi[0] - lo[0]) > abs(hi[1] - lo[1]) else (1.5, -0.05)
         dim_rect = (min(lo[0], hi[0]) - px, min(lo[1], hi[1]) - py, max(lo[0], hi[0]) + px, max(lo[1], hi[1]) + py)
-        text = {"rect": _text_rect(at, label, angle), "label": label, "owner": owner}
+        text = {"rect": text_rect(at, label, angle), "label": label, "owner": owner}
         candidate = _candidate(owner, parts, [text], segs, [dim_rect])
         candidate["choice"] = (tier, side, k, lift)
         yield candidate
@@ -286,7 +248,7 @@ def _round_candidates(owner, kind, centre, radius, label):
             end = far + direction * reach
             sign = 1 if direction[0] >= 0 else -1
             at = np.array([end[0] + sign * (len(label) * TEXT_MM * CHAR_WIDTH / 2 + 1), end[1] + TEXT_MM * 0.35])
-            rect = _text_rect(at, label)
+            rect = text_rect(at, label)
             if kind == "diameter":
                 near = centre - direction * radius
                 start = near - direction * 2
@@ -379,11 +341,11 @@ def _detail_marks(views, placed, items):
         letter = spec["letter"]
         spot = centre + (radius + 3) * np.array([0.7071, -0.7071]) + np.array([0.0, TEXT_MM * 0.35])
         parts.append(_text(spot, letter))
-        items.add_text(_text_rect(spot, letter), letter, -6)
+        items.add_text(text_rect(spot, letter), letter, -6)
         title = f"{letter} ({spec['factor']}:1)"
         at = spec["rect_centre"] + np.array([0.0, spec["size"][1] / 2 + 6])
         parts.append(_text(at, title))
-        items.add_text(_text_rect(at, title), title, -6)
+        items.add_text(text_rect(at, title), title, -6)
     return parts
 
 
@@ -408,7 +370,7 @@ def _symmetry_lines(dims, views, placed, items):
         for end, away in ((a, a - b), (b, b - a)):
             spot = end + away / np.linalg.norm(away) * 3 + np.array([0, TEXT_MM * 0.35])
             parts.append(_text(spot, "="))
-            items.add_text(_text_rect(spot, "="), "=", -5)
+            items.add_text(text_rect(spot, "="), "=", -5)
     return parts
 
 
@@ -435,7 +397,7 @@ def _section_marks(views, placed, items):
     parts.append(f'<path d="{path}" fill="url(#hatch)" stroke="none"/>')
     title = spec["rect_centre"] + np.array([0.0, spec["size"][1] / 2 + 6])
     parts.append(_text(title, "A-A"))
-    items.add_text(_text_rect(title, "A-A"), "A-A", -2)
+    items.add_text(text_rect(title, "A-A"), "A-A", -2)
     axis = section["axis"]
     host_name = {0: "Left", 1: "Front", 2: "Top"}[(axis + 1) % 3]
     host = placed.get(host_name)
@@ -455,7 +417,7 @@ def _section_marks(views, placed, items):
         direction = (end - (a + b) / 2) / np.linalg.norm(end - (a + b) / 2)
         spot = end + direction * 4 + np.array([0, TEXT_MM * 0.35])
         parts.append(_text(spot, "A"))
-        items.add_text(_text_rect(spot, "A"), "A", -3)
+        items.add_text(text_rect(spot, "A"), "A", -3)
     items.add_segments([[*a, *b]], -3)
     return parts
 

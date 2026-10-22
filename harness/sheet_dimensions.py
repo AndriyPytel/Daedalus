@@ -19,6 +19,7 @@ FACE_ON_VIEW = {0: "Left", 1: "Front", 2: "Top"}
 LEVEL_VIEW = {0: "Front", 1: "Top", 2: "Front"}
 VIEW_DIRECTION = {"Left": 0, "Front": 1, "Top": 2}
 SMALL_MM = 0.5
+RUNNING_LEVELS = 4
 SMALL_SHARE = 0.01
 EQUAL_ANGLE = 0.1
 CHAMFER_ANGLE = 45.0
@@ -394,10 +395,11 @@ def _level_dims(levels, centres, view_choice, low, high, load, spans):
         allowed = [v for v in VIEW_DIRECTION if VIEW_DIRECTION[v] != axis]
         view = min(allowed, key=lambda v: (load[v], v != view_choice.get(axis, LEVEL_VIEW[axis])))
         load[view] += len(chains[axis]) + (axis in constraints)
+        running = len(chains[axis]) >= RUNNING_LEVELS
         for a, b in chains[axis]:
             p1, p2 = low.copy(), low.copy()
-            p1[axis], p2[axis] = a, b
-            dims.append(Dim(f"level {axis} {b:g}", "linear", float(b - a), view, tuple(p1), tuple(p2), 1, axis))
+            p1[axis], p2[axis] = (low[axis], b) if running else (a, b)
+            dims.append(Dim(f"level {axis} {b:g}", "running" if running else "linear", float(p2[axis] - p1[axis]), view, tuple(p1), tuple(p2), 1, axis))
         if axis in constraints:
             a, b = max(constraints[axis])
             p1, p2 = low.copy(), low.copy()
@@ -467,7 +469,7 @@ def _has(dims, kind, value):
 def _tied_directly(dims, axis, level, low, high):
     if min(abs(level - low[axis]), abs(level - high[axis])) < 2 * SAME_MM:
         return True
-    return any(d.kind in ("linear", "eq_spacing") and d.axis == axis and min(abs(d.p1[axis] - level), abs(d.p2[axis] - level)) < 2 * SAME_MM for d in dims)
+    return any(d.kind in ("linear", "running", "eq_spacing") and d.axis == axis and min(abs(d.p1[axis] - level), abs(d.p2[axis] - level)) < 2 * SAME_MM for d in dims)
 
 
 def _tied(dims, axis, level, low, high):

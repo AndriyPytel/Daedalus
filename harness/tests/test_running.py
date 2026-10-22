@@ -9,7 +9,7 @@ from test_layout import views
 
 def six_holes():
     part = box(100, 60, 20)
-    for x in (10, 20, 30, 45, 60, 80):
+    for x in (10, 20, 30, 45, 60, 75):
         part = drill(part, x, 30, 2)
     return part
 
@@ -18,7 +18,7 @@ def test_a_six_level_chain_is_running_dims_with_one_record_per_level():
     part = six_holes()
     dims = sd.dimensions(part)
     running = [d for d in dims if d.kind == "running" and d.axis == 0]
-    assert sorted(round(d.value, 6) for d in running) == [10.0, 20.0, 30.0, 45.0, 60.0, 80.0]
+    assert sorted(round(d.value, 6) for d in running) == [10.0, 20.0, 30.0, 45.0, 60.0, 75.0]
     assert not [d for d in dims if d.kind == "linear" and d.axis == 0 and d.feature.startswith("level")]
     assert sd.missing(part, dims) == []
 
@@ -35,7 +35,7 @@ def test_a_running_group_renders_one_dimension_line_and_an_arrowhead_per_level()
     parts = sr._dimensions(assigned, views((100.0, 60.0, 20.0)), placed, items)
     assert (items.segment_owner == sr.RUNNING_LINE).sum() == 1
     assert sum(p.startswith("<polygon") for p in parts) == 6
-    assert sorted(t["label"] for t in items.texts) == ["10", "20", "30", "45", "60", "80"]
+    assert sorted(t["label"] for t in items.texts) == ["10", "20", "30", "45", "60", "75"]
 
 
 def test_shorter_spans_get_the_tier_nearer_the_view():
