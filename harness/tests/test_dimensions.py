@@ -1,44 +1,60 @@
-import json
-
 import sheet_dimensions as sd
+from conftest import box, wedge_cut
 
 
-def _source(local_design):
-    return json.loads((local_design / f"{local_design.name}.json").read_text())
+def by_kind(dims, kind):
+    return [d for d in dims if d.kind == kind]
 
 
-def test_timeline_dimensions_carry_mm_values_on_the_face_on_view(local_design):
-    dims = sd.timeline_dimensions(_source(local_design))
-    sketch1 = [d for d in dims if d.feature == "Sketch1"]
-    assert [(d.kind, round(d.value_mm, 6), d.view) for d in sketch1] == [("diameter", 32.0, "Front")]
-    sketch5 = sorted(round(d.value_mm, 6) for d in dims if d.feature == "Sketch5")
-    assert sketch5 == [12.0, 12.0]
-    assert {d.view for d in dims if d.feature == "Sketch5"} == {"Front"}
+def test_envelope_has_one_dim_per_axis(plate):
+    dims = sd.dimensions(plate)
+    assert sorted(round(d.value, 6) for d in by_kind(dims, "envelope")) == [20.0, 60.0, 100.0]
 
 
-def test_every_extrude_gets_a_depth_dimension(local_design):
-    dims = sd.timeline_dimensions(_source(local_design))
-    depths = {d.feature: round(d.value_mm, 6) for d in dims if d.kind == "depth"}
-    assert depths["Extrude1"] == 10.0
-    assert depths["Extrude4"] == 178.0
-    assert len(depths) == 6
+def test_equal_holes_are_one_counted_group_on_their_face_on_view(plate):
+    dims = by_kind(sd.dimensions(plate), "diameter")
+    groups = {round(d.value, 6): (d.count, d.view) for d in dims}
+    assert groups == {10.0: (1, "Top"), 6.0: (2, "Top")}
 
 
-def _envelope():
-    ends = [(10.0, 0.0, 0.0), (0.0, 0.0, 10.0), (0.0, 10.0, 0.0)]
-    return [
-        sd.Dim("envelope", "step", "envelope", 10.0, view, (0.0, 0.0, 0.0), end)
-        for view, end in zip(("Front", "Front", "Top"), ends)
-    ]
+def test_hole_centres_are_located_from_the_datum_by_chained_levels(plate):
+    dims = by_kind(sd.dimensions(plate), "linear")
+    x = sorted(round(d.value, 6) for d in dims if d.axis == 0)
+    y = sorted(round(d.value, 6) for d in dims if d.axis == 1)
+    assert x == [30.0, 40.0]
+    assert y == [15.0, 15.0, 15.0]
 
 
-def test_missing_features_is_empty_for_a_full_set(local_design):
-    source = _source(local_design)
-    dims = sd.timeline_dimensions(source) + _envelope()
-    assert sd.missing_features(source, dims) == []
+def test_a_complete_set_misses_nothing(plate):
+    assert sd.missing(plate, sd.dimensions(plate)) == []
 
 
-def test_missing_features_names_the_dropped_feature(local_design):
-    source = _source(local_design)
-    dims = [d for d in sd.timeline_dimensions(source) if d.feature != "Extrude3"] + _envelope()
-    assert sd.missing_features(source, dims) == ["Extrude3"]
+def test_a_dropped_dim_is_reported(plate):
+    dims = [d for d in sd.dimensions(plate) if not (d.kind == "diameter" and abs(d.value - 10) < 0.01)]
+    assert any("10" in item for item in sd.missing(plate, dims))
+
+
+def test_oblique_plane_gets_an_angle_on_its_edge_on_view():
+    part = wedge_cut(box(100, 60, 20), 30)
+    dims = sd.dimensions(part)
+    angles = by_kind(dims, "angle")
+    assert len(angles) == 1 and angles[0].view == "Front"
+    assert round(angles[0].value) in (30, 60)
+    assert sd.missing(part, dims) == []
+
+
+def test_complexity_counts_groups_and_directions(plate):
+    assert sd.complexity(plate) == {"features": 8, "directions": 3}
+
+
+def test_countersink_cone_is_a_chamfer_and_fillet_is_an_r(plate):
+    from conftest import countersink, fillet_circles
+
+    part = countersink(plate, 30, 30)
+    dims = sd.dimensions(part)
+    assert [round(d.value, 6) for d in by_kind(dims, "chamfer")] == [3.0]
+    assert sd.missing(part, dims) == []
+    rounded = fillet_circles(plate, 1.0)
+    dims = sd.dimensions(rounded)
+    assert 1.0 in [round(d.value, 6) for d in by_kind(dims, "radius")]
+    assert sd.missing(rounded, dims) == []
