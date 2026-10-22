@@ -67,8 +67,11 @@ def _project(exemplar, work):
         views = json.loads(views_path.read_text())
     except (subprocess.SubprocessError, OSError, ValueError) as error:
         raise Skip("projection: freecadcmd failed") from error
-    if any(not views[n]["visible_svg"] for n in ("Front", "Top", "Left", "Right", "Bottom", "Rear", "FrontTopLeft")):
+    if any(not views[n]["visible_svg"] for n in ("Front", "Top", "Left", "FrontTopLeft")):
         raise Skip("projection: empty view")
+    for name in ("Right", "Bottom", "Rear"):
+        if not views[name]["visible_svg"]:
+            del views[name]
     return views
 
 
