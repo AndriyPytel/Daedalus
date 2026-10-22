@@ -292,7 +292,6 @@ ORIGIN_RADIUS = 1.2
 RUNNING_STAGGER = [0, 1, 2]
 RUNNING_JOGS = [sign * 4.5 * m for m in range(1, 9) for sign in (1, -1)]
 RUNNING_LEAD = 2.0
-ROW_COST = 1e9
 
 
 def _unit(owner, builders):
@@ -388,17 +387,12 @@ def spread(positions, gap):
 
 
 def _fan(ahead, chars):
-    """Sideways shifts and row numbers of the level texts of a running group: one row, or two alternating rows when that cuts the largest shift by more than ROW_COST mm."""
+    """Sideways shifts of the level texts of a running group, spread one text height apart, and the stagger step for the longest label."""
     gap = TEXT_MM + 1.0
-    single = [t - a for t, a in zip(spread(ahead, gap), ahead)]
-    double = [t - a for t, a in zip(spread(ahead, gap / 2 + 0.2), ahead)]
-    step = chars * TEXT_MM * CHAR_WIDTH + 1.0
-    if max(map(abs, double)) + ROW_COST < max(map(abs, single)):
-        return double, [i % 2 for i in range(len(ahead))], step
-    return single, [0] * len(ahead), step
+    return [t - a for t, a in zip(spread(ahead, gap), ahead)], chars * TEXT_MM * CHAR_WIDTH + 1.0
 
 
-def _running_options(owner, point, label, along, normal, distance, step, fan=0.0, row=0):
+def _running_options(owner, point, label, along, normal, distance, step, fan=0.0):
     """Extension line from the level to its common-line point and beyond, arrowhead on the common line, text along the extension line at 3 staggers and a jog either way."""
     angle = _readable_angle(normal)
     up = np.array([math.sin(math.radians(angle)), -math.cos(math.radians(angle))])
@@ -425,7 +419,7 @@ def _running_options(owner, point, label, along, normal, distance, step, fan=0.0
         candidate["leader"] = abs(jog) + stagger * step
         return candidate
 
-    order = [(row, fan)] + [(s, 0.0) for s in RUNNING_STAGGER] + [(s, j) for j in RUNNING_JOGS for s in RUNNING_STAGGER]
+    order = [(0, fan)] + [(s, 0.0) for s in RUNNING_STAGGER] + [(s, j) for j in RUNNING_JOGS for s in RUNNING_STAGGER]
     return [(lambda s=s, j=j: build(s, j)) for s, j in order]
 
 
@@ -490,9 +484,9 @@ def _dimensions(dims, views, placed, items, first=()):
             parts += line
             points = [map_point(dims[m]["p2"], placed[dims[m]["view"]], views) for m in members]
             ahead = [float((q - points[0]) @ along) for q in points]
-            fans, rows, step = _fan(ahead, max(len(format_value(dims[m])) for m in members))
-            for m, point, fan, row in zip(members, points, fans, rows):
-                parts += _place(_unit(m, _running_options(m, point, format_value(dims[m]), along, normal, distance, step, fan, row)), items)
+            fans, step = _fan(ahead, max(len(format_value(dims[m])) for m in members))
+            for m, point, fan in zip(members, points, fans):
+                parts += _place(_unit(m, _running_options(m, point, format_value(dims[m]), along, normal, distance, step, fan)), items)
             continue
         spec = placed[dim["view"]]
         a, b = map_point(dim["p1"], spec, views), map_point(dim["p2"], spec, views)
