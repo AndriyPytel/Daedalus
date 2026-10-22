@@ -46,6 +46,11 @@ def _unary(candidate, fixed):
             meets = segments_meet_rect(fixed.segments[ids], rect) & (fixed.segment_owner[ids] != owner)
             for o in np.unique(fixed.segment_owner[ids][meets]):
                 cost += TEXT_ON_OUTLINE if o == OUTLINE_OWNER else TEXT_ON_LINE
+    segments = candidate["segments"]
+    if len(segments):
+        for other in fixed.texts:
+            if other["owner"] != candidate["owner"] and segments_meet_rect(segments, other["rect"]).any():
+                cost += TEXT_ON_LINE
     return cost
 
 

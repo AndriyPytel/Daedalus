@@ -11,6 +11,7 @@ import re
 
 import numpy as np
 
+import sheet_anneal
 import sheet_layout
 from sheet_geometry import AREA, CHAR_WIDTH, KEEP_OUT, PAD, TEXT_MM, inside, rects_meet, segments_meet_rect, text_rect
 
@@ -20,6 +21,7 @@ FIRST_STACK = 8.0
 STACK_STEP = 6.0
 TIERS = 12
 PASSES = 3
+SEED = 0
 FRAME_SCORE = 900
 CELL = 8.0
 NEAR_TIERS = 3
@@ -90,6 +92,15 @@ class Items:
         self.segment_owner = np.zeros(0, dtype=int)
         self.dim_lines = []
         self.grid = {}
+        self.units = []
+        self.group_segments = []
+        self.group_parts = []
+
+    def copy(self):
+        other = Items()
+        other.texts, other.segments, other.segment_owner = list(self.texts), self.segments, self.segment_owner
+        other.dim_lines, other.grid = list(self.dim_lines), {k: list(v) for k, v in self.grid.items()}
+        return other
 
     def add_text(self, rect, label, owner):
         self.texts.append({"rect": rect, "label": label, "owner": owner})
@@ -171,22 +182,25 @@ def _commit(candidate, items):
     return candidate["parts"]
 
 
-def _best(candidates, items):
-    best, best_score = None, None
-    for candidate in candidates:
-        score = _score(candidate, items)
-        if best is None or score < best_score:
-            best, best_score = candidate, score
-        if score == 0:
-            break
-    return best
-
-
 def _candidate(owner, parts, texts, segments, dim_rects):
     return {"owner": owner, "parts": parts, "texts": texts, "segments": np.array(segments).reshape(-1, 4), "dim_rects": dim_rects}
 
 
-def _linear_candidates(owner, a, b, label, outward):
+def tier_ranks(entries):
+    """Tier of each (group, low, high) span: 0 when no shorter span of its group overlaps it, else one more than the highest tier among those."""
+    tiers = [0] * len(entries)
+    for i in sorted(range(len(entries)), key=lambda i: entries[i][2] - entries[i][1]):
+        group, low, high = entries[i]
+        below = [tiers[j] for j in range(len(entries)) if j != i and entries[j][0] == group and entries[j][2] - entries[j][1] < high - low and entries[j][1] < high and low < entries[j][2]]
+        tiers[i] = 1 + max(below) if below else 0
+    return tiers
+
+
+def _tier_order(first):
+    return list(range(first, TIERS)) + list(range(first - 1, -1, -1))
+
+
+def _linear_options(owner, a, b, label, outward, first_tier=0):
     along = b - a
     length = np.linalg.norm(along)
     along = along / length
@@ -195,28 +209,31 @@ def _linear_candidates(owner, a, b, label, outward):
     turn = math.radians(angle)
     up = np.array([math.sin(turn), -math.cos(turn)])
     step = len(label) * TEXT_MM * CHAR_WIDTH + 1.5
-    inside = length >= 2 * ARROW_LENGTH + step
+    inside_arrows = length >= 2 * ARROW_LENGTH + step
+    tiers = _tier_order(first_tier)
     order = []
     for side in (1, -1):
-        for tier in range(NEAR_TIERS):
+        for tier in tiers[:NEAR_TIERS]:
             order.append((tier, side, 0, 0.0))
             order += [(tier, side, k, lift) for lift in LIFTS for k in FAN]
     for side in (1, -1):
-        order += [(tier, side, k, 0.0) for tier in range(NEAR_TIERS, TIERS) for k in SLIDES]
-    for tier, side, k, lift in order:
+        order += [(tier, side, k, 0.0) for tier in tiers[NEAR_TIERS:] for k in SLIDES]
+    order = [
+        o for o in order
+        if not (inside_arrows and o[3] == 0 and not step / 2 + ARROW_LENGTH <= length / 2 + o[2] * step <= length - step / 2 - ARROW_LENGTH)
+    ]
+
+    def build(choice):
+        tier, side, k, lift = choice
         normal = (base if base @ outward >= 0 else -base) * side
         distance = FIRST_STACK + STACK_STEP * tier
         a2, b2 = a + normal * distance, b + normal * distance
         spot = length / 2 + k * step
-        if inside and lift == 0 and not step / 2 + ARROW_LENGTH <= spot <= length - step / 2 - ARROW_LENGTH:
-            continue
         anchor = length / 2
-        if lift:
-            spot = anchor + k * step
-        reach = 0.0 if inside else ARROW_LENGTH + 3
+        reach = 0.0 if inside_arrows else ARROW_LENGTH + 3
         start, end = (min(0.0, spot - step / 2), max(length, spot + step / 2)) if not lift else (0.0, length)
         lo, hi = a2 + along * (start - reach), a2 + along * (end + reach)
-        tips = (_arrow(a2, along), _arrow(b2, -along)) if inside else (_arrow(a2, -along), _arrow(b2, along))
+        tips = (_arrow(a2, along), _arrow(b2, -along)) if inside_arrows else (_arrow(a2, -along), _arrow(b2, along))
         segs = [[*(a + normal * GAP), *(a2 + normal * OVERSHOOT)], [*(b + normal * GAP), *(b2 + normal * OVERSHOOT)], [*lo, *hi]]
         parts = [
             _line(a + normal * GAP, a2 + normal * OVERSHOOT), _line(b + normal * GAP, b2 + normal * OVERSHOOT),
@@ -235,8 +252,10 @@ def _linear_candidates(owner, a, b, label, outward):
         dim_rect = (min(lo[0], hi[0]) - px, min(lo[1], hi[1]) - py, max(lo[0], hi[0]) + px, max(lo[1], hi[1]) + py)
         text = {"rect": text_rect(at, label, angle), "label": label, "owner": owner}
         candidate = _candidate(owner, parts, [text], segs, [dim_rect])
-        candidate["choice"] = (tier, side, k, lift)
-        yield candidate
+        candidate["leader"] = float(lift)
+        return candidate
+
+    return [(lambda choice=choice: build(choice)) for choice in order]
 
 
 def _round_candidates(owner, kind, centre, radius, label):
@@ -262,38 +281,204 @@ def _round_candidates(owner, kind, centre, radius, label):
             parts.append(_text(at, label))
             segs = [[*start, *end]]
             dim_rect = (min(start[0], end[0]) - 1, min(start[1], end[1]) - 1, max(start[0], end[0]) + 1, max(start[1], end[1]) + 1)
-            yield _candidate(owner, parts, [{"rect": rect, "label": label, "owner": owner}], segs, [dim_rect])
+            candidate = _candidate(owner, parts, [{"rect": rect, "label": label, "owner": owner}], segs, [dim_rect])
+            candidate["leader"] = reach
+            yield candidate
+
+
+RUNNING_LINE = -7
+RUNNING_ORIGIN = -8
+ORIGIN_RADIUS = 1.2
+RUNNING_STAGGER = [0, 1, 2]
+RUNNING_JOG = 4.0
+RUNNING_LEAD = 2.0
+
+
+def _unit(owner, builders):
+    """A placement unit: its options build lazily, each carrying its distance from the first option's text."""
+    reference = {}
+
+    def option(k):
+        def build():
+            candidate = builders[k]()
+            if k == 0:
+                reference["centre"] = _centre(candidate)
+            elif "centre" not in reference:
+                reference["centre"] = _centre(builders[0]())
+            candidate["shift"] = float(np.linalg.norm(_centre(candidate) - reference["centre"]))
+            return candidate
+        return build
+
+    return {"owner": owner, "options": [option(k) for k in range(len(builders))]}
+
+
+def _centre(candidate):
+    rects = np.array([t["rect"] for t in candidate["texts"]])
+    return np.array([(rects[:, 0].min() + rects[:, 2].max()) / 2, (rects[:, 1].min() + rects[:, 3].max()) / 2])
+
+
+def _geometry(dim, views, placed):
+    spec = placed[dim["view"]]
+    a, b = map_point(dim["p1"], spec, views), map_point(dim["p2"], spec, views)
+    return spec, a, b
+
+
+def _outward(spec, a, b):
+    along = (b - a) / np.linalg.norm(b - a)
+    outward = (a + b) / 2 - spec["rect_centre"]
+    outward = outward - (outward @ along) * along
+    return outward if np.linalg.norm(outward) > 1e-6 else np.array([-along[1], along[0]])
+
+
+def _side(outward, along):
+    base = np.array([-along[1], along[0]])
+    return base if base @ outward >= 0 else -base
+
+
+def _running_line(members, dims, views, placed, items, tiers):
+    """Chooses the side and tier of the common dimension line of one running group, commits it with its origin circle, and returns its parts and the frame for the level units."""
+    first = dims[members[0]]
+    spec = placed[first["view"]]
+    datum = map_point(first["p1"], spec, views)
+    ends = [map_point(dims[i]["p2"], spec, views) for i in members]
+    far = max(ends, key=lambda e: np.linalg.norm(e - datum))
+    along = (far - datum) / np.linalg.norm(far - datum)
+    outward = _outward(spec, datum, far)
+    best = None
+    for side in (1, -1):
+        for tier in _tier_order(tiers):
+            normal = _side(outward, along) * side
+            distance = FIRST_STACK + STACK_STEP * tier
+            line = [*(datum + normal * distance), *(far + normal * distance)]
+            segs = [line] + [[*(e + normal * GAP), *(e + normal * (distance + OVERSHOOT))] for e in ends]
+            candidate = _candidate(RUNNING_LINE, [], [], segs, [])
+            score = _score(candidate, items)
+            if best is None or score < best[0]:
+                best = (score, normal, distance)
+            if score == 0:
+                break
+        if best[0] == 0:
+            break
+    _, normal, distance = best
+    origin = datum + normal * distance
+    turn = np.linspace(0, 2 * math.pi, 16, endpoint=False)
+    ring = origin + ORIGIN_RADIUS * np.stack([np.cos(turn), np.sin(turn)], axis=1)
+    for segments, owner in (([[*origin, *(far + normal * distance)]], RUNNING_LINE), (np.hstack([ring, np.roll(ring, -1, axis=0)]), RUNNING_ORIGIN)):
+        items.add_segments(segments, owner)
+        items.group_segments.append((segments, owner))
+    parts = [
+        _line(origin, far + normal * distance),
+        f'<circle cx="{origin[0]:.3f}" cy="{origin[1]:.3f}" r="{ORIGIN_RADIUS}" fill="#fff" stroke="#000" stroke-width="{DIM_WIDTH}"/>',
+    ]
+    items.group_parts += parts
+    return parts, along, normal, distance
+
+
+def _running_options(owner, point, label, along, normal, distance):
+    """Extension line from the level to its common-line point and beyond, arrowhead on the common line, text along the extension line at 3 staggers and a jog either way."""
+    angle = _readable_angle(normal)
+    up = np.array([math.sin(math.radians(angle)), -math.cos(math.radians(angle))])
+    length = len(label) * TEXT_MM * CHAR_WIDTH
+    on_line = point + normal * distance
+
+    def build(stagger, jog):
+        tail = on_line + normal * RUNNING_LEAD
+        bend = tail + along * jog + normal * (RUNNING_LEAD if jog else 0.0)
+        end = bend + normal * stagger * (length / 2 + 1.0)
+        segs = [[*(point + normal * GAP), *tail]]
+        parts = [_line(point + normal * GAP, tail), _arrow(on_line, -along)]
+        if jog:
+            segs.append([*tail, *bend])
+            parts.append(_line(tail, bend))
+        if stagger:
+            segs.append([*bend, *end])
+            parts.append(_line(bend, end))
+        centre = end + normal * (length / 2 + 0.8)
+        at = centre - up * TEXT_MM * 0.35
+        parts.append(_text(at, label, angle))
+        text = {"rect": text_rect(at, label, angle), "label": label, "owner": owner}
+        candidate = _candidate(owner, parts, [text], segs, [])
+        candidate["leader"] = abs(jog) + stagger * (length / 2 + 1.0)
+        return candidate
+
+    order = [(s, 0.0) for s in RUNNING_STAGGER] + [(s, j) for j in (RUNNING_JOG, -RUNNING_JOG) for s in RUNNING_STAGGER]
+    return [(lambda s=s, j=j: build(s, j)) for s, j in order]
+
+
+def _linear_tiers(dims, views, placed):
+    """Preferred tier of each linear-like dim index and of each running group key, from tier_ranks over the spans on one side of one view."""
+    groups, spans = [], {}
+    for i, dim in enumerate(dims):
+        if dim["view"] not in placed or dim["kind"] not in ("linear", "envelope", "eq_spacing", "running"):
+            continue
+        spec, a, b = _geometry(dim, views, placed)
+        if np.linalg.norm(b - a) < 0.2:
+            continue
+        along = (b - a) / np.linalg.norm(b - a)
+        axis = 0 if abs(along[0]) > 0.5 else 1
+        key = ("run", dim["view"], dim["axis"]) if dim["kind"] == "running" else i
+        lo, hi = sorted((float(a[axis]), float(b[axis])))
+        if key in spans:
+            spans[key][1:] = [min(spans[key][1], lo), max(spans[key][2], hi)]
+        else:
+            spans[key] = [(dim["view"], axis, tuple(np.round(_side(_outward(spec, a, b), along), 1))), lo, hi]
+            groups.append(key)
+    return dict(zip(groups, tier_ranks([tuple(spans[k]) for k in groups])))
+
+
+def _place(unit, items):
+    best = None
+    for k, option in enumerate(unit["options"]):
+        candidate = option()
+        score = _score(candidate, items)
+        if best is None or score < best[0]:
+            best = (score, k, candidate)
+        if score == 0:
+            break
+    unit["choice"] = best[1]
+    items.units.append(unit)
+    return _commit(best[2], items)
 
 
 def _dimensions(dims, views, placed, items, first=()):
+    tiers = _linear_tiers(dims, views, placed)
     parts = []
     ordered = sorted(
         range(len(dims)),
         key=lambda i: (
-            dims[i]["kind"] == "envelope", i not in first, dims[i]["kind"] not in ("linear", "envelope"), dims[i]["value"],
+            dims[i]["kind"] == "envelope", i not in first, dims[i]["kind"] not in ("linear", "envelope", "running"), dims[i]["value"],
         ),
     )
+    running = {}
+    for i in ordered:
+        if dims[i]["kind"] == "running":
+            running.setdefault((dims[i]["view"], dims[i]["axis"]), []).append(i)
     for owner in ordered:
         dim = dims[owner]
         if dim["kind"] in ("note", "symmetry", "concentric"):
+            continue
+        if dim["kind"] == "running":
+            members = running[(dim["view"], dim["axis"])]
+            if owner != members[-1]:
+                continue
+            line, along, normal, distance = _running_line(members, dims, views, placed, items, tiers[("run", dim["view"], dim["axis"])])
+            parts += line
+            for m in members:
+                point = map_point(dims[m]["p2"], placed[dims[m]["view"]], views)
+                parts += _place(_unit(m, _running_options(m, point, format_value(dims[m]), along, normal, distance)), items)
             continue
         spec = placed[dim["view"]]
         a, b = map_point(dim["p1"], spec, views), map_point(dim["p2"], spec, views)
         label = format_value(dim)
         if dim["kind"] in ("linear", "envelope", "eq_spacing") and np.linalg.norm(b - a) >= 0.2:
-            outward = (a + b) / 2 - spec["rect_centre"]
-            along = (b - a) / np.linalg.norm(b - a)
-            outward = outward - (outward @ along) * along
-            if np.linalg.norm(outward) < 1e-6:
-                outward = np.array([-along[1], along[0]])
-            candidates = _linear_candidates(owner, a, b, label, outward)
+            builders = _linear_options(owner, a, b, label, _outward(spec, a, b), tiers[owner])
         elif dim["kind"] in ("linear", "envelope"):
             continue
         elif dim["kind"] == "diameter":
-            candidates = _round_candidates(owner, "diameter", (a + b) / 2, max(np.linalg.norm(b - a) / 2, 0.3), label)
+            builders = [(lambda c=c: c) for c in _round_candidates(owner, "diameter", (a + b) / 2, max(np.linalg.norm(b - a) / 2, 0.3), label)]
         else:
-            candidates = _round_candidates(owner, "radius", a, np.linalg.norm(b - a), label)
-        parts += _commit(_best(candidates, items), items)
+            builders = [(lambda c=c: c) for c in _round_candidates(owner, "radius", a, np.linalg.norm(b - a), label)]
+        parts += _place(_unit(owner, builders), items)
     return parts
 
 
@@ -430,22 +615,45 @@ def _pass(views, dims, placed, first):
     body += _detail_marks(views, placed, items)
     body += _symmetry_lines(dims, views, placed, items)
     body += _notes(dims, items)
-    body += _dimensions(dims, views, placed, items, first=first)
-    return body, items
+    fixed = items.copy()
+    return body, fixed, items, _dimensions(dims, views, placed, items, first=first)
+
+
+def _annealed(body, fixed, items):
+    """The body and Items after annealing the greedy placement, or None when the annealer found nothing cheaper."""
+    for segments, owner in items.group_segments:
+        fixed.add_segments(segments, owner)
+    start = [u["choice"] for u in items.units]
+    choices, cost = sheet_anneal.anneal(items.units, fixed, start, seed=SEED)
+    if cost >= sheet_anneal.state_cost(items.units, fixed, start) - 1e-9:
+        return None
+    placed = Items()
+    placed.texts, placed.segments, placed.segment_owner = list(fixed.texts), fixed.segments, fixed.segment_owner
+    placed.grid = {k: list(v) for k, v in fixed.grid.items()}
+    parts = list(body) + items.group_parts
+    for unit, k in zip(items.units, choices):
+        parts += _commit(unit["options"][k](), placed)
+    return parts, placed
 
 
 def build(views, dims, placed):
-    """Places the dims greedily; dims whose text still overlaps are placed first on the next pass, up to PASSES passes."""
+    """Places the dims greedily, up to PASSES passes with the dims that still overlap placed first, then anneals the best pass."""
     first, best = set(), None
     for _ in range(PASSES):
-        body, items = _pass(views, dims, placed, first)
+        fixed_body, fixed, items, dim_parts = _pass(views, dims, placed, first)
         found = overlaps(items)
         if best is None or len(found) < best[0]:
-            best = (len(found), body, items)
+            best = (len(found), fixed_body, fixed, items, dim_parts)
         if not found:
             break
         first |= {t["owner"] for t in items.texts if t["label"] in {f["text"] for f in found} and t["owner"] >= 0}
-    return best
+    count, fixed_body, fixed, items, dim_parts = best
+    greedy = (count, fixed_body + dim_parts, items)
+    annealed = _annealed(fixed_body, fixed, items) if items.units else None
+    if annealed is None:
+        return greedy
+    parts, final = annealed
+    return (len(overlaps(final)), parts, final) if len(overlaps(final)) <= count else greedy
 
 
 def render_svg(template_svg, views, dims):
