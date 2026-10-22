@@ -133,7 +133,7 @@ def project(step_path):
     page.addView(group)
     group.Source = [body]
     group.ProjectionType = "First angle"
-    for name in VIEWS:
+    for name in os.environ.get("DAE_VIEW_NAMES", ",".join(VIEWS)).split(","):
         group.addProjection(name)
     for view in group.Views:
         view.HardHidden = True

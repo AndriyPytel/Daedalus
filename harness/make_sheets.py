@@ -55,22 +55,29 @@ def _write_step(shape, path):
     writer.Write(str(path))
 
 
+BASIC_VIEWS = "Front,Top,Left,FrontTopLeft"
+
+
 def _project(exemplar, work):
     views_path = work / "views.json"
-    env = {**os.environ, "DAE_STEP": str(exemplar), "DAE_VIEWS": str(views_path)}
     script = HARNESS / "sheet_views.py"
-    try:
-        subprocess.run(
-            [FREECADCMD, "-c", f"exec(open({str(script)!r}).read())"],
-            env=env, check=True, capture_output=True, timeout=PROJECTION_TIMEOUT,
-        )
-        views = json.loads(views_path.read_text())
-    except (subprocess.SubprocessError, OSError, ValueError) as error:
-        raise Skip("projection: freecadcmd failed") from error
+    for names in (None, BASIC_VIEWS):
+        env = {**os.environ, "DAE_STEP": str(exemplar), "DAE_VIEWS": str(views_path), **({"DAE_VIEW_NAMES": names} if names else {})}
+        try:
+            subprocess.run(
+                [FREECADCMD, "-c", f"exec(open({str(script)!r}).read())"],
+                env=env, check=True, capture_output=True, timeout=PROJECTION_TIMEOUT,
+            )
+            views = json.loads(views_path.read_text())
+            break
+        except (subprocess.SubprocessError, OSError, ValueError) as error:
+            failure = error
+    else:
+        raise Skip("projection: freecadcmd failed") from failure
     if any(not views[n]["visible_svg"] for n in ("Front", "Top", "Left", "FrontTopLeft")):
         raise Skip("projection: empty view")
     for name in ("Right", "Bottom", "Rear"):
-        if not views[name]["visible_svg"]:
+        if name in views and not views[name]["visible_svg"]:
             del views[name]
     return views
 
