@@ -310,9 +310,9 @@ def _has(dims, kind, value):
 
 
 def _tied(dims, axis, level, low, high):
-    if min(abs(level - low[axis]), abs(level - high[axis])) < SAME_MM:
+    if min(abs(level - low[axis]), abs(level - high[axis])) < 2 * SAME_MM:
         return True
-    return any(d.kind == "linear" and d.axis == axis and min(abs(d.p1[axis] - level), abs(d.p2[axis] - level)) < SAME_MM for d in dims)
+    return any(d.kind == "linear" and d.axis == axis and min(abs(d.p1[axis] - level), abs(d.p2[axis] - level)) < 2 * SAME_MM for d in dims)
 
 
 def missing(shape, dims):
