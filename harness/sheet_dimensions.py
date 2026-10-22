@@ -101,7 +101,10 @@ def _facts(shape):
         if kind == PLANE:
             plane = surface.Plane()
             normal = _xyz(plane.Axis().Direction())
-            records.append({"type": PLANE, "normal": normal, "offset": float(normal @ _xyz(plane.Location()))})
+            records.append({
+                "type": PLANE, "normal": normal, "offset": float(normal @ _xyz(plane.Location())),
+                "point": _xyz(surface.Value((u0 + u1) / 2, (v0 + v1) / 2)),
+            })
         elif kind == CYLINDER:
             cylinder = surface.Cylinder()
             records.append({
@@ -131,6 +134,14 @@ def _facts(shape):
                 "radius": sphere.Radius(), "point": _xyz(surface.Value((u0 + u1) / 2, (v0 + v1) / 2)),
             })
     return records, bspline, total
+
+
+def face_counts(shape):
+    """Faces per surface type; non-analytic surfaces count as bspline."""
+    counts = {name: 0 for name in (PLANE, CYLINDER, CONE, TORUS, SPHERE, BSPLINE)}
+    for kind, _, _ in _faces(shape):
+        counts[kind] += 1
+    return counts
 
 
 def bspline_share(shape):
@@ -281,7 +292,7 @@ def dimensions(shape):
         dims.append(_round_dim(kind, value, count, record, mid))
     for group in _oblique_groups(_plane_levels(records)[1]):
         view, record = group[0][1]
-        point = tuple(record["normal"] * record["offset"])
+        point = tuple(record["point"])
         dims.append(Dim(f"angle {group[0][0]:g}", "angle", group[0][0], view, point, point, len(group)))
     levels, _ = _plane_levels(records)
     centres, view_choice = _hole_centres(records)
