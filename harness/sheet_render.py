@@ -15,8 +15,9 @@ SCALES = [50, 20, 10, 5, 2, 1, 1 / 2, 1 / 5, 1 / 10, 1 / 20, 1 / 50, 1 / 100]
 AREA = (20.0, 10.0, 584.0, 358.0)
 KEEP_OUT = (404.0, 360.0, 584.0, 410.0)
 MARGIN = 20.0
-GUTTER_X = 70.0
-GUTTER_Y = 60.0
+GUTTER_X = 60.0
+GUTTER_Y = 55.0
+ISO_MAX = 110.0
 TEXT_MM = 3.5
 CHAR_WIDTH = 0.6
 ARROW_LENGTH = 3.0
@@ -24,6 +25,12 @@ ARROW_HALF_WIDTH = 0.6
 FIRST_STACK = 8.0
 STACK_STEP = 6.0
 TIERS = 12
+PASSES = 3
+FRAME_SCORE = 900
+CELL = 8.0
+NEAR_TIERS = 3
+LIFTS = [5.0 + 4.0 * i for i in range(11)]
+FAN = [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6]
 SLIDES = [0, 1, -1, 2, -2, 3, -3, 4, -4, 6, -6]
 GAP = 1.0
 OVERSHOOT = 2.0
@@ -63,9 +70,16 @@ def _extent(view):
     return x1 - x0, y1 - y0
 
 
+def view_scale(name, views, scale):
+    """The sheet scale, except the undimensioned isometric view, which is shrunk to fit ISO_MAX."""
+    if name != "FrontTopLeft":
+        return scale
+    return min(scale, ISO_MAX / max(_extent(views[name])))
+
+
 def _layout(views, scale):
     """View centres on the sheet for `scale`, or None when the views do not fit."""
-    size = {name: tuple(scale * e for e in _extent(v)) for name, v in views.items() if isinstance(v, dict)}
+    size = {name: tuple(view_scale(name, views, scale) * e for e in _extent(v)) for name, v in views.items() if isinstance(v, dict)}
     front, top, left, iso = (size[n] for n in ("Front", "Top", "Left", "FrontTopLeft"))
     section = size.get("Section", (0.0, 0.0))
     row_height = max(front[1], left[1], iso[1])
@@ -165,31 +179,52 @@ def _segments_meet_rect(segments, rect):
 
 
 class Items:
-    """Texts and line segments on one sheet, each owned by the dimension that drew it."""
+    """Texts and line segments on one sheet, each owned by the dimension that drew it; segments are bucketed in a grid."""
 
     def __init__(self):
         self.texts = []
         self.segments = np.zeros((0, 4))
         self.segment_owner = np.zeros(0, dtype=int)
         self.dim_lines = []
+        self.grid = {}
 
     def add_text(self, rect, label, owner):
         self.texts.append({"rect": rect, "label": label, "owner": owner})
 
     def add_segments(self, segments, owner):
         segments = np.asarray(segments, dtype=float).reshape(-1, 4)
+        first = len(self.segments)
         self.segments = np.vstack([self.segments, segments])
         self.segment_owner = np.concatenate([self.segment_owner, np.full(len(segments), owner)])
+        for offset, (x0, y0, x1, y1) in enumerate(segments):
+            for cx in range(int(min(x0, x1) // CELL), int(max(x0, x1) // CELL) + 1):
+                for cy in range(int(min(y0, y1) // CELL), int(max(y0, y1) // CELL) + 1):
+                    self.grid.setdefault((cx, cy), []).append(first + offset)
 
-    def text_hits(self, text):
+    def text_rects(self):
+        return np.array([t["rect"] for t in self.texts])
+
+    def dim_line_rects(self):
+        return np.array(self.dim_lines).reshape(-1, 4)
+
+    def near(self, rect):
+        ids = set()
+        for cx in range(int(rect[0] // CELL), int(rect[2] // CELL) + 1):
+            for cy in range(int(rect[1] // CELL), int(rect[3] // CELL) + 1):
+                ids.update(self.grid.get((cx, cy), ()))
+        return np.fromiter(ids, dtype=int, count=len(ids))
+
+    def text_hits(self, text, skip=None):
         rect, owner = text["rect"], text["owner"]
         hits = []
         if not _inside(rect, AREA) or _rects_meet(rect, KEEP_OUT):
             hits.append("frame")
-        hits += ["text" for other in self.texts if other["owner"] != owner and _rects_meet(rect, other["rect"])]
-        meets = _segments_meet_rect(self.segments, rect) & (self.segment_owner != owner)
-        if meets.any():
-            hits += ["line" if o >= 0 else "edge" for o in np.unique(self.segment_owner[meets])]
+        hits += ["text" for j, other in enumerate(self.texts) if j != skip and other["owner"] != owner and _rects_meet(rect, other["rect"])]
+        ids = self.near(rect)
+        if len(ids):
+            meets = _segments_meet_rect(self.segments[ids], rect) & (self.segment_owner[ids] != owner)
+            if meets.any():
+                hits += ["line" if o >= 0 else "edge" for o in np.unique(self.segment_owner[ids][meets])]
         return hits
 
 
@@ -197,23 +232,31 @@ def overlaps(items):
     """One record per text that meets another text, the frame, or a line that is not its own dimension's."""
     found = []
     for i, text in enumerate(items.texts):
-        others = Items()
-        others.texts = [t for j, t in enumerate(items.texts) if j != i]
-        others.segments, others.segment_owner = items.segments, items.segment_owner
-        hits = others.text_hits(text)
+        hits = items.text_hits(text, skip=i)
         if hits:
             found.append({"text": text["label"], "meets": sorted(set(hits))})
     return found
 
 
 def _score(candidate, items):
+    if any(not _inside(t["rect"], AREA) or _rects_meet(t["rect"], KEEP_OUT) for t in candidate["texts"]):
+        return FRAME_SCORE
     hits = sum(len(items.text_hits(t)) for t in candidate["texts"])
-    if len(candidate["segments"]):
-        for other in items.texts:
-            if other["owner"] == candidate["owner"]:
-                continue
-            hits += int(_segments_meet_rect(candidate["segments"], other["rect"]).any())
-    crowd = sum(_rects_meet(r, o) for r in candidate["dim_rects"] for o in items.dim_lines)
+    segments = candidate["segments"]
+    if len(segments) and len(items.texts):
+        rects = items.text_rects()
+        low, high = segments[:, [0, 1]].min(axis=0) - PAD, segments[:, [0, 1]].max(axis=0) + PAD
+        high2 = np.maximum(segments[:, [0, 1]], segments[:, [2, 3]]).max(axis=0) + PAD
+        low2 = np.minimum(segments[:, [0, 1]], segments[:, [2, 3]]).min(axis=0) - PAD
+        close = (rects[:, 0] < high2[0]) & (rects[:, 2] > low2[0]) & (rects[:, 1] < high2[1]) & (rects[:, 3] > low2[1])
+        for j in np.nonzero(close)[0]:
+            if items.texts[j]["owner"] != candidate["owner"]:
+                hits += int(_segments_meet_rect(segments, rects[j]).any())
+    dim_rects = items.dim_line_rects()
+    crowd = 0
+    for r in candidate["dim_rects"]:
+        if len(dim_rects):
+            crowd += int(((dim_rects[:, 0] < r[2]) & (dim_rects[:, 2] > r[0]) & (dim_rects[:, 1] < r[3]) & (dim_rects[:, 3] > r[1])).sum())
     return hits * 100 + crowd * 10
 
 
@@ -240,38 +283,57 @@ def _candidate(owner, parts, texts, segments, dim_rects):
     return {"owner": owner, "parts": parts, "texts": texts, "segments": np.array(segments).reshape(-1, 4), "dim_rects": dim_rects}
 
 
-def _linear_candidates(owner, a, b, label, outward, view_centre):
+def _linear_candidates(owner, a, b, label, outward):
     along = b - a
     length = np.linalg.norm(along)
     along = along / length
     base = np.array([-along[1], along[0]])
     angle = _readable_angle(along)
-    half = len(label) * TEXT_MM * CHAR_WIDTH / 2
-    for tier in range(TIERS):
-        for side in (1, -1):
-            normal = base if base @ outward >= 0 else -base
-            normal = normal * side
-            distance = FIRST_STACK + STACK_STEP * tier
-            a2, b2 = a + normal * distance, b + normal * distance
-            step = len(label) * TEXT_MM * CHAR_WIDTH + 1.5
-            inside = length >= 2 * ARROW_LENGTH + step
-            for k in SLIDES:
-                spot_along = length / 2 + k * step
-                if inside and not (step / 2 + ARROW_LENGTH <= spot_along <= length - step / 2 - ARROW_LENGTH):
-                    continue
-                start, end = min(0.0, spot_along - step / 2), max(length, spot_along + step / 2)
-                reach = 0.0 if inside else ARROW_LENGTH + 3
-                lo, hi = a2 + along * (start - reach), a2 + along * (end + reach)
-                tips = (_arrow(a2, along), _arrow(b2, -along)) if inside else (_arrow(a2, -along), _arrow(b2, along))
-                segs = [[*(a + normal * GAP), *(a2 + normal * OVERSHOOT)], [*(b + normal * GAP), *(b2 + normal * OVERSHOOT)], [*lo, *hi]]
-                dim_rect = (min(lo[0], hi[0]) - 1.5, min(lo[1], hi[1]) - 1.5, max(lo[0], hi[0]) + 1.5, max(lo[1], hi[1]) + 1.5)
-                at = a2 + along * spot_along - normal * 1.0
-                parts = [
-                    _line(a + normal * GAP, a2 + normal * OVERSHOOT), _line(b + normal * GAP, b2 + normal * OVERSHOOT),
-                    _line(lo, hi), *tips, _text(at, label, angle),
-                ]
-                text = {"rect": _text_rect(at, label, angle), "label": label, "owner": owner}
-                yield _candidate(owner, parts, [text], segs, [dim_rect])
+    turn = math.radians(angle)
+    up = np.array([math.sin(turn), -math.cos(turn)])
+    step = len(label) * TEXT_MM * CHAR_WIDTH + 1.5
+    inside = length >= 2 * ARROW_LENGTH + step
+    order = []
+    for side in (1, -1):
+        for tier in range(NEAR_TIERS):
+            order.append((tier, side, 0, 0.0))
+            order += [(tier, side, k, lift) for lift in LIFTS for k in FAN]
+    for side in (1, -1):
+        order += [(tier, side, k, 0.0) for tier in range(NEAR_TIERS, TIERS) for k in SLIDES]
+    for tier, side, k, lift in order:
+        normal = (base if base @ outward >= 0 else -base) * side
+        distance = FIRST_STACK + STACK_STEP * tier
+        a2, b2 = a + normal * distance, b + normal * distance
+        spot = length / 2 + k * step
+        if inside and lift == 0 and not step / 2 + ARROW_LENGTH <= spot <= length - step / 2 - ARROW_LENGTH:
+            continue
+        anchor = length / 2
+        if lift:
+            spot = anchor + k * step
+        reach = 0.0 if inside else ARROW_LENGTH + 3
+        start, end = (min(0.0, spot - step / 2), max(length, spot + step / 2)) if not lift else (0.0, length)
+        lo, hi = a2 + along * (start - reach), a2 + along * (end + reach)
+        tips = (_arrow(a2, along), _arrow(b2, -along)) if inside else (_arrow(a2, -along), _arrow(b2, along))
+        segs = [[*(a + normal * GAP), *(a2 + normal * OVERSHOOT)], [*(b + normal * GAP), *(b2 + normal * OVERSHOOT)], [*lo, *hi]]
+        parts = [
+            _line(a + normal * GAP, a2 + normal * OVERSHOOT), _line(b + normal * GAP, b2 + normal * OVERSHOOT),
+            _line(lo, hi), *tips,
+        ]
+        point = a2 + along * (anchor if lift else spot)
+        if lift:
+            at = a2 + along * spot + normal * (lift + (0.0 if up @ normal > 0 else TEXT_MM))
+            tail = a2 + along * spot + normal * lift
+            segs.append([*point, *tail])
+            parts.append(_line(point, tail))
+        else:
+            at = point - normal * 1.0
+        parts.append(_text(at, label, angle))
+        px, py = (-0.05, 1.5) if abs(hi[0] - lo[0]) > abs(hi[1] - lo[1]) else (1.5, -0.05)
+        dim_rect = (min(lo[0], hi[0]) - px, min(lo[1], hi[1]) - py, max(lo[0], hi[0]) + px, max(lo[1], hi[1]) + py)
+        text = {"rect": _text_rect(at, label, angle), "label": label, "owner": owner}
+        candidate = _candidate(owner, parts, [text], segs, [dim_rect])
+        candidate["choice"] = (tier, side, k, lift)
+        yield candidate
 
 
 def _round_candidates(owner, kind, centre, radius, label):
@@ -308,14 +370,18 @@ def _view_points(dim, views, positions, scale):
     return a, b, position
 
 
-def _dimensions(dims, views, positions, scale, items):
+def _dimensions(dims, views, positions, scale, items, chosen=None, first=()):
+    chosen = {} if chosen is None else chosen
     parts = []
     ordered = sorted(
         range(len(dims)),
-        key=lambda i: (dims[i]["kind"] == "envelope", dims[i]["kind"] not in ("linear", "envelope"), dims[i]["value"]),
+        key=lambda i: (
+            dims[i]["kind"] == "envelope", i not in first, dims[i]["kind"] not in ("linear", "envelope"), dims[i]["value"],
+        ),
     )
     for owner in ordered:
         dim = dims[owner]
+        chosen.setdefault(owner, None)
         a, b, position = _view_points(dim, views, positions, scale)
         label = format_value(dim)
         if dim["kind"] in ("linear", "envelope"):
@@ -326,19 +392,22 @@ def _dimensions(dims, views, positions, scale, items):
             outward = outward - (outward @ along) * along
             if np.linalg.norm(outward) < 1e-6:
                 outward = np.array([-along[1], along[0]])
-            candidates = _linear_candidates(owner, a, b, label, outward, position)
+            candidates = _linear_candidates(owner, a, b, label, outward)
         elif dim["kind"] == "diameter":
             candidates = _round_candidates(owner, "diameter", (a + b) / 2, max(np.linalg.norm(b - a) / 2, 0.3), label)
         else:
             candidates = _round_candidates(owner, "radius", a, np.linalg.norm(b - a), label)
-        parts += _commit(_best(candidates, items), items)
+        best = _best(candidates, items)
+        chosen[owner] = best.get("choice")
+        parts += _commit(best, items)
     return parts
 
 
-def _edges(views, positions, scale, items):
+def _edges(views, positions, sheet_scale, items):
     parts = []
     for name, position in positions.items():
         view = views[name]
+        scale = view_scale(name, views, sheet_scale)
         transform = f'translate({position[0]:.3f} {position[1]:.3f}) scale({scale:g})'
         hidden = f'stroke-width="{HIDDEN_WIDTH / scale:g}" stroke-dasharray="{3 / scale:g},{1.5 / scale:g}"'
         parts.append(f'<g transform="{transform}" fill="none" stroke="#000" stroke-linecap="round">')
@@ -385,14 +454,28 @@ def _section_marks(views, positions, scale, items):
     return parts
 
 
-def build(views, dims, scale):
+def _pass(views, dims, scale, first):
     positions = _layout(views, scale)
     items = Items()
     body = _edges(views, positions, scale, items)
     if "Section" in views:
         body += _section_marks(views, positions, scale, items)
-    body += _dimensions(dims, views, positions, scale, items)
+    body += _dimensions(dims, views, positions, scale, items, first=first)
     return body, items
+
+
+def build(views, dims, scale):
+    """Places the dims greedily; dims whose text still overlaps are placed first on the next pass, up to PASSES passes."""
+    first, best = set(), None
+    for _ in range(PASSES):
+        body, items = _pass(views, dims, scale, first)
+        found = overlaps(items)
+        if best is None or len(found) < best[0]:
+            best = (len(found), body, items)
+        if not found:
+            break
+        first |= {t["owner"] for t in items.texts if t["label"] in {f["text"] for f in found} and t["owner"] >= 0}
+    return best[1], best[2]
 
 
 def render_svg(template_svg, views, dims):

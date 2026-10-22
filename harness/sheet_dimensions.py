@@ -259,16 +259,20 @@ def _hole_centres(records):
     return centres, chosen
 
 
-def _level_dims(levels, centres, view_choice, low, high):
-    dims = []
+def _level_dims(levels, centres, view_choice, low, high, load):
+    """Chained level dims per axis; each chain goes on the allowed view that carries the fewest dims so far."""
+    chains = {}
     for axis in range(3):
         wanted = {round(float(low[axis]), 2), round(float(high[axis]), 2)}
         wanted |= {v for v in levels[axis] | centres[axis] if low[axis] - SAME_MM <= v <= high[axis] + SAME_MM}
         points = sorted(wanted)
-        view = view_choice.get(axis, LEVEL_VIEW[axis])
-        for a, b in zip(points[:-1], points[1:-1]):
-            if b - a < SAME_MM:
-                continue
+        chains[axis] = [(a, b) for a, b in zip(points[:-1], points[1:-1]) if b - a >= SAME_MM]
+    dims = []
+    for axis in sorted(chains, key=lambda a: -len(chains[a])):
+        allowed = [v for v in VIEW_DIRECTION if VIEW_DIRECTION[v] != axis]
+        view = min(allowed, key=lambda v: (load[v], v != view_choice.get(axis, LEVEL_VIEW[axis])))
+        load[view] += len(chains[axis])
+        for a, b in chains[axis]:
             p1, p2 = low.copy(), low.copy()
             p1[axis], p2[axis] = a, b
             dims.append(Dim(f"level {axis} {b:g}", "linear", float(b - a), view, tuple(p1), tuple(p2), 1, axis))
@@ -288,15 +292,17 @@ def dimensions(shape):
     records, _, _ = _facts(shape)
     low, high = bounds(shape)
     dims = _envelope(low, high)
+    load = {view: 0 for view in VIEW_DIRECTION}
     for kind, value, count, record, mid in _round_features(records, low, high):
         dims.append(_round_dim(kind, value, count, record, mid))
+        load[dims[-1].view] += 1
     for group in _oblique_groups(_plane_levels(records)[1]):
         view, record = group[0][1]
         point = tuple(record["point"])
         dims.append(Dim(f"angle {group[0][0]:g}", "angle", group[0][0], view, point, point, len(group)))
     levels, _ = _plane_levels(records)
     centres, view_choice = _hole_centres(records)
-    return dims + _level_dims(levels, centres, view_choice, low, high)
+    return dims + _level_dims(levels, centres, view_choice, low, high, load)
 
 
 def _has(dims, kind, value):
