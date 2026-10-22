@@ -1,7 +1,7 @@
 """
 Runs inside freecadcmd, never the harness venv: projects the STEP named by
 DAE_STEP (mm) in first angle and writes the visible and hidden edges of the
-Front, Top, Left and isometric views, with each view's direction and the
+Front, Top, Left, Right, Bottom, Rear and isometric views, with each view's direction and the
 bounding-box centre TechDraw centres every view on, to DAE_VIEWS. When hidden
 edges exceed 30% of all edges it also writes a Section view cut at the middle of
 the axis whose plane crosses the most hidden edges, with the hatch triangles of
@@ -15,7 +15,7 @@ import Part
 import TechDraw
 
 TEMPLATE = App.getResourceDir() + "Mod/TechDraw/Templates/ISO/A2_Landscape_ISO5457_minimal.svg"
-VIEWS = ["Front", "Top", "Left", "FrontTopLeft"]
+VIEWS = ["Front", "Top", "Left", "Right", "Bottom", "Rear", "FrontTopLeft"]
 SECTION_HIDDEN_SHARE = 0.3
 DEFLECTION = 0.2
 COINCIDENT = 0.05
@@ -147,7 +147,7 @@ def project(step_path):
         result[view.Type], visible, hidden = edge_data(view, center)
         distinct = uncovered(hidden, visible)
         hidden_edges[view.Type] = distinct
-        if view.Type != "FrontTopLeft":
+        if view.Type in ("Front", "Top", "Left"):
             n_visible += len(visible)
             n_hidden += len(distinct)
     result["hidden_share"] = n_hidden / max(1, n_hidden + n_visible)

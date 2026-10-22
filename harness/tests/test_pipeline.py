@@ -28,7 +28,7 @@ def test_a_part_gets_five_files_in_mm_with_the_iso_line_weights(plate, tmp_path)
     import sheet_dimensions
 
     low, high = sheet_dimensions.bounds(make_sheets.abc_pool.read_shape(out / "exemplar.step"))
-    assert list(high - low) == pytest.approx([100, 60, 20], rel=1e-3)
+    assert list(high - low) == pytest.approx([100, 20, 60], rel=1e-3)
     assert report["overlaps"] == []
 
 

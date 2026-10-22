@@ -67,7 +67,7 @@ def _project(exemplar, work):
         views = json.loads(views_path.read_text())
     except (subprocess.SubprocessError, OSError, ValueError) as error:
         raise Skip("projection: freecadcmd failed") from error
-    if any(not views[n]["visible_svg"] for n in ("Front", "Top", "Left", "FrontTopLeft")):
+    if any(not views[n]["visible_svg"] for n in ("Front", "Top", "Left", "Right", "Bottom", "Rear", "FrontTopLeft")):
         raise Skip("projection: empty view")
     return views
 
@@ -83,7 +83,7 @@ def build_sheet(step_path, out, chunk=""):
     if not unit:
         raise Skip("unit: not readable")
     try:
-        shape = abc_pool.read_shape(step_path)
+        shape = sheet_dimensions.orient(abc_pool.read_shape(step_path))
         dims = sheet_dimensions.dimensions(shape)
         missing = sheet_dimensions.missing(shape, dims)
     except RuntimeError as error:
@@ -95,7 +95,7 @@ def build_sheet(step_path, out, chunk=""):
     with tempfile.TemporaryDirectory() as tmp:
         views = _project(out / "exemplar.step", Path(tmp))
     records = [d.to_dict() for d in dims]
-    svg, items = sheet_render.render_svg(Path(TEMPLATE).read_text(), views, records)
+    svg, items, records, placed = sheet_render.render_svg(Path(TEMPLATE).read_text(), views, records)
     sheet_render.write_sheet(svg, out / "input.png", out / "sheet.pdf")
     weights = sheet_render.line_weights(svg)
     counts = sheet_dimensions.face_counts(shape)
@@ -103,7 +103,8 @@ def build_sheet(step_path, out, chunk=""):
         "abc_id": step_path.stem, "chunk": chunk, "unit": unit, "unit_factor_to_mm": UNIT_TO_MM[unit],
         "faces": counts, "bspline_share": counts["bspline"] / sum(counts.values()),
         **sheet_dimensions.complexity(shape),
-        "section_view": "Section" in views, "hidden_share": views["hidden_share"], "line_weights_mm": weights,
+        "section_view": "Section" in views, "views": sorted(placed),
+        "scale": placed["Front"]["scale"], "hidden_share": views["hidden_share"], "line_weights_mm": weights,
     }
     (out / "source.json").write_text(json.dumps(source, indent=1))
     (out / "dimensions.json").write_text(json.dumps(records, indent=1))

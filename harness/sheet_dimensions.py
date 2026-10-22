@@ -72,6 +72,21 @@ def bounds(shape):
     return values[:3], values[3:]
 
 
+def orient(shape):
+    """The shape turned so its longest bounding-box axis is X and its second longest Z, which puts the long side horizontal in the Front view."""
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
+    from OCP.gp import gp_Trsf
+
+    low, high = bounds(shape)
+    longest, middle, shortest = np.argsort(-(high - low), kind="stable")
+    matrix = np.zeros((3, 3))
+    matrix[0, longest] = matrix[2, middle] = matrix[1, shortest] = 1.0
+    matrix[1] *= np.linalg.det(matrix)
+    turn = gp_Trsf()
+    turn.SetValues(*matrix[0], 0.0, *matrix[1], 0.0, *matrix[2], 0.0)
+    return BRepBuilderAPI_Transform(shape, turn, True).Shape()
+
+
 def _view_for_axis(vector):
     return FACE_ON_VIEW[int(np.argmax(np.abs(vector)))]
 
@@ -368,7 +383,7 @@ def _level_dims(levels, centres, view_choice, low, high, load, spans):
         wanted |= {v for v in levels[axis] | centres[axis] if low[axis] - SAME_MM <= v <= high[axis] + SAME_MM}
         total = round(float(low[axis] + high[axis]), 2)
         inner = sorted(wanted - {round(float(low[axis]), 2), round(float(high[axis]), 2)})
-        pairs = [(a, b) for a in inner for b in inner if a < b and abs(a + b - total) < 2 * SAME_MM]
+        pairs = [(a, b) for a in inner for b in inner if a < b and abs(a + b - total) < 1.5 * SAME_MM]
         if pairs:
             wanted -= {b for _, b in pairs}
             constraints[axis] = pairs

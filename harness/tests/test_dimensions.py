@@ -58,3 +58,9 @@ def test_countersink_cone_is_a_chamfer_and_fillet_is_an_r(plate):
     dims = sd.dimensions(rounded)
     assert 2.0 in [round(d.value, 6) for d in by_kind(dims, "radius")]
     assert sd.missing(rounded, dims) == []
+
+
+def test_orient_puts_the_longest_axis_on_x_and_the_second_longest_on_z():
+    low, high = sd.bounds(sd.orient(box(20, 100, 60)))
+    assert [round(v, 6) for v in high - low] == [100.0, 20.0, 60.0]
+    assert sd.missing(sd.orient(box(20, 100, 60)), sd.dimensions(sd.orient(box(20, 100, 60)))) == []
