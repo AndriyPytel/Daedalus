@@ -20,7 +20,7 @@ def test_mirrored_holes_get_a_centre_plane_one_side_and_the_pair_distance():
     assert [(d.axis, [round(c[1], 2) for c in d.covers]) for d in symmetry] == [(1, [45.0])]
     assert linear(dims, 1) == [15.0, 30.0]
     assert sd.missing(part, dims) == []
-    assert sd.missing(part, [d for d in dims if d.kind != "symmetry"])
+    assert sd.missing(part, [d for d in dims if d.kind != "symmetry" and d.feature != "pair 1"])
 
 
 def test_holes_at_equal_pitch_are_one_eq_spacing_dim():

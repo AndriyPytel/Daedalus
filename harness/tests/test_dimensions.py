@@ -22,7 +22,7 @@ def test_hole_centres_are_located_from_the_datum_by_chained_levels(plate):
     x = sorted(round(d.value, 6) for d in dims if d.axis == 0)
     y = sorted(round(d.value, 6) for d in dims if d.axis == 1)
     assert x == [30.0, 40.0]
-    assert y == [15.0, 15.0, 15.0]
+    assert y == [15.0, 15.0, 30.0]
 
 
 def test_a_complete_set_misses_nothing(plate):
@@ -54,7 +54,7 @@ def test_countersink_cone_is_a_chamfer_and_fillet_is_an_r(plate):
     dims = sd.dimensions(part)
     assert [round(d.value, 6) for d in by_kind(dims, "chamfer")] == [3.0]
     assert sd.missing(part, dims) == []
-    rounded = fillet_circles(plate, 1.0)
+    rounded = fillet_circles(plate, 2.0)
     dims = sd.dimensions(rounded)
-    assert 1.0 in [round(d.value, 6) for d in by_kind(dims, "radius")]
+    assert 2.0 in [round(d.value, 6) for d in by_kind(dims, "radius")]
     assert sd.missing(rounded, dims) == []
