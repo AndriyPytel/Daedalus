@@ -19,6 +19,7 @@ MOVES_PER_UNIT = 2000
 START_TEMPERATURE = 40.0
 END_TEMPERATURE = 0.2
 FAVOURED = 40
+REFRESH = 1000
 OUTLINE_OWNER = -1
 
 
@@ -35,7 +36,7 @@ def _bbox(candidate):
 
 
 def _unary(candidate, fixed):
-    cost = LEADER * candidate.get("leader", 0.0) + DISPLACEMENT * candidate.get("shift", 0.0)
+    cost = candidate["soft"] = LEADER * candidate.get("leader", 0.0) + DISPLACEMENT * candidate.get("shift", 0.0)
     for text in candidate["texts"]:
         rect, owner = text["rect"], text["owner"]
         if not inside(rect, AREA) or rects_meet(rect, KEEP_OUT):
@@ -115,14 +116,19 @@ def anneal(units, fixed, start, seed=0, moves_per_unit=MOVES_PER_UNIT):
     cost = _total(chosen, boxes)
     best, best_cost = list(choices), cost
     rng = random.Random(seed)
-    movable = [i for i, u in enumerate(units) if len(u["options"]) > 1]
+    def in_conflict():
+        return [i for i in range(len(units)) if len(units[i]["options"]) > 1 and _against(chosen[i], i, chosen, boxes) - chosen[i]["soft"] > 1e-9]
+
+    movable = in_conflict()
     steps = moves_per_unit * len(movable)
     cooling = (END_TEMPERATURE / START_TEMPERATURE) ** (1 / max(steps, 1))
     temperature = START_TEMPERATURE
-    for _ in range(steps):
+    for step in range(steps):
         temperature *= cooling
-        if best_cost == 0:
-            break
+        if step % REFRESH == 0:
+            movable = in_conflict()
+            if not movable:
+                break
         i = rng.choice(movable)
         count = len(units[i]["options"])
         k = rng.randrange(min(count, FAVOURED)) if rng.random() < 0.5 else rng.randrange(count)

@@ -346,7 +346,7 @@ def _running_line(members, dims, views, placed, items, tiers):
     along = (far - datum) / np.linalg.norm(far - datum)
     outward = _outward(spec, datum, far)
     best = None
-    for side in (1, -1):
+    for side in (1,):
         for tier in _tier_order(tiers):
             normal = _side(outward, along) * side
             distance = FIRST_STACK + STACK_STEP * tier
