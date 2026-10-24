@@ -6,6 +6,7 @@ A gate on the first `finish` measures the solid against the table and returns th
 import json
 import os
 import tempfile
+from dataclasses import replace
 
 from core.agent.agent import _parsed, _say
 from core.agent.solo import run_solo
@@ -21,6 +22,7 @@ FLAT_BLANK_ASPECT = 0.05
 DRAWING_VIEWS = ("front", "top", "right", "left", "iso")
 THIN_FAMILIES = ("cover/tray", "cored casting")
 NO_CHANGE = 1e-4
+WHOLE_SHEET = "DAEDALUS_READER_WHOLE_SHEET"
 
 FACTS_CHECK = """
 import json
@@ -216,6 +218,11 @@ def gate(kernel, sheet, table, renders):
     return [{"type": "text", "text": listed + COMPARE}] + blocks, sorted(view for view, picture in drawn_views.items() if picture)
 
 
+def _whole(sheet):
+    """*sheet* with its crops replaced by the one page they were cut from: the table and the gate stay, the cutting into views goes."""
+    return replace(sheet, crops=[sheet_reader.Crop(name="the whole sheet", path=sheet.source, rect=(0, 0, 0, 0))])
+
+
 def run_reader(intent, *, llm, kernel, tools, events, attachments=(), cancelled=None,
                max_turns=60, refresh=None, base=False):
     """
@@ -223,6 +230,8 @@ def run_reader(intent, *, llm, kernel, tools, events, attachments=(), cancelled=
     """
     sheet = None if base else next(
         (found for found in map(sheet_reader.read, attachments) if found), None)
+    if sheet is not None and os.environ.get(WHOLE_SHEET):
+        sheet = _whole(sheet)
     table = read_table(sheet, llm, events) if sheet is not None else None
     with tempfile.TemporaryDirectory(prefix="fcc-gate-") as renders:
         return run_solo(intent, llm=llm, kernel=kernel, tools=tools, events=events,
