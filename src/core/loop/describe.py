@@ -23,7 +23,7 @@ from core.design.merge import (
 )
 from core.design.gaps import decided_for_you
 from core.design.citation_checks import fabricated_citation
-from core.design.presence_checks import nobody_carries_the_outside, nothing_changed, unplaced_changes
+from core.design.presence_checks import nearest_addresses, nobody_carries_the_outside, nothing_changed, unplaced_changes
 from core.design.orientation_checks import (
     ROUND_IN,
     read_off_the_wrong_view,
@@ -175,7 +175,7 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
                                          cancelled, base)
     finally:
         if the_part:
-            events.emit(DESIGN, model=the_part, the_base_part=base)
+            events.emit(DESIGN, model=the_part, the_base_part=base, base_faces=BASE_FACES.get())
     the_part = _the_sweep_is_the_sheets(the_part, attachments)
     the_part = _the_directions_are_the_drawings(the_part, intent, attachments, llm,
                                                 events, budgets, cancelled)
@@ -498,7 +498,7 @@ def _the_change_is_marked(the_part, intent, attachments, llm, events, budgets, c
             raise Stopped()
         looked += 1
         grew, _ = design({"intent": intent, "the_part_as_you_described_it": the_part,
-                          "the_question": _MARK_WHAT_CHANGES}, llm, events, attachments)
+                          "the_question": _mark_what_changes(the_part)}, llm, events, attachments)
         if grew:
             the_part = merge(the_part, grew, budgets.record_conflicts)
     found = _unsettled(the_part, base) if base else []
@@ -517,6 +517,14 @@ def the_change_refused(the_part, base):
 
 
 _MARK_WHAT_CHANGES = read_prompt("mark_what_changes.md")
+
+
+def _mark_what_changes(the_part):
+    nearest = nearest_addresses(the_part, BASE_FACES.get())
+    return "\n".join([_MARK_WHAT_CHANGES] + [
+        "`%s` has `at` entry `%s`, which is no address. Nearest addresses: %s"
+        % (feature, entry, "; ".join("`%s`" % address for address in addresses))
+        for feature, entry, addresses in nearest])
 
 
 def _settle_the_outer_profile(why):

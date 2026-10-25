@@ -446,6 +446,11 @@ def nothing_changed(model) -> list:
         "every feature is `kept` or carries no `edit` marker")]
 
 
+def _at_of(feature):
+    at = feature.get("at")
+    return [" ".join(str(entry).split()) for entry in at if str(entry).strip()] if isinstance(at, list) else []
+
+
 def unplaced_changes(model, faces) -> list:
     """
     The findings for `changed` features with no `at`, or an `at` entry that is no address in *faces*, the base part's full address list, or [].
@@ -457,8 +462,7 @@ def unplaced_changes(model, faces) -> list:
     for feature in _features(model):
         if str(feature.get("edit") or "").strip().lower() != "changed":
             continue
-        at = [" ".join(str(entry).split()) for entry in feature.get("at") or ()
-              if str(entry).strip()] if isinstance(feature.get("at"), list) else []
+        at = _at_of(feature)
         unlisted = [entry for entry in at if entry not in listed]
         if at and not unlisted:
             continue
@@ -466,4 +470,84 @@ def unplaced_changes(model, faces) -> list:
             _under(_under("features", _named(feature, ("id", "name")) or "a changed feature"), "at"),
             "a `changed` feature carries no `at`, or an `at` that is not an address of the base part",
             "; ".join(unlisted) or "no `at`"))
+    return found
+
+
+_NUMBER = r"[-+]?\d+\.?\d*"
+_SURFACES = {"plane": "plane", "cone": "cone", "torus": "torus",
+             "cylinder": "round", "hole": "round", "bore": "round", "boss": "round", "pin": "round"}
+
+
+def _surface(text):
+    word = re.match(r"\s*([a-z]+)", text.lower())
+    return _SURFACES.get(word.group(1)) if word else None
+
+
+def _numbers(text):
+    return [float(n) for n in re.findall(_NUMBER, text)]
+
+
+def _diameter(text):
+    found = re.search(r"(?:diameter|\u00d8|\bd)\s*(%s)" % _NUMBER, text)
+    if found:
+        return float(found.group(1))
+    found = re.search(r"radius\s*(%s)" % _NUMBER, text)
+    return 2 * float(found.group(1)) if found else None
+
+
+def _axis(text):
+    found = re.search(r"axis\s*\(([^)]*)\)", text)
+    if found:
+        return _numbers(found.group(1))
+    found = re.search(r"axis\s+([xyz])\b", text)
+    return [float(found.group(1) == letter) for letter in "xyz"] if found else None
+
+
+def _point(text):
+    found = re.search(r"\bat\s*\(([^)]*)\)", text)
+    return _numbers(re.sub(r"[xyz]\s+", "", found.group(1))) if found else None
+
+
+def _gap(entry, address):
+    """How far an `at` entry is from one address, comparing only the numbers the entry carries; smaller is nearer."""
+    if _surface(entry) == "plane":
+        axis, at = (re.search(r"plane\s*([xyz])\s*=\s*(%s)" % _NUMBER, text) for text in (entry, address))
+        if not axis or not at:
+            return (0, 0)
+        return (axis.group(1) != at.group(1), abs(float(axis.group(2)) - float(at.group(2))))
+    diameter, axis, point = _diameter(entry), _axis(entry), _point(entry)
+    other_diameter, other_axis, other_point = _diameter(address), _axis(address), _point(address)
+    d = abs(diameter - other_diameter) if diameter is not None and other_diameter is not None else 0
+    a = 0
+    if axis and other_axis and len(axis) == len(other_axis) == 3:
+        a = min(sum(abs(x - y) for x, y in zip(axis, other_axis)), sum(abs(x + y) for x, y in zip(axis, other_axis)))
+    p = 0
+    if point and other_point and len(other_point) == 3:
+        if len(point) == 2 and other_axis and len(other_axis) == 3:
+            drop = max(range(3), key=lambda i: abs(other_axis[i]))
+            other_point = [v for i, v in enumerate(other_point) if i != drop]
+        if len(point) == len(other_point):
+            p = sum((x - y) ** 2 for x, y in zip(point, other_point)) ** 0.5
+    return (round(d, 2), round(a, 2), p)
+
+
+def nearest_addresses(model, faces, how_many=3) -> list:
+    """
+    For each `at` entry of a `changed` feature that is no address in *faces*, `(feature id, entry, the nearest addresses)`.
+
+    Nearest is the same surface kind first, then the diameter, the axis and the point the entry carries; an address is never invented, only picked from *faces*.
+    """
+    listed = {" ".join(str(address).split()): address for address in faces or ()}
+    found = []
+    for feature in _features(model):
+        if str(feature.get("edit") or "").strip().lower() != "changed":
+            continue
+        for entry in _at_of(feature):
+            if entry in listed:
+                continue
+            kind = _surface(entry)
+            ranked = sorted(listed, key=lambda address: (kind is not None and _surface(address) != kind,
+                                                         _gap(entry, address)))
+            found.append((_named(feature, ("id", "name")) or "a changed feature", entry,
+                          ranked[:how_many]))
     return found
