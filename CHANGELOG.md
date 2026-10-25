@@ -15,6 +15,7 @@
 ### Editing an existing part
 - Edit Design locates the exact region and dimension in the input STEP before Plan.
 - Edit Plan counts every affected feature and its extent; Review checks it; unrequested changes are refused.
+- A step address that is not a real face is asked again, with the nearest real addresses listed.
 
 ### Checks
 - Acceptance counts come from Design's own feature list and are counted the way the check counts.
