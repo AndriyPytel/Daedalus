@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.2.0 — 2026-10-25
+
+### Building from a drawing
+- Design goes back to the drawing for a second pass before it asks a person, in headless and interactive runs.
+- Design reads each dimension from two views and keeps a dimension, value and view table; it states axes and faces per view and cross-checks the views before Plan.
+- Design builds the part the isometric shows; a flat pattern only shows how the sheet is cut. Plan and Execute build a bent sheet part as a pad per wall and a revolve per bend.
+- Design keeps an intermediate state out of the envelope; Plan sends an unbuildable feature back to Design.
+- Plan keeps question as an option in both modes; decide-and-assume is the last resort.
+- A Plan value with text in it stays usable by its Steps.
+- A Step whose Body does not survive a STEP round trip is refused, with the bad faces named.
+- A reply is remembered as the object it carries.
+
+### Editing an existing part
+- Edit Design locates the exact region and dimension in the input STEP before Plan.
+- Edit Plan counts every affected feature and its extent; Review checks it; unrequested changes are refused.
+
+### Checks
+- Acceptance counts come from Design's own feature list and are counted the way the check counts.
+- The through-feature check counts features.
+- A revision may dispute an unmet check with a measurement; the run ends unverified, and blocked only when it does not.
+
+### Benchmark tooling
+- Drawing sheet generator for complex ABC parts from STEP (70 test / 30 validation): view layout and scale, section and detail views, ISO 128 line weights, running dimensions with overlap-free placement, symmetry, equal-spacing and concentric notes.
+
+### Tests
+- The full pytest run finishes and is green: hanging, flaky and redundant tests are deleted.
+
 ## 1.1.0 — 2026-10-14
 
 ### Editing an existing part
