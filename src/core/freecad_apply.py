@@ -278,7 +278,8 @@ class ApplyPipeline:
         return os.path.join(self._render_dir, "daedalus_step_%d.png" % self._renders)
 
     def apply(self, code, selection=None, label="Daedalus Step", op=None,
-              kernel_result=None, design=None, plan_values=None) -> ApplyResult:
+              kernel_result=None, design=None, plan_values=None,
+              design_model=True) -> ApplyResult:
         """
         Lint *code* and land it on the live Document as one transaction.
         `kernel_result` is what the kernel already found running this Step
@@ -288,10 +289,11 @@ class ApplyPipeline:
         `op` is checked against what the kernel built, not this code's text,
         and `design` and `plan_values` are the Design model and the Plan's
         frozen numbers Preflight ran this Step against, carried into the same
-        transaction so Apply resolves them identically.
+        transaction so Apply resolves them identically; *design_model* false is a
+        caller with no `design` in scope, to whom the Design-model lint rules do not apply.
         """
         kernel_result = kernel_result or {}
-        checked = lint(code, selection)
+        checked = lint(code, selection, design_model)
         if not checked.ok:
             return ApplyResult(ok=False, traceback=checked.report(), gate="lint")
 
@@ -1915,6 +1917,12 @@ def _register_apply(registry, pipeline, selection):
                                    "(DAE-A-53): created, deleted, modified, names, signature, "
                                    "objects. Carried by the loop, not asked for here.",
                 },
+                "design_model": {
+                    "type": "boolean",
+                    "description": "False where the caller has no Design model in scope, so the "
+                                   "lint rules about reading one are left out. Carried by the "
+                                   "loop, not asked for here.",
+                },
                 "design": {
                     "type": "object",
                     "description": "The Design model, read-only in the Step's own namespace "
@@ -1931,7 +1939,7 @@ def _register_apply(registry, pipeline, selection):
         },
     )
     def apply_step(code, label="Daedalus Step", op=None, kernel_result=None, design=None,
-                   plan_values=None):
+                   plan_values=None, design_model=True):
         """
         There is no rehearsal behind this Tool any more: from here up, a
         Step was applied or it was not, and there is no third thing to know
@@ -1939,7 +1947,8 @@ def _register_apply(registry, pipeline, selection):
         """
         return pipeline.apply(code, selection=selection(), label=label,
                               op=op, kernel_result=kernel_result,
-                              design=design, plan_values=plan_values).as_tool_result()
+                              design=design, plan_values=plan_values,
+                              design_model=design_model).as_tool_result()
 
     @registry.tool(
         "undo_step",

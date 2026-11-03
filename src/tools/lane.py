@@ -16,6 +16,7 @@ import argparse
 import glob
 import json
 import os
+import random
 import shutil
 import subprocess
 import sys
@@ -110,12 +111,12 @@ def quota_refusal(log):
 
 
 def run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
-            python=sys.executable, conflicts=None, base_step=None, attach=()):
+            python=sys.executable, conflicts=None, base_step=None, attach=(), arm="agent"):
     """
     One run of one sheet, as a subprocess of `tools/run.py`.
 
     A task with no sheet — `--task bolt-nut=` — is a run of the Intent alone.
-    *conflicts* is `tools/run.py --conflicts`; an editing run names *base_step* and the renders in *attach*.
+    *conflicts* is `tools/run.py --conflicts`; an editing run names *base_step* and the renders in *attach*; *arm* is `--arm`, left off the command line for the default agent.
     """
     save = log[: -len(".jsonl")] + ".step" if log.endswith(".jsonl") else log + ".step"
     cmd = [python, os.path.join(ROOT, "tools", "run.py"),
@@ -131,6 +132,8 @@ def run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
         cmd += ["--conflicts", conflicts]
     if base_step:
         cmd += ["--base-step", base_step]
+    if arm != "agent":
+        cmd += ["--arm", arm]
     return subprocess.Popen(cmd)
 
 
@@ -274,7 +277,7 @@ def _has_step(log):
 
 
 def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
-          resume, provider, run_seconds, conflicts=None, timestamp=None, edits=None):
+          resume, provider, run_seconds, conflicts=None, timestamp=None, edits=None, arm="agent"):
     """
     *conflicts* ("on"/"off"/`None`) is the append-only model's own A/B arm:
     set, it suffixes every task's label the way `logs/ab-rlm-agentic`
@@ -284,7 +287,7 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
     lands on the same path as any other attempt's. *timestamp* is
     injectable so a test can make attempts distinguishable without a real
     clock, and *edits* maps a label to its editing fixture folder, whose run ends in
-    `<model>/<label>/output.step`: the edit, or a copy of `input.step`.
+    `<model>/<label>/output.step`: the edit, or a copy of `input.step`; *arm* goes to every run.
     """
     import sdk
 
@@ -320,6 +323,8 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
                     kwargs["base_step"] = os.path.join(fixture, "input.step")
                     kwargs["attach"] = [os.path.join(fixture, "renders", view + ".png")
                                         for view in RENDER_VIEWS]
+                if arm != "agent":
+                    kwargs["arm"] = arm
                 process = run_one(label, sheet, model, effort, budget_usd, log, run_intent, provider,
                                   **kwargs)
                 outcome = watch(process, log, hang_seconds, run_seconds)
@@ -424,6 +429,30 @@ def _reason(events, m):
 MODELMANIA_DIR = os.environ.get(
     "DAE_MODELMANIA_DIR", os.path.join(os.path.dirname(ROOT), "manual", "modelmania"))
 EXEMPLAR_DIR = os.path.join(MODELMANIA_DIR, "exemplar")
+TEST_DATA_DIR = os.environ.get("DAE_TEST_DATA_DIR", os.path.join(os.path.dirname(ROOT), "test-data"))
+SPLITS = ("validation", "test")
+
+
+def sampled_tasks(split, count, out, labels_file=None):
+    """
+    The `(label, sheet.pdf)` tasks of *split* in `test-data/split.json`: *count* labels drawn with a fresh seed, or the lines of *labels_file*.
+
+    The seed is printed and written, with the labels, to *out*; the labels file is the one `--labels` reads back.
+    """
+    if labels_file:
+        with open(labels_file, encoding="utf-8") as handle:
+            labels = handle.read().split()
+    else:
+        with open(os.path.join(TEST_DATA_DIR, "split.json"), encoding="utf-8") as handle:
+            pool = json.load(handle)[split]
+        seed = random.SystemRandom().randrange(2 ** 32)
+        labels = random.Random(seed).sample(pool, count)
+        print("seed", seed)
+        with open(os.path.join(out, "seed.txt"), "w", encoding="utf-8") as handle:
+            handle.write(str(seed))
+    with open(os.path.join(out, "labels.txt"), "w", encoding="utf-8") as handle:
+        handle.write("\n".join(labels) + "\n")
+    return [(label, os.path.join(TEST_DATA_DIR, split, label, "sheet.pdf")) for label in labels]
 
 
 def _exemplar_for(label):
@@ -437,8 +466,9 @@ def _exemplar_for(label):
     import re as _re
 
     stem = _re.sub(r"-rep\d+(-on|-off)?$", "", label)
-    exemplar = os.path.join(EXEMPLAR_DIR, stem + ".step")
-    return exemplar if os.path.isfile(exemplar) else None
+    candidates = [os.path.join(EXEMPLAR_DIR, stem + ".step")] + [
+        os.path.join(TEST_DATA_DIR, split, stem, "exemplar.step") for split in SPLITS]
+    return next((path for path in candidates if os.path.isfile(path)), None)
 
 
 def _score_for(path, label):
@@ -634,6 +664,11 @@ def main():
     parser.add_argument("--conflicts", choices=("on", "off"), default=None,
                         help="The conflict-recording A/B arm; unset runs tools/run.py's own "
                              "default (on)")
+    parser.add_argument("--arm", choices=("agent", "pipeline"), default="agent",
+                        help="Which arm tools/run.py runs each task as; pipeline is the phased pipeline")
+    parser.add_argument("--sample", type=int, help="Draw this many random labels of --split from test-data/split.json")
+    parser.add_argument("--split", choices=SPLITS, default="validation")
+    parser.add_argument("--labels", help="A labels.txt of an earlier --sample, reused as the tasks")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
 
@@ -663,6 +698,9 @@ def main():
         if len(args.model) != 1:
             raise SystemExit("--baseline takes exactly one --model, run twice as its own replicate")
         tasks = baseline_tasks()
+    elif args.sample or args.labels:
+        os.makedirs(args.out, exist_ok=True)
+        tasks = sampled_tasks(args.split, args.sample, args.out, args.labels)
     else:
         tasks = [t.split("=", 1) for t in args.task]
         if not tasks and not args.edit_task or not args.model:
@@ -673,7 +711,7 @@ def main():
     os.makedirs(args.out, exist_ok=True)
     stopped = sweep(tasks, args.model, args.effort, args.budget_usd, args.intent,
                     args.out, args.hang_seconds, args.retries, args.resume, args.provider,
-                    args.run_seconds, args.conflicts, edits=edits)
+                    args.run_seconds, args.conflicts, edits=edits, arm=args.arm)
     return QUOTA_EXIT if stopped else 0
 
 

@@ -25,6 +25,7 @@ from core.loop import (ACCEPT, APPROVE, ASSERTION_PHASE, DECISIONS, DESIGN_PHASE
                        START_OVER, Approval, NeedsAnswer, auto_approve,
                        nobody_to_ask, revise_by_default, run)
 from core.loop.budgets import Budgets
+from core.agent.reader import run_reader
 from core.narrate import narrate
 from core.orchestrator import CONTROL, DESIGN, RUN_QUESTION, route
 from core.prompts import read_prompt
@@ -262,13 +263,10 @@ class Client:
 
     def send(self, prompt, gate=auto_approve, ask=None, decide=revise_by_default,
              attachments=(), cancelled=None, outstanding=(), the_part_path=None,
-             route_first=True, events=None, budgets=None):
+             route_first=True, events=None, budgets=None, arm="agent"):
         """
-        Run *prompt* through the loop, blocking until done. *route_first*
-        classifies via the orchestrator first (default); `False` skips straight
-        to design. *events* overrides this Client's stream for this run only,
-        *budgets* (`core.loop.budgets.Budgets`) is a harness affordance for
-        measuring the loop itself that the panel never passes.
+        Run *prompt* to the end, blocking. *route_first* classifies it via the orchestrator (default), and *events* overrides this Client's stream for this run only.
+        *arm* `agent` builds with the reader loop; `pipeline` runs the phased one, which alone reads *gate*, *ask*, *decide*, *outstanding*, *the_part_path* and *budgets*, a harness affordance the panel never passes.
         """
         stream = events if events is not None else self.events
         self.pipeline.events = stream
@@ -280,7 +278,7 @@ class Client:
 
         def _pause(question):
             self._pending = dict(prompt=prompt, gate=gate, decide=decide,
-                                 attachments=attachments)
+                                 attachments=attachments, arm=arm)
             raise NeedsAnswer(question)
 
         answered_by = ask or self.answer or _pause
@@ -289,6 +287,9 @@ class Client:
             return self._stop or bool(cancelled and cancelled())
 
         def design(message, decision=None):
+            if arm == "agent":
+                return self.agent(message, attachments=attachments, cancelled=is_cancelled,
+                                  base=tools.call("base_inventory")["inventory"] is not None)
             return run(message, llm=self.llm, tools=tools, events=stream,
                        cancelled=is_cancelled,
                        aborted=lambda: self._abort,
@@ -317,6 +318,25 @@ class Client:
         else:
             return design(prompt)
 
+    def agent(self, prompt, attachments=(), cancelled=None, base=False):
+        """
+        The reader loop: the drawing is read into a table, then one model
+        builds over this Client's kernel and lands each code call on this
+        Client's Document, so `save` and `export_step` write what it built.
+        *base* says the Document already holds the part to edit.
+        """
+        if self.kernel is None:
+            raise ValueError("the agent works through a kernel")
+        self.pipeline.events = self.events
+        tools = build_registry(document=lambda: self.document, pipeline=self.pipeline,
+                               dispatch=self.dispatch)
+        seed = tools.call("document_copy")["path"]
+        self.kernel.check("pass", document=seed)
+        freecad_apply.discard(seed)
+        return run_reader(prompt, llm=self.llm, kernel=self.kernel, tools=tools,
+                          events=self.events, attachments=list(attachments),
+                          cancelled=cancelled, base=base)
+
     def resume(self, answer):
         """
         Answer the question a paused run is waiting on, and pick that same
@@ -327,7 +347,8 @@ class Client:
         if pending is None:
             raise RuntimeError("nothing is paused")
         return self.send(pending["prompt"], gate=pending["gate"], decide=pending["decide"],
-                         ask=lambda question: answer, attachments=pending["attachments"])
+                         ask=lambda question: answer, attachments=pending["attachments"],
+                         arm=pending["arm"])
 
     def kill_provider(self):
         """End this Client's own live provider process at once."""

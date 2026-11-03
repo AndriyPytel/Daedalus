@@ -569,28 +569,53 @@ def test_a_call_that_never_answers_ends_the_run_rather_than_hanging_it():
     assert spawn.process.killed.is_set(), "the process was left running"
 
 
-def test_the_ceiling_timer_is_not_a_thread_python_waits_for_on_the_way_out(monkeypatch):
+def test_the_ceiling_watchdog_is_not_a_thread_python_waits_for_on_the_way_out(monkeypatch):
     """
-    The ceiling runs on a `threading.Timer`, and a non-daemon one is joined by
-    the interpreter on the way out: a call still in flight when FreeCAD closes
+    The ceiling runs on a thread, and a non-daemon one is joined by the
+    interpreter on the way out: a call still in flight when FreeCAD closes
     would hold the process for the rest of the ceiling -- 1500s at `high`. A
     run whose thread was ended from outside never closes the generator that
     cancels it, so the cancel is not the guarantee.
     """
     made = []
-    real = threading.Timer
+    real = threading.Thread
 
     def record(*args, **kwargs):
-        timer = real(*args, **kwargs)
-        made.append(timer)
-        return timer
+        thread = real(*args, **kwargs)
+        made.append(thread)
+        return thread
 
-    monkeypatch.setattr(threading, "Timer", record)
+    monkeypatch.setattr(threading, "Thread", record)
     client, _ = client_replaying()
     collect(client.stream(a_turn()))
 
     assert made, "no ceiling was set on the call"
-    assert all(timer.daemon for timer in made), "the ceiling would outlive FreeCAD"
+    assert all(thread.daemon for thread in made), "the ceiling would outlive FreeCAD"
+
+
+def test_a_call_in_flight_while_the_machine_slept_is_over_the_ceiling_on_waking(monkeypatch):
+    """
+    The monotonic clock stops while macOS sleeps, so a ceiling measured on it
+    never fires for a call that spans a sleep: two overnight 203 runs sat 1511s
+    and 1877s in one call under a declared 900s. The ceiling reads the wall clock.
+    """
+    client, spawn = client_over(_ProcessThatNeverAnswers(), timeout=900)
+    real = time.time
+    reads = []
+
+    def clock():
+        reads.append(1)
+        return real() + (1000 if len(reads) > 1 else 0)
+
+    monkeypatch.setattr(time, "time", clock)
+
+    started = time.monotonic()
+    with pytest.raises(ProviderRefused) as refusal:
+        collect(client.stream(a_turn()))
+
+    assert time.monotonic() - started < 5
+    assert "did not answer in time" in str(refusal.value)
+    assert spawn.process.killed.is_set()
 
 
 def test_stderr_beyond_the_os_pipe_buffer_does_not_block_the_stream():

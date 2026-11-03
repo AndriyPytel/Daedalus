@@ -117,6 +117,9 @@ def main():
                         help="The append-only model's own A/B toggle: 'off' drops the "
                              "conflict record at the Gate, everything else about the run "
                              "unchanged")
+    parser.add_argument("--arm", choices=("agent", "pipeline"), default="agent",
+                        help="agent is the reader loop the panel runs; pipeline is the phased "
+                             "pipeline, kept to compare against")
     parser.add_argument("--base-step", default=None,
                         help="An editing run: the part to edit, the BaseFeature of the Document's Body")
     args = parser.parse_args()
@@ -147,8 +150,12 @@ def main():
 
     budgets = Budgets(record_conflicts=False) if args.conflicts == "off" else None
     cancelled = (lambda: spent["usd"] >= args.budget_usd) if args.budget_usd is not None else None
-    result = client.send(args.intent, attachments=list(args.attach), cancelled=cancelled,
-                         ask=nobody_to_ask, budgets=budgets)
+    if args.arm == "agent":
+        result = client.agent(args.intent, attachments=list(args.attach), cancelled=cancelled,
+                              base=bool(args.base_step))
+    else:
+        result = client.send(args.intent, attachments=list(args.attach), cancelled=cancelled,
+                             ask=nobody_to_ask, budgets=budgets, arm="pipeline")
 
     print("ok            :", result.ok)
     print("verdict       :", result.verdict, "-", result.reason)

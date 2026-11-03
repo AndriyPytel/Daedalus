@@ -49,7 +49,7 @@ def test_a_prompt_against_a_real_document_produces_steps_and_events(kernel):
     seen = []
     client.watch(seen.append)
 
-    result = client.send("Add a 10mm cube")
+    result = client.send("Add a 10mm cube", arm="pipeline")
 
     assert result.ok, result.reason
     assert result.steps_applied == 1
@@ -65,7 +65,7 @@ def test_an_empty_document_gets_a_client_and_ends_with_a_saved_fcstd(tmp_path, k
     from sdk import Client
 
     client = Client(kernel=kernel, llm=_a_box_run())
-    result = client.send("Add a 10mm cube")
+    result = client.send("Add a 10mm cube", arm="pipeline")
     assert result.ok, result.reason
 
     out = str(tmp_path / "made.FCStd")
@@ -86,7 +86,7 @@ def test_a_run_s_save_path_ends_in_step_and_the_scorer_can_read_it(tmp_path, ker
     from sdk import Client
 
     client = Client(kernel=kernel, llm=_a_box_run())
-    result = client.send("Add a 10mm cube")
+    result = client.send("Add a 10mm cube", arm="pipeline")
     assert result.ok, result.reason
 
     out = str(tmp_path / "made.step")
@@ -190,7 +190,7 @@ def test_no_answer_callback_pauses_in_a_resumable_needs_answer_state(kernel):
     seen = []
     client.watch(seen.append)
 
-    paused = client.send("Add a box")
+    paused = client.send("Add a box", arm="pipeline")
 
     assert paused.blocked and paused.awaiting_user
     kinds = [event.kind for event in seen]
@@ -229,7 +229,7 @@ def test_an_answer_callback_receives_the_question_without_pausing(kernel):
     seen = []
     client.watch(seen.append)
 
-    result = client.send("Add a box")
+    result = client.send("Add a box", arm="pipeline")
 
     assert result.ok, result.reason
     assert answered == ["solid or hollow?"]
@@ -248,7 +248,7 @@ def test_a_declared_auto_answer_policy_is_its_own_distinct_event(kernel):
     seen = []
     client.watch(seen.append)
 
-    client.send("Add a box")
+    client.send("Add a box", arm="pipeline")
 
     answers = [event for event in seen if event.kind == ANSWER]
     assert len(answers) == 1
@@ -271,7 +271,7 @@ def test_send_cancelled_stops_the_run_before_it_starts():
     seen = []
     client.watch(seen.append)
 
-    result = client.send("Add a box", cancelled=lambda: True)
+    result = client.send("Add a box", cancelled=lambda: True, arm="pipeline")
 
     assert not result.ok
     assert result.blocked
@@ -313,7 +313,7 @@ def test_a_real_runs_transcript_replays_as_the_run_that_wrote_it(tmp_path, kerne
     client = Client(kernel=kernel, llm=_a_box_run())
     client.events.log_to(path)
 
-    result = client.send("Add a 10mm cube")
+    result = client.send("Add a 10mm cube", arm="pipeline")
     assert result.ok, result.reason
 
     live_kinds = [event.kind for event in client.events]
@@ -354,6 +354,6 @@ def test_a_client_has_a_solid_only_once_something_solid_was_modelled(kernel):
     client = Client(kernel=kernel, llm=_a_box_run())
     assert not client.has_solid()
 
-    assert client.send("Add a 10mm cube").ok
+    assert client.send("Add a 10mm cube", arm="pipeline").ok
     assert client.has_solid()
     client.close()

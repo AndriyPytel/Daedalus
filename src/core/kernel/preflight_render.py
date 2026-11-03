@@ -22,15 +22,26 @@ _BANDS = 4
 _AZIMUTH, _ELEVATION = math.radians(45), math.radians(35.264)
 
 
-def _view_matrix():
-    """
-    The isometric view, as rows: right, up, towards the camera.
+VIEWS = {
+    "front": ((1, 0, 0), (0, 0, 1), (0, -1, 0)),
+    "top": ((1, 0, 0), (0, 1, 0), (0, 0, 1)),
+    "right": ((0, 1, 0), (0, 0, 1), (1, 0, 0)),
+    "left": ((0, -1, 0), (0, 0, 1), (-1, 0, 0)),
+}
+ISO = "iso"
 
-    45° azimuth and 35.264° elevation, which is the viewport's default and an
-    exact isometry.
+
+def _view_matrix(view=ISO):
+    """
+    *view* as rows: right, up, towards the camera.
+
+    `iso` is 45° azimuth and 35.264° elevation, the viewport's default and an
+    exact isometry; `front`, `top`, `right` and `left` are the orthographic views FreeCAD's own buttons give.
     """
     import numpy as np
 
+    if view in VIEWS:
+        return np.array(VIEWS[view], dtype=float)
     azimuth, elevation = _AZIMUTH, _ELEVATION
     return np.array([
         [math.cos(azimuth), -math.sin(azimuth), 0],
@@ -263,7 +274,7 @@ def _draw_edges(colour, zbuffer, points, depths, firsts, bias):
     colour[ys[visible], xs[visible]] = _EDGE
 
 
-def render(doc, path, size=(800, 600)):
+def render(doc, path, size=(800, 600), view=ISO):
     """
     Isometric render of every shape in the Document. Software-rasterised
     on purpose: a headless FreeCAD has no GL context, so Coin's offscreen
@@ -280,8 +291,8 @@ def render(doc, path, size=(800, 600)):
         return None
 
     tris = triangles
-    view = _view_matrix()
-    viewed = tris @ view.T
+    matrix = _view_matrix(view)
+    viewed = tris @ matrix.T
     flat = viewed[:, :, :2]
 
     width, height = size
@@ -314,7 +325,7 @@ def render(doc, path, size=(800, 600)):
     bias = span * _EDGE_BIAS
     if polylines:
         every = np.concatenate(polylines)
-        seen = every @ view.T
+        seen = every @ matrix.T
         ends = np.cumsum([len(polyline) for polyline in polylines]) - 1
         firsts = np.delete(np.arange(len(every) - 1), ends[:-1])
         _draw_edges(colour, zbuffer, to_pixels(seen[:, :2]), seen[:, 2], firsts, bias)

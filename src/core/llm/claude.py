@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import time
 from typing import Callable, Iterator
 
 from core.llm.types import REASONING, TEXT, Chunk
@@ -28,6 +29,8 @@ from core.llm.claude_stream import (
     _said,
     _tokens_of,
 )
+
+_WATCH_SECONDS = 1.0
 
 
 class Run:
@@ -200,7 +203,7 @@ class ClaudeCodeClient:
 
     def _answered(self, process, messages) -> Iterator[Chunk]:
         """
-        One process's reply, under the wall-clock ceiling.
+        One process's reply, under a ceiling read off the wall clock, since the monotonic clock stops while the machine sleeps and a timer on it never fired across an overnight sleep.
 
         Constraint: killed on timeout since a silent `claude` gives nothing to
         check time against; thinking reported once per call, not per delta.
@@ -208,13 +211,17 @@ class ClaudeCodeClient:
         """
         overdue = threading.Event()
 
-        def give_up():
-            overdue.set()
-            process.kill()
+        finished = threading.Event()
+        deadline = time.time() + self.timeout
 
-        ceiling = threading.Timer(self.timeout, give_up)
-        ceiling.daemon = True
-        ceiling.start()
+        def watch():
+            while not finished.wait(_WATCH_SECONDS):
+                if time.time() >= deadline:
+                    overdue.set()
+                    process.kill()
+                    return
+
+        threading.Thread(target=watch, daemon=True).start()
         self.run.register(process)
         try:
             process.stdin.write(json.dumps(_user_turn(messages)) + "\n")
@@ -258,7 +265,7 @@ class ClaudeCodeClient:
                     "Check it is installed and signed in with `claude auth status`."
                     % (self.model, code), detail[:400])
         finally:
-            ceiling.cancel()
+            finished.set()
             self.run.release(process)
             process.kill()
 

@@ -922,3 +922,10 @@ def test_a_dimensional_literal_refusal_names_the_target_and_the_value():
 
 def test_a_dimension_read_from_design_by_index_passes():
     assert lint("pad.Length = design['features']['Boss']['length']\n").ok
+
+
+def test_a_caller_without_a_design_model_may_write_a_dimension():
+    code = "pad.Length = 10"
+
+    assert not lint(code).ok
+    assert lint(code, design_model=False).ok

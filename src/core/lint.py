@@ -176,10 +176,11 @@ def selected_elements(selection) -> set:
     return allowed
 
 
-def lint(code: str, selection=None) -> LintResult:
+def lint(code: str, selection=None, design_model=True) -> LintResult:
     """
     Check *code* before it is replayed onto the Document. `selection` is the
-    Snapshot's selection; element names in it are allowed. Whether the Step
+    Snapshot's selection; element names in it are allowed; *design_model* false
+    leaves out the two rules that presume a `design` in scope. Whether the Step
     built the TypeId its declared `op` promises is answered by
     `op_typeid_mismatch`, off what the kernel actually built rather than by
     parsing this string.
@@ -247,10 +248,10 @@ def lint(code: str, selection=None) -> LintResult:
         offset_along_normal = _attachment_offset_along_normal(node)
         if offset_along_normal:
             complain(_ATTACHMENT_OFFSET_REASON % offset_along_normal)
-        literal = dimensional_literal(node, bindings)
+        literal = dimensional_literal(node, bindings) if design_model else None
         if literal:
             complain(_DIMENSIONAL_LITERAL_REASON % literal)
-        defaulted = dimensional_default(node)
+        defaulted = dimensional_default(node) if design_model else None
         if defaulted:
             complain(_DIMENSIONAL_DEFAULT_REASON % defaulted)
 

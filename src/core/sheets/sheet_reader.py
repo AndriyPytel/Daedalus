@@ -47,6 +47,8 @@ _LOG = logging.getLogger(__name__)
 
 MAX_EDGE = 1400
 
+OVERVIEW_EDGE = 2576
+
 A_PATCH = 28
 THE_BUDGET = 1568
 
@@ -376,7 +378,7 @@ def _a_page(page, at, of_pages, into, legible_px, max_edge, page_state):
     words = [w for w in page.get_text("words") if str(w[4]).strip()]
     dpi = _dpi_for(words, legible_px, notes)
 
-    overviews.append(_render(page, page.rect, _fits(page.rect, max_edge), into,
+    overviews.append(_render(page, page.rect, _fits(page.rect, OVERVIEW_EDGE), into,
                              "sheet" if at == 1 else "sheet-%02d" % at))
     regions = _the_regions_of(page, words)
 
@@ -2322,7 +2324,7 @@ def _from_raster(path, into, max_edge):
 
     overview = os.path.join(into, "sheet.png")
     scaled = picture.copy()
-    scaled.thumbnail((max_edge, max_edge), Image.LANCZOS)
+    scaled.thumbnail((OVERVIEW_EDGE, OVERVIEW_EDGE), Image.LANCZOS)
     scaled.save(overview)
 
     crops = []
