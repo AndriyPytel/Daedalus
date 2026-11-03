@@ -19,23 +19,23 @@ PLACEMENT_TOLERANCE = 0.1
 INTERFERENCE_NOISE = 1e-6
 
 
-def _run(job):
+def run_freecadcmd(job, script=SCRIPT):
     with tempfile.TemporaryDirectory() as work:
         job_path, result_path = Path(work) / "job.json", Path(work) / "result.json"
         job_path.write_text(json.dumps(job, default=str))
         env = {**os.environ, "DAE_JOB": str(job_path), "DAE_RESULT": str(result_path)}
-        subprocess.run([FREECADCMD, "-c", f"exec(open({str(SCRIPT)!r}).read())"], env=env, check=True, capture_output=True)
+        subprocess.run([FREECADCMD, "-c", f"exec(open({str(script)!r}).read())"], env=env, check=True, capture_output=True)
         return json.loads(result_path.read_text())
 
 
 def build(jobs):
     """Write each (spec, path) as a solved-in-place Assembly document."""
-    _run({"build": [[spec, str(path)] for spec, path in jobs]})
+    run_freecadcmd({"build": [[spec, str(path)] for spec, path in jobs]})
 
 
 def measure(paths):
     """Solve and measure each document: solve status, per-part bounds, joints, interference volume."""
-    return _run({"measure": [str(path) for path in paths]})
+    return run_freecadcmd({"measure": [str(path) for path in paths]})
 
 
 def _placement_error(candidate, reference, diagonal):
