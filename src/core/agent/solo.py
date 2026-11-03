@@ -1,7 +1,7 @@
 """
 The loop's builder: one model choosing its own route over the kernel, the read tools and the render, with no Design, Plan, Plan Gate or Review around it.
 
-Each `code` call is linted, rehearsed in the kernel and landed on the live Document; the first `finish` is answered with the Assertion, and every `finish` is refused until the Document's solid is the Tip of a PartDesign::Body with features.
+Each `code` call is linted, rehearsed in the kernel and landed on the live Document; the first `finish` is answered with the Domain's Assertion, and every `finish` is refused until the Domain's done-check holds.
 """
 import json
 import os
@@ -22,48 +22,9 @@ from core.tools import ToolError
 READ_TOOLS = ("snapshot", "overall_size", "describe_object", "describe_type", "supported_types",
               "materials", "dependencies")
 
-TREE_CHECK = """
-import json
-
-solids = [o for o in doc.Objects
-          if not o.InList and getattr(o, "Shape", None) is not None
-          and not o.Shape.isNull() and o.Shape.Solids]
-found = []
-for o in solids:
-    tip = o.Tip if o.TypeId == "PartDesign::Body" else None
-    features = [f.TypeId for f in o.Group if f.TypeId.startswith("PartDesign::")] if tip else []
-    found.append({"name": o.Name, "type": o.TypeId, "tip": tip.TypeId if tip else None,
-                  "features": features})
-print("TREE " + json.dumps(found))
-"""
-
-NO_TREE = ("The Document's solid is not a feature tree: %s. Build the part in a PartDesign::Body "
-           "from sketches and PartDesign features (Pad, Pocket, Revolution, ...) so it can be "
-           "edited, then finish.")
-
-
 def with_traps(body):
     """*body* with the traps this FreeCAD build has filled in."""
     return body.replace(_TRAPS_PLACEHOLDER, "\n".join("- " + t for t in TRAPS))
-
-
-def without_feature_tree(kernel):
-    """Why the kernel's Document does not hold a PartDesign::Body whose Tip is a feature, or `None` where it does."""
-    result = kernel.check(TREE_CHECK, exploring=True)
-    found = None
-    for line in reversed((result.stdout or "").splitlines()):
-        if line.startswith("TREE "):
-            found = json.loads(line[len("TREE "):])
-            break
-    if not found:
-        return NO_TREE % "the Document holds no solid"
-    faults = []
-    for entry in found:
-        if entry["type"] != "PartDesign::Body":
-            faults.append("%s is a %s, not a PartDesign::Body" % (entry["name"], entry["type"]))
-        elif not entry["tip"] or not entry["tip"].startswith("PartDesign::") or not entry["features"]:
-            faults.append("Body %s has no PartDesign feature as its Tip" % entry["name"])
-    return NO_TREE % "; ".join(faults) if faults else None
 
 
 def _answer(result):
@@ -72,23 +33,23 @@ def _answer(result):
     return payload
 
 
-def run_solo(intent, *, llm, kernel, tools, events, attachments=(), cancelled=None,
-             max_turns, system, opening, assertion):
+def run_solo(intent, *, domain, llm, kernel, tools, events, attachments=(), cancelled=None,
+             max_turns):
     """
-    Run *intent* to an accepted `finish`, the turn ceiling or *cancelled*, and hand back a `LoopResult` that is ok only where something landed and the Document holds a feature tree.
-    *tools* is the registry whose `apply_step` lands a rehearsed `code` call on the live Document, *opening* is the first message, and *assertion*, asked once at the first accepted `finish`, answers with the content to send back and the names of the views it draws, or `None`.
+    Run *intent* under *domain* to an accepted `finish`, the turn ceiling or *cancelled*, and hand back a `LoopResult` that is ok only where something landed and the Domain's done-check holds.
+    *tools* is the registry whose `apply_step` lands a rehearsed `code` call on the live Document.
     """
     events.emit(INTENT, text=intent)
     if attachments:
         events.emit(ATTACHED, files=[{"name": os.path.basename(p), "path": p} for p in attachments])
 
-    session = Session(system=with_traps(system))
-    content = opening
+    session = Session(system=with_traps(domain.system))
+    content = domain.opening
     renders = tempfile.mkdtemp(prefix="fcc-solo-")
     state = {"applied": 0, "failures": 0, "renders": 0, "asserted": False}
 
     def built(reason, ok=True):
-        missing = without_feature_tree(kernel) if ok and state["applied"] else None
+        missing = domain.done_check(kernel) if ok and state["applied"] else None
         return LoopResult(ok=ok and state["applied"] > 0 and missing is None,
                           reason=missing or reason, steps_applied=state["applied"])
 
@@ -180,14 +141,14 @@ def run_solo(intent, *, llm, kernel, tools, events, attachments=(), cancelled=No
             turns += 1
             message = _parsed(_say(session, llm, content, phase="agent", stream=events))
             if "finish" in message:
-                missing = without_feature_tree(kernel)
+                missing = domain.done_check(kernel)
                 if missing:
                     events.emit(TOOL_RESULT, name="finish_refused", result={"text": missing})
                     content = missing
                     continue
                 if not state["asserted"]:
                     state["asserted"] = True
-                    answer = assertion()
+                    answer = domain.assertion()
                     if answer:
                         content, views = answer
                         events.emit(TOOL_RESULT, name="finish_assertion", result={

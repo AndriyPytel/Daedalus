@@ -120,6 +120,8 @@ def main():
     parser.add_argument("--arm", choices=("agent", "pipeline"), default="agent",
                         help="agent is the reader loop the panel runs; pipeline is the phased "
                              "pipeline, kept to compare against")
+    parser.add_argument("--domain", default="part",
+                        help="The Domain the agent arm builds under, part or assembly; assembly builds from the STEP parts in --attach")
     parser.add_argument("--base-step", default=None,
                         help="An editing run: the part to edit, the BaseFeature of the Document's Body")
     args = parser.parse_args()
@@ -152,7 +154,7 @@ def main():
     cancelled = (lambda: spent["usd"] >= args.budget_usd) if args.budget_usd is not None else None
     if args.arm == "agent":
         result = client.agent(args.intent, attachments=list(args.attach), cancelled=cancelled,
-                              base=bool(args.base_step))
+                              base=bool(args.base_step), domain=args.domain)
     else:
         result = client.send(args.intent, attachments=list(args.attach), cancelled=cancelled,
                              ask=nobody_to_ask, budgets=budgets, arm="pipeline")

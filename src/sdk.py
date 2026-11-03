@@ -25,6 +25,8 @@ from core.loop import (ACCEPT, APPROVE, ASSERTION_PHASE, DECISIONS, DESIGN_PHASE
                        START_OVER, Approval, NeedsAnswer, auto_approve,
                        nobody_to_ask, revise_by_default, run)
 from core.loop.budgets import Budgets
+from core.agent.assembly import run_assembly
+from core.agent.domain import ASSEMBLY, PART
 from core.agent.reader import run_reader
 from core.narrate import narrate
 from core.orchestrator import CONTROL, DESIGN, RUN_QUESTION, route
@@ -263,10 +265,10 @@ class Client:
 
     def send(self, prompt, gate=auto_approve, ask=None, decide=revise_by_default,
              attachments=(), cancelled=None, outstanding=(), the_part_path=None,
-             route_first=True, events=None, budgets=None, arm="agent"):
+             route_first=True, events=None, budgets=None, arm="agent", domain=PART):
         """
         Run *prompt* to the end, blocking. *route_first* classifies it via the orchestrator (default), and *events* overrides this Client's stream for this run only.
-        *arm* `agent` builds with the reader loop; `pipeline` runs the phased one, which alone reads *gate*, *ask*, *decide*, *outstanding*, *the_part_path* and *budgets*, a harness affordance the panel never passes.
+        *arm* `agent` builds with the loop under *domain*; `pipeline` runs the phased one, which alone reads *gate*, *ask*, *decide*, *outstanding*, *the_part_path* and *budgets*, a harness affordance the panel never passes.
         """
         stream = events if events is not None else self.events
         self.pipeline.events = stream
@@ -278,7 +280,7 @@ class Client:
 
         def _pause(question):
             self._pending = dict(prompt=prompt, gate=gate, decide=decide,
-                                 attachments=attachments, arm=arm)
+                                 attachments=attachments, arm=arm, domain=domain)
             raise NeedsAnswer(question)
 
         answered_by = ask or self.answer or _pause
@@ -289,7 +291,8 @@ class Client:
         def design(message, decision=None):
             if arm == "agent":
                 return self.agent(message, attachments=attachments, cancelled=is_cancelled,
-                                  base=tools.call("base_inventory")["inventory"] is not None)
+                                  base=tools.call("base_inventory")["inventory"] is not None,
+                                  domain=domain)
             return run(message, llm=self.llm, tools=tools, events=stream,
                        cancelled=is_cancelled,
                        aborted=lambda: self._abort,
@@ -318,21 +321,27 @@ class Client:
         else:
             return design(prompt)
 
-    def agent(self, prompt, attachments=(), cancelled=None, base=False):
+    def agent(self, prompt, attachments=(), cancelled=None, base=False, domain=PART):
         """
-        The reader loop: the drawing is read into a table, then one model
+        The loop under *domain*: for the Part Domain the drawing is read into a table, then one model
         builds over this Client's kernel and lands each code call on this
         Client's Document, so `save` and `export_step` write what it built.
-        *base* says the Document already holds the part to edit.
+        *base* says the Document already holds the part to edit; the Assembly Domain builds from parts and has no editing.
         """
         if self.kernel is None:
             raise ValueError("the agent works through a kernel")
+        if domain not in (PART, ASSEMBLY):
+            raise ValueError("no such Domain: %r" % domain)
         self.pipeline.events = self.events
         tools = build_registry(document=lambda: self.document, pipeline=self.pipeline,
                                dispatch=self.dispatch)
         seed = tools.call("document_copy")["path"]
         self.kernel.check("pass", document=seed)
         freecad_apply.discard(seed)
+        if domain == ASSEMBLY:
+            return run_assembly(prompt, llm=self.llm, kernel=self.kernel, tools=tools,
+                                events=self.events, attachments=list(attachments),
+                                cancelled=cancelled)
         return run_reader(prompt, llm=self.llm, kernel=self.kernel, tools=tools,
                           events=self.events, attachments=list(attachments),
                           cancelled=cancelled, base=base)
@@ -348,7 +357,7 @@ class Client:
             raise RuntimeError("nothing is paused")
         return self.send(pending["prompt"], gate=pending["gate"], decide=pending["decide"],
                          ask=lambda question: answer, attachments=pending["attachments"],
-                         arm=pending["arm"])
+                         arm=pending["arm"], domain=pending["domain"])
 
     def kill_provider(self):
         """End this Client's own live provider process at once."""

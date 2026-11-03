@@ -8,6 +8,7 @@ import os
 import tempfile
 
 from core.agent.agent import _say
+from core.agent.domain import PART, Domain
 from core.agent.solo import run_solo
 from core.events import ERROR
 from core.llm import Session
@@ -44,6 +45,44 @@ if solids:
                              "faces": len(body.BaseFeature.Shape.Faces)}
 print("FACTS " + json.dumps(facts))
 """
+
+TREE_CHECK = """
+import json
+
+solids = [o for o in doc.Objects
+          if not o.InList and getattr(o, "Shape", None) is not None
+          and not o.Shape.isNull() and o.Shape.Solids]
+found = []
+for o in solids:
+    tip = o.Tip if o.TypeId == "PartDesign::Body" else None
+    features = [f.TypeId for f in o.Group if f.TypeId.startswith("PartDesign::")] if tip else []
+    found.append({"name": o.Name, "type": o.TypeId, "tip": tip.TypeId if tip else None,
+                  "features": features})
+print("TREE " + json.dumps(found))
+"""
+
+NO_TREE = ("The Document's solid is not a feature tree: %s. Build the part in a PartDesign::Body "
+           "from sketches and PartDesign features (Pad, Pocket, Revolution, ...) so it can be "
+           "edited, then finish.")
+
+
+def without_feature_tree(kernel):
+    """Why the kernel's Document does not hold a PartDesign::Body whose Tip is a feature, or `None` where it does."""
+    result = kernel.check(TREE_CHECK, exploring=True)
+    found = None
+    for line in reversed((result.stdout or "").splitlines()):
+        if line.startswith("TREE "):
+            found = json.loads(line[len("TREE "):])
+            break
+    if not found:
+        return NO_TREE % "the Document holds no solid"
+    faults = []
+    for entry in found:
+        if entry["type"] != "PartDesign::Body":
+            faults.append("%s is a %s, not a PartDesign::Body" % (entry["name"], entry["type"]))
+        elif not entry["tip"] or not entry["tip"].startswith("PartDesign::") or not entry["features"]:
+            faults.append("Body %s has no PartDesign feature as its Tip" % entry["name"])
+    return NO_TREE % "; ".join(faults) if faults else None
 
 
 def _number(value):
@@ -225,8 +264,7 @@ def run_reader(intent, *, llm, kernel, tools, events, attachments=(), cancelled=
         (found for found in map(sheet_reader.read, attachments) if found), None)
     table = read_table(sheet, llm, events) if sheet is not None else None
     with tempfile.TemporaryDirectory(prefix="fcc-assertion-") as renders:
-        return run_solo(intent, llm=llm, kernel=kernel, tools=tools, events=events,
-                        attachments=attachments, cancelled=cancelled, max_turns=MAX_TURNS,
-                        system=read_prompt("reader.md"),
-                        opening=opening(intent, sheet, table, attachments, base),
-                        assertion=lambda: assert_part(kernel, sheet, table, renders))
+        domain = Domain(PART, read_prompt("reader.md"), opening(intent, sheet, table, attachments, base),
+                        lambda: assert_part(kernel, sheet, table, renders), without_feature_tree)
+        return run_solo(intent, domain=domain, llm=llm, kernel=kernel, tools=tools, events=events,
+                        attachments=attachments, cancelled=cancelled, max_turns=MAX_TURNS)
