@@ -359,3 +359,15 @@ def test_a_local_server_lists_what_it_serves_and_is_asked_nothing(provider_endpo
     models = fetch("Home server", "", base_url=base, accepts_images=refuse_everything)
 
     assert len(models) == 2
+
+
+def test_a_listing_that_names_its_output_ceiling_carries_it(provider_endpoint):
+    """Groq lists how much a model may write, and a request for more is refused outright."""
+    server, base = provider_endpoint
+    server.payload = {"data": [{"id": "qwen/qwen3.8-27b", "name": "Qwen/Qwen3.8-27B",
+                                "max_completion_tokens": 16384}]}
+
+    models = fetch("Groq", "gsk", base_url=base)
+
+    assert models == [{"id": "qwen/qwen3.8-27b", "display": "qwen/qwen3.8-27b",
+                       "max_output": 16384}]

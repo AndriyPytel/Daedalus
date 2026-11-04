@@ -16,6 +16,14 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.insert(0, os.path.join(ROOT, "src", "tools"))
 
 import run  # noqa: E402
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def no_provider_is_dialled(monkeypatch):
+    from core import model_catalog
+
+    monkeypatch.setattr(model_catalog, "fetch", lambda *args, **kwargs: [])
 
 
 def test_a_gateway_model_builds_that_gateways_client(the_settings_never_reach_the_user_s_freecad):
@@ -26,6 +34,19 @@ def test_a_gateway_model_builds_that_gateways_client(the_settings_never_reach_th
     assert client.model == "openai/glm-5.3-flash"
     assert client.api_base == "https://opencode.ai/zen/go/v1"
     assert client.extra_headers["x-opencode-session"]
+
+
+def test_a_run_knows_the_output_ceiling_its_provider_lists(
+        the_settings_never_reach_the_user_s_freecad, monkeypatch):
+    from core import model_catalog
+
+    settings.instance().set_base_urls({"Groq": "https://api.groq.com/openai/v1"})
+    monkeypatch.setattr(model_catalog, "fetch", lambda *args, **kwargs: [
+        {"id": "qwen/qwen3.8-27b", "display": "Qwen", "max_output": 16384}])
+
+    client = run.client_for("Groq", "qwen/qwen3.8-27b", "medium")
+
+    assert client.output_ceiling == 16384
 
 
 def test_the_subscription_is_still_answered_by_its_own_client(

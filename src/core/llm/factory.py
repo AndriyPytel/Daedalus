@@ -71,6 +71,7 @@ def client_from_settings(model_id: str = None, effort: str = None):
     whole process, since OpenCode Go answers a call without
     `x-opencode-session` with 400 for every model it sells.
     """
+    from core import model_registry
     from core.llm.client import LiteLLMClient
     from core.llm.claude import ClaudeCodeClient
 
@@ -90,6 +91,7 @@ def client_from_settings(model_id: str = None, effort: str = None):
         thinking_budget=2048 if provider == "Anthropic" else None,
         effort=effort,
         extra_headers=_gateway_headers(provider),
+        output_ceiling=model_registry.get_model_entry(mid)["max_output"],
     )
 
 

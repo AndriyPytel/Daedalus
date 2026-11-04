@@ -109,7 +109,7 @@ def _offerable(provider: str, model_id: str, accepts_images=None) -> bool:
 def fetch(provider: str, api_key: str, base_url: str | None = None,
           accepts_images=None) -> list[dict]:
     """
-    Return ``[{id, display}]`` for ``provider``, raising on transport or HTTP
+    Return ``[{id, display, max_output?}]`` for ``provider``, raising on transport or HTTP
     failure; ``base_url`` overrides the provider's endpoint, for a
     provider the user added or a test. A local server's address is a setting of
     its own, never the API key, since a key read as a URL breaks the
@@ -152,13 +152,18 @@ def fetch(provider: str, api_key: str, base_url: str | None = None,
             if "generateContent" in entry.get("supportedGenerationMethods", [])
         ]
     else:
-        found = [
-            {"id": entry["id"], "display": entry.get("display_name") or entry["id"]}
-            for entry in payload.get("data", [])
-        ]
+        found = [_listed(entry) for entry in payload.get("data", [])]
 
     return [model for model in found
             if _offerable(provider, model["id"], accepts_images)]
+
+
+def _listed(entry: dict) -> dict:
+    """An OpenAI-shaped `/models` entry as ``{id, display}``, with ``max_output`` where the provider names how much the model may write."""
+    model = {"id": entry["id"], "display": entry.get("display_name") or entry["id"]}
+    if entry.get("max_completion_tokens"):
+        model["max_output"] = entry["max_completion_tokens"]
+    return model
 
 
 def _subscription_models(base: str) -> list[dict]:

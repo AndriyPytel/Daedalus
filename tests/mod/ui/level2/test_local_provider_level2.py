@@ -369,7 +369,7 @@ def test_a_provider_added_by_name_lists_its_models_and_runs_them(
         asked.append((provider, api_key, base_url))
         if provider != "Groq":
             return []
-        return [{"id": "openai/gpt-oss-120b", "display": "GPT OSS 120B"}]
+        return [{"id": "openai/gpt-oss-120b", "display": "GPT OSS 120B", "max_output": 65536}]
 
     monkeypatch.setattr(model_catalog, "fetch", _groq)
     manager = provider_manager.instance()
@@ -394,3 +394,4 @@ def test_a_provider_added_by_name_lists_its_models_and_runs_them(
     assert client.model == "openai/openai/gpt-oss-120b"
     assert client.api_base == "https://api.groq.com/openai/v1"
     assert client.api_key == "gsk-test"
+    assert client.output_ceiling == 65536

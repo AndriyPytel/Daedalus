@@ -590,6 +590,16 @@ def test_the_default_output_cap_is_65536_for_a_model_litellm_has_no_ceiling_for(
     assert completion.kwargs["max_tokens"] == 65536
 
 
+def test_the_ceiling_the_provider_listed_caps_a_model_litellm_does_not_know():
+    client, completion = client_replaying(openai_chunks())
+    client.model = "openai/qwen/qwen3.8-27b"
+    client.output_ceiling = 16384
+
+    collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert completion.kwargs["max_tokens"] == 16384
+
+
 def test_an_openai_compatible_gateway_is_asked_to_report_what_it_spent():
     """Without usage the gateway's stream ends silently and a cut-off looks complete."""
     client, completion = client_replaying(openai_chunks())

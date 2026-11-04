@@ -6,7 +6,16 @@ the header is part of being configured for that provider, not an option.
 """
 import types
 
+import pytest
+
+from core import model_registry
 from core.llm import factory
+
+
+@pytest.fixture(autouse=True)
+def a_model_is_listed(monkeypatch):
+    """`get_llm_credentials` answers only for a model a provider listed, so the faked one is listed too."""
+    monkeypatch.setattr(model_registry, "_resolved", {"a-model": ("", "a-model", None)})
 
 
 def _settings(provider, base_url=""):

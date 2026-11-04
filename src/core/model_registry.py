@@ -10,14 +10,14 @@ provider even after a key change clears the fetch that named it.
 _resolved = {}
 
 
-def remember(model_id: str, provider: str, display: str):
-    _resolved[model_id] = (provider, display)
+def remember(model_id: str, provider: str, display: str, max_output: int = None):
+    _resolved[model_id] = (provider, display, max_output)
 
 
 def get_model_entry(model_id: str) -> dict | None:
-    """The last-known ``{id, display, provider}`` for *model_id*, or `None`."""
+    """The last-known ``{id, display, provider, max_output}`` for *model_id*, or `None`; ``max_output`` is `None` where the provider listed no ceiling."""
     remembered = _resolved.get(model_id)
     if remembered is None:
         return None
-    provider, display = remembered
-    return {"id": model_id, "display": display, "provider": provider}
+    provider, display, max_output = remembered
+    return {"id": model_id, "display": display, "provider": provider, "max_output": max_output}

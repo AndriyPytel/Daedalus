@@ -138,7 +138,7 @@ class _ProviderManager(QObject):
 
         for model in models:
             self._resolved[model["id"]] = (provider, model["display"])
-            model_registry.remember(model["id"], provider, model["display"])
+            model_registry.remember(model["id"], provider, model["display"], model.get("max_output"))
 
     def _on_fetch_failed(self, provider: str, error: str):
         """

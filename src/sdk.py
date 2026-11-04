@@ -184,6 +184,16 @@ def remember_model(model_id, provider):
     model_registry.remember(model_id, provider, model_id)
 
 
+def remember_listed(provider):
+    """Ask *provider* for its model list with the stored key and address and remember every model on it, as the panel's fetch does."""
+    from core import model_registry
+
+    sm = _settings.instance()
+    for model in model_catalog.fetch(provider, sm.get_api_key_for_provider(provider),
+                                     base_url=sm.get_base_url_for_provider(provider) or None):
+        model_registry.remember(model["id"], provider, model["display"], model.get("max_output"))
+
+
 def get_model_entry(model_id):
     """The last-known ``{id, display, provider}`` for *model_id*, or ``None``."""
     from core import model_registry

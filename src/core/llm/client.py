@@ -26,13 +26,14 @@ class LiteLLMClient:
 
     def __init__(self, model: str, api_key: str, api_base: str = None,
                  thinking_budget: int = None, completion: Callable = None,
-                 effort: str = None, extra_headers: dict = None):
+                 effort: str = None, extra_headers: dict = None, output_ceiling: int = None):
         self.model = model
         self.api_key = api_key
         self.api_base = api_base
         self.thinking_budget = thinking_budget
         self.effort = effort
         self.extra_headers = extra_headers
+        self.output_ceiling = output_ceiling
         self.last_cost = None
         self._completion = completion
 
@@ -72,7 +73,8 @@ class LiteLLMClient:
             kwargs.setdefault("reasoning_effort", _resolved_effort(self.effort))
             kwargs.setdefault("allowed_openai_params", ["reasoning_effort"])
         kwargs.setdefault("max_tokens",
-                          _output_cap(self.model, (self.thinking_budget or _OUTPUT_BUDGET) * 4))
+                          _output_cap(self.model, (self.thinking_budget or _OUTPUT_BUDGET) * 4,
+                                      self.output_ceiling))
         openai_compatible = self.model.startswith(("openai/", "openrouter/"))
         if openai_compatible:
             kwargs.setdefault("stream_options", {"include_usage": True})
@@ -134,18 +136,21 @@ def _may_reason(model) -> bool:
     return False
 
 
-def _output_cap(model, wanted) -> int:
+def _output_cap(model, wanted, listed=None) -> int:
     """
-    *wanted*, or the model's own ceiling where LiteLLM knows one: asking for
-    more output than a model can write is rejected outright, and a gateway
-    model LiteLLM has never heard of has no ceiling to read.
+    *wanted*, or the model's own ceiling where one is known: asking for more
+    output than a model can write is rejected outright. The ceiling is
+    *listed*, the one the provider's own model list names, or else LiteLLM's,
+    since a gateway model LiteLLM has never heard of has no ceiling to read.
     """
     import litellm
 
-    try:
-        known = litellm.get_model_info(model).get("max_output_tokens")
-    except Exception:
-        known = None
+    known = listed
+    if not known:
+        try:
+            known = litellm.get_model_info(model).get("max_output_tokens")
+        except Exception:
+            known = None
     return min(wanted, known) if known else wanted
 
 

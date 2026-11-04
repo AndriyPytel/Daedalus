@@ -28,12 +28,17 @@ def client_for(provider, model_id, effort):
     The client for *model_id* at *provider*, in a process no panel ran in.
 
     `core.model_registry` is filled by the panel's own fetch, which never runs
-    here, so the provider is named on the command line and recorded before
-    `client_from_settings` is asked to resolve it. The service worker solves the same problem through `sdk.remember_model`.
+    here, so the provider is named on the command line and recorded, and its
+    list asked for the output ceiling it names, before `client_from_settings`
+    is asked to resolve it. The service worker solves the same problem through `sdk.remember_model`.
     """
     import sdk
 
     sdk.remember_model(model_id, provider)
+    try:
+        sdk.remember_listed(provider)
+    except Exception as exc:
+        print("model list    : %s did not list its models (%s), so no output ceiling is known" % (provider, exc))
     return sdk.client_from_settings(model_id, effort)
 
 
