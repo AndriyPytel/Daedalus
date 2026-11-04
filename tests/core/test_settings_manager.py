@@ -65,3 +65,17 @@ def test_a_provider_added_by_name_is_offered_after_the_catalogs_own(no_keys_or_a
                       "Home server": "http://localhost:11434"})
 
     assert sm.get_providers() == model_catalog.providers() + ["Groq", "Home server"]
+
+
+def test_the_domain_choice_defaults_to_auto_and_round_trips(the_settings_never_reach_the_user_s_freecad):
+    from core import settings
+
+    sm = settings.instance()
+    chosen = sm.get_domain()
+    try:
+        sm.set_domain("")
+        assert sm.get_domain() == "auto"
+        sm.set_domain("assembly")
+        assert sm.get_domain() == "assembly"
+    finally:
+        sm.set_domain(chosen)

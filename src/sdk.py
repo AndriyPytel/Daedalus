@@ -30,6 +30,7 @@ from core.loop import (ACCEPT, APPROVE, ASSERTION_PHASE, DECISIONS, DESIGN_PHASE
 from core.loop.budgets import Budgets
 from core.agent.assembly import PART_SHARE, part_summary, run_assembly, unfinished
 from core.agent.domain import ASSEMBLY, PART
+from core.agent.infer import AUTO, CHOICES, choose
 from core.agent.reader import run_reader
 from core.narrate import narrate
 from core.orchestrator import CONTROL, DESIGN, RUN_QUESTION, route
@@ -122,6 +123,14 @@ def get_default_model():
 
 def set_default_model(model_id):
     _settings.instance().set_default_model(model_id)
+
+
+def get_domain():
+    return _settings.instance().get_domain()
+
+
+def set_domain(choice):
+    _settings.instance().set_domain(choice)
 
 
 def get_naming_model():
@@ -396,6 +405,12 @@ class Client:
         return run_reader(prompt, llm=self.llm, kernel=self.kernel, tools=tools,
                           events=self.events, attachments=list(attachments),
                           cancelled=cancelled, base=base)
+
+    def domain_for(self, intent, choice=AUTO, events=None):
+        """The Domain *intent* builds under for the panel's *choice*, said on *events* (this Client's own where none is given); the Document's object types are read where `dispatch` runs."""
+        orchestrator = self.llm.for_role(ORCHESTRATOR)
+        types = self.dispatch(lambda: [o.TypeId for o in self.document.Objects])
+        return choose(choice, intent, types, orchestrator, events if events is not None else self.events)
 
     def resume(self, answer):
         """

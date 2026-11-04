@@ -6,9 +6,9 @@ import json
 import pytest
 
 from core.agent.domain import ASSEMBLY
-from core.events import APPLIED, COMPLETED, TOOL_RESULT
+from core.events import APPLIED, COMPLETED, COST, DOMAIN, TOOL_RESULT, EventStream
 from core.kernel import Kernel, find_freecadcmd
-from core.llm import ScriptedLLMClient
+from core.llm import RoleClient, ScriptedLLMClient
 from tests.assembly_helpers import PARTS, SOLVED
 
 pytestmark = pytest.mark.freecad
@@ -112,3 +112,27 @@ def test_a_domain_that_does_not_exist_is_refused(kernel):
     with pytest.raises(ValueError, match="no such Domain"):
         client.agent("Assemble.", domain="bim")
     client.close()
+
+
+def test_the_domain_comes_from_the_documents_assembly_with_no_call_and_from_the_model_otherwise(kernel):
+    llm = ScriptedLLMClient(["part"])
+    client = _client(RoleClient({}, llm), kernel)
+
+    assert client.domain_for("Make a bracket.") == "part"
+    assert len(llm.calls) == 1
+
+    client.document.addObject("Assembly::AssemblyObject", "Assembly")
+
+    assert client.domain_for("Make a bracket.") == ASSEMBLY
+    assert len(llm.calls) == 1
+
+
+def test_a_subscribed_but_still_empty_stream_receives_the_domain_and_its_cost(kernel):
+    client = _client(RoleClient({}, ScriptedLLMClient(["part"])), kernel)
+    seen = []
+    stream = EventStream([seen.append])
+
+    client.domain_for("Make a bracket.", events=stream)
+    client.close()
+
+    assert {DOMAIN, COST} <= {event.kind for event in seen}

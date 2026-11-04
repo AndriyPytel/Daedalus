@@ -606,7 +606,7 @@ traceback. `the_part_path` is the Session's last run's read/written part,
 forwarded here unless a new attachment replaces it; empty means describe
 the part from `attachments` alone.
 """
-        from sdk import events as ev, EventStream, build_registry
+        from sdk import events as ev, EventStream, build_registry, get_domain
         from bridge.logger import generate_crash_report, logger
 
         self._stop.clear()
@@ -638,6 +638,7 @@ the part from `attachments` alone.
 
         sdk_client.pipeline.start_run()
         try:
+            domain = sdk_client.domain_for(intent, get_domain(), events)
             result = sdk_client.send(
                 intent,
                 gate=self.ask.about_the_plan,
@@ -647,7 +648,7 @@ the part from `attachments` alone.
                 cancelled=self._stop.is_set,
                 outstanding=list(outstanding or ()),
                 the_part_path=the_part_path or None,
-                events=events)
+                events=events, domain=domain)
             self.finished.emit(result, transcript)
         except Exception as exc:
             events.emit("error", message=generate_crash_report(exc, "LoopWorker.do_work()"))
@@ -992,7 +993,7 @@ belong to the Session.
         self.chip_bar.file_removed.connect(self.upload_widget.discard)
         strip.addWidget(self.upload_widget)
 
-        from .model_selector import EffortPopup, ModelSelectorPopup
+        from .model_selector import ChoicePopup, ModelSelectorPopup
 
         picker = QtWidgets.QHBoxLayout()
         picker.setContentsMargins(0, 0, 0, 0)
@@ -1022,10 +1023,25 @@ belong to the Session.
         self.effort_button.clicked.connect(self._open_effort_selector)
         picker.addWidget(self.effort_button)
 
+        self.domain_button = QtWidgets.QPushButton()
+        self.domain_button.setObjectName("PickerButton")
+        self.domain_button.setFixedHeight(CONTROL_DENSE)
+        self.domain_button.setSizePolicy(QtWidgets.QSizePolicy.Maximum,
+                                         QtWidgets.QSizePolicy.Fixed)
+        self.domain_button.setToolTip("What the run builds: Auto infers it from the Intent and the Document")
+        self.domain_button.setLayoutDirection(QtCore.Qt.RightToLeft)
+        self.domain_button.clicked.connect(self._open_domain_selector)
+        picker.addWidget(self.domain_button)
+
         strip.addLayout(picker)
 
-        self.effort_selector = EffortPopup(self)
-        self.effort_selector.effort_chosen.connect(self._on_effort_selected)
+        self.domain_selector = ChoicePopup(self)
+        self.domain_selector.chosen.connect(
+            lambda label: self._on_domain_selected(label.lower()))
+        self._show_domain()
+
+        self.effort_selector = ChoicePopup(self)
+        self.effort_selector.chosen.connect(self._on_effort_selected)
         self._show_effort()
 
         self._models = []
@@ -1290,6 +1306,25 @@ left over is what the name is elided to.
         self.effort_button.setIcon(
             UIHelpers.get_icon("chevron_down", size=ICON_DENSE, on=self.effort_button))
 
+    def _open_domain_selector(self):
+        from sdk import CHOICES
+
+        self.domain_selector.open_at([choice.capitalize() for choice in CHOICES],
+                                     self.domain_button)
+
+    def _on_domain_selected(self, choice: str):
+        from sdk import set_domain
+
+        set_domain(choice)
+        self._show_domain()
+
+    def _show_domain(self):
+        from sdk import get_domain
+
+        self.domain_button.setText(get_domain().capitalize())
+        self.domain_button.setIcon(
+            UIHelpers.get_icon("chevron_down", size=ICON_DENSE, on=self.domain_button))
+
     def toggle_history(self):
         """The picker holds only indexed Sessions, each carrying its own
         position: a Session enters on its first Intent (when it gets its
@@ -1347,6 +1382,7 @@ left over is what the name is elided to.
         self._question_card = None
         self._answers_to_enter = None
         self._total_usd = 0.0
+        self._domain_usd = 0.0
         self._run_start_time = None
         self._last_event_time = None
         self._waiting_on_you_since = None
@@ -1721,7 +1757,7 @@ it up, so a prompt shows once whether live or restored.
         data = event.data
 
         if event.kind == ev.INTENT:
-            self._total_usd = 0.0
+            self._total_usd, self._domain_usd = self._domain_usd, 0.0
             self._run_start_time = event.at
             self._last_event_time = event.at
             self._waiting_on_you_since = None
@@ -1766,6 +1802,7 @@ it up, so a prompt shows once whether live or restored.
             ev.DESIGN: DaedalusPanel._noop,
             ev.CHANGE_SET: DaedalusPanel._noop,
             ev.ROUTED: DaedalusPanel._noop,
+            ev.DOMAIN: DaedalusPanel._noop,
             ev.OUTSTANDING: DaedalusPanel._noop,
             ev.REVIEW_SUSPECTED: DaedalusPanel._noop,
             ev.GATE: DaedalusPanel._noop,
@@ -1796,6 +1833,8 @@ it up, so a prompt shows once whether live or restored.
 
     def _oe_cost(self, event, data):
         self._total_usd += data.get("usd", 0.0)
+        if data.get("phase") == "domain":
+            self._domain_usd += data.get("usd", 0.0)
         self._last_event_time = event.at
         self._update_usage_total()
         self._the_thinking_stops(data.get("phase"))
@@ -1918,6 +1957,7 @@ as running only after it already shows `applied`.
             ev.DESIGN: DaedalusPanel._noop,
             ev.CHANGE_SET: DaedalusPanel._noop,
             ev.ROUTED: DaedalusPanel._noop,
+            ev.DOMAIN: DaedalusPanel._noop,
             ev.PART: DaedalusPanel._uq_part,
             ev.PLAN: DaedalusPanel._uq_plan,
             ev.PLAN_REVISED: DaedalusPanel._uq_plan,
@@ -2029,6 +2069,7 @@ as running only after it already shows `applied`.
             ev.DESIGN: DaedalusPanel._noop,
             ev.CHANGE_SET: DaedalusPanel._noop,
             ev.ROUTED: DaedalusPanel._noop,
+            ev.DOMAIN: DaedalusPanel._noop,
             ev.PART: DaedalusPanel._noop,
             ev.PLAN: DaedalusPanel._noop,
             ev.PLAN_REVISED: DaedalusPanel._noop,

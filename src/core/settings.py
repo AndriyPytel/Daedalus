@@ -12,6 +12,8 @@ from functools import lru_cache
 
 from core.role_defaults import DEFAULT_ROLE_TABLE
 
+AUTO = "auto"
+
 _PARAM_PATH = "User parameter:BaseApp/Preferences/Daedalus"
 _LEGACY_PARAM_PATH = "User parameter:BaseApp/Preferences/FreeCadCopilot"
 _SETTERS = {"String": "SetString", "Boolean": "SetBool", "Integer": "SetInt",
@@ -199,6 +201,13 @@ class Settings:
 
     def set_effort(self, level: str):
         self._grp().SetString("Effort", level)
+
+    def get_domain(self) -> str:
+        """The Domain the user picked in the panel, or `auto` where none was picked."""
+        return self._grp().GetString("Domain", "") or AUTO
+
+    def set_domain(self, choice: str):
+        self._grp().SetString("Domain", choice)
 
     def get_role_table(self) -> list:
         """One row per role -- `provider`, `model`, `effort` -- seeded with defaults."""

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 from core.events import (
     ABORTED, ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, BUDGET_EXHAUSTED,
-    COMPLETED, DISPUTED, ERROR, FAILED, GATE, INTENT, OUTSTANDING, PART, PLAN_REVISED,
+    COMPLETED, DISPUTED, DOMAIN, ERROR, FAILED, GATE, INTENT, OUTSTANDING, PART, PLAN_REVISED,
     PREFLIGHT_FAILED, QUESTION, REVIEW_SUSPECTED, REVIEW_VERDICT, ROUTED,
     STEP_DECLARED, STEP_STARTED, STOPPED, TOOL_RESULT, TURN_BUDGET_EXHAUSTED, UNBUILT,
 )
@@ -89,6 +89,10 @@ def narrate(event) -> Narration:
 
     if kind == ROUTED:
         return Narration(status="Routed to: %s" % data.get("route", ""))
+
+    if kind == DOMAIN:
+        return Narration(line="Domain: %s%s" % (data["domain"].capitalize(),
+                                                " (inferred)" if data.get("inferred") else ""))
 
     if kind == GATE:
         if data.get("standing") and data.get("decision"):

@@ -4135,6 +4135,9 @@ def test_a_step_that_faults_ends_its_own_run_and_the_gui_survives(panel, monkeyp
             self.pipeline = _FakePipeline()
             self.dispatch = lambda func, timeout=None: func()
 
+        def domain_for(self, intent, choice, events):
+            return "part"
+
         def send(self, *args, **kwargs):
             raise RuntimeError("a Step faulted inside the kernel")
 
@@ -4187,6 +4190,9 @@ def test_an_unopenable_transcript_is_logged_not_swallowed(monkeypatch, tmp_path)
             self.pipeline = _FakePipeline()
             self.dispatch = lambda func, timeout=None: func()
 
+        def domain_for(self, intent, choice, events):
+            return "part"
+
         def send(self, *args, **kwargs):
             return types.SimpleNamespace(ok=True)
 
@@ -4233,6 +4239,9 @@ def test_an_intent_from_the_panel_is_routed_before_design(monkeypatch):
             self.pipeline = _FakePipeline()
             self.dispatch = lambda func, timeout=None: func()
 
+        def domain_for(self, intent, choice, events):
+            return "part"
+
         def send(self, *args, **kwargs):
             sent.append(kwargs)
             return types.SimpleNamespace(ok=True)
@@ -4246,3 +4255,141 @@ def test_an_intent_from_the_panel_is_routed_before_design(monkeypatch):
     assert sent, "the panel must reach the SDK at all"
     assert sent[0].get("route_first", True) is not False, (
         "the panel must let the orchestrator classify the Intent, not force Design")
+
+
+@pytest.fixture
+def the_domain_choice(monkeypatch):
+    import sdk
+
+    stored = {"domain": "auto"}
+    monkeypatch.setattr(sdk, "get_domain", lambda: stored["domain"])
+    monkeypatch.setattr(sdk, "set_domain", lambda choice: stored.__setitem__("domain", choice))
+    return stored
+
+
+def test_the_composer_offers_auto_part_and_assembly_and_starts_on_auto(panel, the_domain_choice, monkeypatch):
+    offered = []
+    monkeypatch.setattr(panel.domain_selector, "open_at", lambda levels, anchor: offered.extend(levels))
+
+    panel._show_domain()
+    panel._open_domain_selector()
+
+    assert panel.domain_button.text() == "Auto"
+    assert offered == ["Auto", "Part", "Assembly"]
+
+
+def test_picking_a_domain_stores_it_and_shows_it(panel, the_domain_choice):
+    panel._on_domain_selected("assembly")
+
+    assert the_domain_choice["domain"] == "assembly"
+    assert panel.domain_button.text() == "Assembly"
+
+
+def test_the_pill_reads_what_was_stored(panel, the_domain_choice):
+    the_domain_choice["domain"] = "part"
+
+    panel._show_domain()
+
+    assert panel.domain_button.text() == "Part"
+
+
+def test_the_chat_says_the_domain_before_the_loop_starts(panel):
+    from core.events import DOMAIN, Event
+    from ui.chat_widgets import AssistantMessageWidget
+
+    panel.on_event(Event(DOMAIN, {"domain": "assembly", "inferred": True}))
+    panel.on_event(Event(DOMAIN, {"domain": "part", "inferred": False}))
+
+    said = [w.text_label.text() for w in panel.findChildren(AssistantMessageWidget)]
+    assert "Domain: Assembly (inferred)" in said
+    assert "Domain: Part" in said
+
+
+def test_the_run_is_sent_under_the_domain_the_choice_resolved_to(monkeypatch):
+    import types
+
+    from ui.daedalus_panel import LoopWorker, EventBridge, AskTheUser
+
+    worker = LoopWorker(EventBridge(), AskTheUser())
+    sent, asked = [], []
+
+    class _FakePipeline:
+        def start_run(self):
+            return None
+
+        def end_run(self):
+            return None
+
+    class _FakeClient:
+        def __init__(self):
+            self.pipeline = _FakePipeline()
+            self.dispatch = lambda func, timeout=None: func()
+
+        def domain_for(self, intent, choice, events):
+            asked.append((intent, choice))
+            return "assembly"
+
+        def send(self, *args, **kwargs):
+            sent.append(kwargs)
+            return types.SimpleNamespace(ok=True)
+
+    monkeypatch.setattr(worker, "_get_sdk_client", lambda: _FakeClient())
+    monkeypatch.setattr("sdk.build_registry",
+                        lambda **kwargs: types.SimpleNamespace(call=lambda *a, **k: {"document": ""}))
+    monkeypatch.setattr("sdk.get_domain", lambda: "auto")
+
+    worker.do_work("join the plates", [], "")
+
+    assert asked == [("join the plates", "auto")]
+    assert sent[0]["domain"] == "assembly"
+
+
+def test_what_the_domain_call_cost_stays_in_the_runs_total(panel):
+    from core.events import COST, INTENT, Event
+
+    panel.new_chat()
+    panel.on_event(Event(COST, {"phase": "domain", "usd": 0.01, "model": "m", "seconds": 1.0}))
+    panel.on_event(Event(INTENT, {"text": "join the plates"}))
+    panel.on_event(Event(COST, {"phase": "execute", "usd": 0.04, "model": "m", "seconds": 1.0}))
+
+    assert panel.usage_label.text().startswith("$0.05")
+
+
+def test_a_failed_domain_call_ends_the_run_with_an_error_in_the_chat(monkeypatch):
+    import types
+
+    from ui.daedalus_panel import LoopWorker, EventBridge, AskTheUser
+
+    worker = LoopWorker(EventBridge(), AskTheUser())
+    seen, finished, ended = [], [], []
+
+    class _FakePipeline:
+        def start_run(self):
+            return None
+
+        def end_run(self):
+            ended.append(True)
+
+    class _FakeClient:
+        def __init__(self):
+            self.pipeline = _FakePipeline()
+            self.dispatch = lambda func, timeout=None: func()
+
+        def domain_for(self, intent, choice, events):
+            raise RuntimeError("quota exceeded")
+
+        def send(self, *args, **kwargs):
+            raise AssertionError("the run must not start")
+
+    monkeypatch.setattr(worker, "_get_sdk_client", lambda: _FakeClient())
+    monkeypatch.setattr("sdk.build_registry",
+                        lambda **kwargs: types.SimpleNamespace(call=lambda *a, **k: {"document": ""}))
+    monkeypatch.setattr("sdk.get_domain", lambda: "auto")
+    monkeypatch.setattr(worker.bridge, "subscriber", lambda: seen.append)
+    worker.finished.connect(lambda result, transcript: finished.append(result))
+
+    worker.do_work("join the plates", [], "")
+
+    assert finished == [None]
+    assert ended == [True]
+    assert any(e.kind == "error" and "quota exceeded" in e.data["message"] for e in seen)

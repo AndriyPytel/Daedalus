@@ -311,16 +311,10 @@ class ModelSelectorPopup(_ListPopup):
         self.close()
 
 
-class EffortPopup(_ListPopup):
-    """How hard the model is asked to think, in one flat list: a second picker,
-not a dialog setting, the same kind of choice as the model, made at the
-same moment and changed to compare one run against the next. Levels are the
-routes' own, `--effort` for the Claude Code CLI and `reasoning_effort` for
-LiteLLM. A model that cannot reason is never offered the choice, since a
-picker that changes nothing is a picker that lies.
-"""
+class ChoicePopup(_ListPopup):
+    """A flat list of short labels with the current one checked, for a choice made where the model is chosen (thinking effort, Domain). It emits the label picked as `chosen`."""
 
-    effort_chosen = QtCore.Signal(str)
+    chosen = QtCore.Signal(str)
 
     def open_at(self, levels: list, anchor: QtWidgets.QWidget):
         """*levels* in the order they are offered, the current one checked."""
@@ -335,5 +329,5 @@ picker that changes nothing is a picker that lies.
         self.show()
 
     def _choose(self, level: str):
-        self.effort_chosen.emit(level)
+        self.chosen.emit(level)
         self.close()
