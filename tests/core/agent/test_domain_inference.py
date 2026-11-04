@@ -3,7 +3,7 @@ Level 1 -- the Domain a run builds under: the Document's own Assembly decides fi
 """
 import pytest
 
-from core.agent.domain import ASSEMBLY, PART
+from core.agent.domain import ASSEMBLY, BIM, PART
 from core.agent.infer import AUTO, choose, classify, from_document, summary
 from core.events import DOMAIN, EventStream
 from core.llm import ScriptedLLMClient
@@ -13,6 +13,11 @@ ASSEMBLY_OBJECT = "Assembly::AssemblyObject"
 
 def test_an_assembly_object_in_the_document_means_assembly():
     assert from_document(["Part::Feature", ASSEMBLY_OBJECT, "Assembly::JointGroup"]) == ASSEMBLY
+
+
+def test_arch_objects_in_the_document_mean_bim_and_an_assembly_still_wins():
+    assert from_document(["Part::FeaturePython"], arch=True) == BIM
+    assert from_document(["Part::FeaturePython", ASSEMBLY_OBJECT], arch=True) == ASSEMBLY
 
 
 def test_a_document_without_one_decides_nothing():
@@ -27,11 +32,17 @@ def test_the_summary_counts_object_types():
 
 @pytest.mark.parametrize("answer, domain", [
     ("assembly", ASSEMBLY), ("Assembly.", ASSEMBLY), ("  ASSEMBLY\n", ASSEMBLY),
-    ("part", PART), ("Part", PART),
+    ("part", PART), ("Part", PART), ("bim", BIM), ("BIM.", BIM),
     ("I am not sure", PART), ("", PART), ("an assembly of parts", PART),
 ])
 def test_the_answer_is_parsed_and_an_unparseable_one_gives_part(answer, domain):
     assert classify("Join the plates.", [], ScriptedLLMClient([answer])) == domain
+
+
+def test_the_choices_offer_bim_beside_part_and_assembly():
+    from core.agent.infer import CHOICES
+
+    assert CHOICES == (AUTO, PART, ASSEMBLY, BIM)
 
 
 def test_the_call_carries_the_intent_and_the_document_summary_and_no_tools():
@@ -64,7 +75,7 @@ def test_auto_otherwise_asks_the_model_once():
     assert [e.data for e in events if e.kind == DOMAIN] == [{"domain": ASSEMBLY, "inferred": True}]
 
 
-@pytest.mark.parametrize("picked", [PART, ASSEMBLY])
+@pytest.mark.parametrize("picked", [PART, ASSEMBLY, BIM])
 def test_an_override_makes_no_call_and_says_so(picked):
     llm = ScriptedLLMClient([])
     events = EventStream()
@@ -128,5 +139,5 @@ def test_no_call_means_no_cost_event():
 def test_a_value_that_is_not_a_choice_is_not_inferred():
     events = EventStream()
 
-    assert choose("bim", "Make a bracket.", [], ScriptedLLMClient([]), events) == "bim"
-    assert [e.data for e in events if e.kind == DOMAIN] == [{"domain": "bim", "inferred": False}]
+    assert choose("teapot", "Make a bracket.", [], ScriptedLLMClient([]), events) == "teapot"
+    assert [e.data for e in events if e.kind == DOMAIN] == [{"domain": "teapot", "inferred": False}]

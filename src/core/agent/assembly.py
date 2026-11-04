@@ -6,7 +6,7 @@ The solver returns 0 for some inconsistent joints and leaves one unsatisfied, so
 import json
 import os
 
-from core.agent.domain import ASSEMBLY, Domain
+from core.agent.domain import ASSEMBLY, Domain, measured as domain_measured, unfinished as domain_unfinished
 from core.agent.solo import run_solo
 from core.loop.prompt import _as_image
 from core.prompts import read_prompt
@@ -72,12 +72,8 @@ print("FACTS " + json.dumps(facts))
 
 
 def measured(kernel):
-    """The Assembly's facts as the kernel's solver leaves them, or `None` where the measuring itself failed; the Document is rolled back."""
-    result = kernel.check(FACTS_CHECK, exploring=True)
-    for line in reversed((result.stdout or "").splitlines()):
-        if line.startswith("FACTS "):
-            return json.loads(line[len("FACTS "):])
-    return None
+    """The Assembly's facts as the kernel's solver leaves them, or `None` where the measuring itself failed."""
+    return domain_measured(kernel, FACTS_CHECK)
 
 
 def refusals(facts):
@@ -126,12 +122,8 @@ def refusals(facts):
 
 def unfinished(kernel):
     """Why the Document is not a finished Assembly, one line per failing condition, or `None` where the Assertion holds."""
-    facts = measured(kernel)
-    if facts is None:
-        return "The Assembly could not be measured: the Document would not recompute or solve."
-    found = refusals(facts)
-    return ("The Assembly Assertion does not hold:\n- " + "\n- ".join(found)
-            + "\nFix this, then finish.") if found else None
+    return domain_unfinished(kernel, FACTS_CHECK, refusals, "Assembly",
+                             "The Assembly could not be measured: the Document would not recompute or solve.")
 
 
 def opening(intent, attachments):

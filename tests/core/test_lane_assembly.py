@@ -86,7 +86,7 @@ def test_sweep_hands_the_domain_the_text_and_the_parts_to_every_run(monkeypatch,
 
     lane.sweep([("from_parts_01", "")], ["opus"], "medium", 8.0, "unused", str(tmp_path / "out"),
                1800, 1, False, "Claude (subscription)", None, domain="assembly",
-               assemblies={"from_parts_01": str(folder)})
+               task_folders={"from_parts_01": str(folder)})
 
     intent, kwargs = seen[0]
     assert intent == "Create one Assembly from the 2 part files in parts/."
@@ -106,7 +106,7 @@ def test_the_parser_reads_the_domain_and_the_assembly_tasks(monkeypatch, tmp_pat
     lane.main()
 
     assert captured["k"]["domain"] == "assembly"
-    assert captured["k"]["assemblies"] == {"from_parts_01": "/d/from_parts_01"}
+    assert captured["k"]["task_folders"] == {"from_parts_01": "/d/from_parts_01"}
 
 
 def test_the_table_has_a_row_per_task_and_the_means_under_it():
@@ -231,7 +231,7 @@ def test_sweep_opens_the_input_of_an_edit_task_as_the_runs_document(monkeypatch,
 
     lane.sweep([("edit_02", "")], ["opus"], "medium", 8.0, "unused", str(tmp_path / "out"),
                1800, 1, False, "Claude (subscription)", None, domain="assembly",
-               assemblies={"edit_02": str(folder)})
+               task_folders={"edit_02": str(folder)})
 
     assert seen[0]["base_document"] == str(folder / "input.FCStd")
     assert seen[0]["attach"] == [str(folder / "parts" / "Part2.step")]
@@ -260,4 +260,4 @@ def test_the_parser_accepts_the_edit_mode(monkeypatch, tmp_path):
 
     lane.main()
 
-    assert captured["k"]["assemblies"] == {"edit_02": "/d/edit_02"}
+    assert captured["k"]["task_folders"] == {"edit_02": "/d/edit_02"}

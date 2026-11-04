@@ -100,3 +100,22 @@ def test_a_passing_run_with_a_solid_exports_it_and_exits_0(tmp_path):
 
     assert run.finish(client, _Result(ok=True), path) == 0
     assert client.exported == [path]
+
+
+class _FlatClient:
+    def __init__(self, path):
+        self.path = path
+
+    def export_ifc(self, path):
+        return self.path and path
+
+
+def test_an_ifc_run_with_no_arch_object_writes_nothing_and_exits_with_its_own_code(tmp_path):
+    assert run.finish(_FlatClient(None), _Result(ok=True), str(tmp_path / "flat.ifc")) == run.NO_SOLID_EXIT
+
+
+def test_an_ifc_run_exits_with_its_verdict(tmp_path):
+    path = str(tmp_path / "flat.ifc")
+
+    assert run.finish(_FlatClient(path), _Result(ok=True), path) == 0
+    assert run.finish(_FlatClient(path), _Result(ok=False), path) == 1

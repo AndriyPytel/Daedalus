@@ -15,6 +15,7 @@ import tempfile
 
 from core import events, freecad_apply, model_catalog
 from core import settings as _settings
+from core.arch import arch_type, export_ifc
 from core.freecad_apply import ApplyPipeline, active_document, build_registry
 from core.events import (ASSERTION, BLOCKED, COST, REVIEW_VERDICT, EventStream,
                          replay)
@@ -29,7 +30,8 @@ from core.loop import (ACCEPT, APPROVE, ASSERTION_PHASE, DECISIONS, DESIGN_PHASE
                        nobody_to_ask, revise_by_default, run)
 from core.loop.budgets import Budgets
 from core.agent.assembly import PART_SHARE, part_summary, run_assembly, unfinished
-from core.agent.domain import ASSEMBLY, PART
+from core.agent.bim import run_bim
+from core.agent.domain import ASSEMBLY, BIM, PART, label as domain_label
 from core.agent.infer import AUTO, CHOICES, choose
 from core.agent.reader import run_reader
 from core.narrate import narrate
@@ -387,7 +389,7 @@ class Client:
         """
         if self.kernel is None:
             raise ValueError("the agent works through a kernel")
-        if domain not in (PART, ASSEMBLY):
+        if domain not in (PART, ASSEMBLY, BIM):
             raise ValueError("no such Domain: %r" % domain)
         self.pipeline.events = self.events
         tools = build_registry(document=lambda: self.document, pipeline=self.pipeline,
@@ -402,6 +404,9 @@ class Client:
                                     cancelled=cancelled,
                                     build_part=self.part_builder(folder, cancelled, budget_usd),
                                     edit=base)
+        if domain == BIM:
+            return run_bim(prompt, llm=self.llm, kernel=self.kernel, tools=tools, events=self.events,
+                           attachments=list(attachments), cancelled=cancelled)
         return run_reader(prompt, llm=self.llm, kernel=self.kernel, tools=tools,
                           events=self.events, attachments=list(attachments),
                           cancelled=cancelled, base=base)
@@ -409,8 +414,10 @@ class Client:
     def domain_for(self, intent, choice=AUTO, events=None):
         """The Domain *intent* builds under for the panel's *choice*, said on *events* (this Client's own where none is given); the Document's object types are read where `dispatch` runs."""
         orchestrator = self.llm.for_role(ORCHESTRATOR)
-        types = self.dispatch(lambda: [o.TypeId for o in self.document.Objects])
-        return choose(choice, intent, types, orchestrator, events if events is not None else self.events)
+        types, arch = self.dispatch(lambda: ([o.TypeId for o in self.document.Objects],
+                                             any(arch_type(o) for o in self.document.Objects)))
+        return choose(choice, intent, types, orchestrator,
+                      events if events is not None else self.events, arch=arch)
 
     def resume(self, answer):
         """
@@ -445,6 +452,10 @@ class Client:
         from core.freecad_apply import export_step
 
         return export_step(self.document, path, only)
+
+    def export_ifc(self, path):
+        """Write this Client's Arch objects to *path* as IFC4 and hand the path back, or `None` where it holds none."""
+        return export_ifc(self.document, path)
 
     def has_solid(self):
         """Whether this Client's Document holds a solid; a document without one has no STEP to write."""

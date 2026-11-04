@@ -5,11 +5,12 @@ import json
 
 import pytest
 
-from core.agent.domain import ASSEMBLY
+from core.agent.domain import ASSEMBLY, BIM
 from core.events import APPLIED, COMPLETED, COST, DOMAIN, TOOL_RESULT, EventStream
 from core.kernel import Kernel, find_freecadcmd
 from core.llm import RoleClient, ScriptedLLMClient
 from tests.assembly_helpers import PARTS, SOLVED
+from tests.bim_helpers import FLAT, WITHOUT_SPACE
 
 pytestmark = pytest.mark.freecad
 
@@ -110,7 +111,7 @@ def test_a_domain_that_does_not_exist_is_refused(kernel):
     client = _client(ScriptedLLMClient([]), kernel)
 
     with pytest.raises(ValueError, match="no such Domain"):
-        client.agent("Assemble.", domain="bim")
+        client.agent("Assemble.", domain="teapot")
     client.close()
 
 
@@ -136,3 +137,41 @@ def test_a_subscribed_but_still_empty_stream_receives_the_domain_and_its_cost(ke
     client.close()
 
     assert {DOMAIN, COST} <= {event.kind for event in seen}
+
+
+def test_a_flat_without_a_space_is_refused_then_accepted_once_it_has_one(kernel):
+    mend = ("import Arch\nspace = Arch.makeSpace(doc.getObject('Room'))\n"
+            "level = [o for o in doc.Objects if getattr(o, 'IfcType', '') == 'Building Storey'][0]\n"
+            "level.addObject(space)\ndoc.recompute()")
+    llm = ScriptedLLMClient([_say(code=WITHOUT_SPACE), _say(finish="a flat"), _say(code=mend),
+                             _say(finish="a flat")])
+    client = _client(llm, kernel)
+
+    result = client.agent("Model the flat.", domain=BIM)
+
+    assert result.ok, result.reason
+    assert "no Space" in _refusals(client)[0]
+    client.close()
+
+
+def test_a_valid_flat_is_accepted_and_written_as_ifc4(kernel, tmp_path):
+    llm = ScriptedLLMClient([_say(code=FLAT), _say(finish="a flat")])
+    client = _client(llm, kernel)
+
+    result = client.agent("Model the flat.", domain=BIM)
+
+    assert result.ok and not _refusals(client)
+    path = client.export_ifc(str(tmp_path / "flat.ifc"))
+    assert "IFC4" in open(path).read(400)
+    client.close()
+
+
+def test_the_bim_prompt_teaches_the_arch_api_and_its_traps(kernel):
+    llm = ScriptedLLMClient([_say(finish="x")])
+    client = _client(llm, kernel)
+
+    client.agent("Model the flat.", domain=BIM, cancelled=lambda: len(llm.calls) >= 1)
+
+    system = llm.calls[0][0]["content"]
+    client.close()
+    assert "Arch.makeWall" in system and "Hosts" in system and "makeSpace" in system

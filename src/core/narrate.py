@@ -11,6 +11,7 @@ would point the dependency the wrong way.
 """
 from dataclasses import dataclass
 
+from core.agent.domain import label
 from core.events import (
     ABORTED, ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, BUDGET_EXHAUSTED,
     COMPLETED, DISPUTED, DOMAIN, ERROR, FAILED, GATE, INTENT, OUTSTANDING, PART, PLAN_REVISED,
@@ -91,7 +92,7 @@ def narrate(event) -> Narration:
         return Narration(status="Routed to: %s" % data.get("route", ""))
 
     if kind == DOMAIN:
-        return Narration(line="Domain: %s%s" % (data["domain"].capitalize(),
+        return Narration(line="Domain: %s%s" % (label(data["domain"]),
                                                 " (inferred)" if data.get("inferred") else ""))
 
     if kind == GATE:

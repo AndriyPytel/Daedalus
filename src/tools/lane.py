@@ -33,7 +33,13 @@ REASON_WIDTH = 60
 def _domains():
     import sdk
 
-    return sdk.PART, sdk.ASSEMBLY
+    return sdk.PART, sdk.ASSEMBLY, sdk.BIM
+
+
+def _saved_suffix(domain):
+    """The file a run under *domain* saves: an FCStd for an Assembly, an IFC4 file for BIM, a STEP otherwise."""
+    _, assembly, bim = _domains()
+    return {assembly: ".FCStd", bim: ".ifc"}.get(domain, ".step")
 
 
 def _attempt_timestamp():
@@ -126,9 +132,9 @@ def run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
     A task with no sheet — `--task bolt-nut=` — is a run of the Intent alone.
     *conflicts* is `tools/run.py --conflicts`; an editing run names *base_step* and the renders in *attach*; *arm* is `--arm`, left off the command line for the default agent; *domain* is `--domain`, left off for Part, and an Assembly run saves an FCStd; *base_document* is the Document an editing Assembly run opens, whose objects the run may change.
     """
-    part, assembly = _domains()
+    part, _, _ = _domains()
     domain = domain or part
-    suffix = ".FCStd" if domain == assembly else ".step"
+    suffix = _saved_suffix(domain)
     save = log[: -len(".jsonl")] + suffix if log.endswith(".jsonl") else log + suffix
     cmd = [python, os.path.join(ROOT, "tools", "run.py"),
           "--intent", intent, "--model", model,
@@ -293,7 +299,7 @@ def _has_step(log, suffix=".step"):
 
 def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
           resume, provider, run_seconds, conflicts=None, timestamp=None, edits=None, arm="agent",
-          domain=None, assemblies=None):
+          domain=None, task_folders=None):
     """
     *conflicts* ("on"/"off"/`None`) is the append-only model's own A/B arm:
     set, it suffixes every task's label the way `logs/ab-rlm-agentic`
@@ -303,15 +309,15 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
     lands on the same path as any other attempt's. *timestamp* is
     injectable so a test can make attempts distinguishable without a real
     clock, and *edits* maps a label to its editing fixture folder, whose run ends in
-    `<model>/<label>/output.step`: the edit, or a copy of `input.step`; *arm* and *domain* go to every run, and *assemblies* maps a label to the task folder whose text and parts it runs on.
+    `<model>/<label>/output.step`: the edit, or a copy of `input.step`; *arm* and *domain* go to every run, and *task_folders* maps a label to the task folder whose text and parts, or floor plan, it runs on.
     """
     import sdk
 
     edits = edits or {}
-    assemblies = assemblies or {}
-    part, assembly = _domains()
+    task_folders = task_folders or {}
+    part, _, bim = _domains()
     domain = domain or part
-    saved = ".FCStd" if domain == assembly else ".step"
+    saved = _saved_suffix(domain)
     timestamp = timestamp or _attempt_timestamp
     state_path = os.path.join(out, "state.json")
     state = load_state(state_path) if resume else {"runs": {}}
@@ -347,9 +353,10 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
                     kwargs["arm"] = arm
                 if domain != part:
                     kwargs["domain"] = domain
-                if label in assemblies:
-                    run_intent, kwargs["attach"] = assembly_task(assemblies[label])
-                    document = os.path.join(assemblies[label], "input.FCStd")
+                if label in task_folders:
+                    task = bim_task if domain == bim else assembly_task
+                    run_intent, kwargs["attach"] = task(task_folders[label])
+                    document = os.path.join(task_folders[label], "input.FCStd")
                     if os.path.isfile(document):
                         kwargs["base_document"] = document
                 process = run_one(label, sheet, model, effort, budget_usd, log, run_intent, provider,
@@ -505,13 +512,13 @@ def assembly_task(folder):
     return task["text"], [os.path.join(folder, part["file"]) for part in task["inputs"]["parts"]]
 
 
-def sampled_assembly_tasks(split, count, out, labels_file=None, mode=ASSEMBLY_MODE):
-    """The `(label, folder)` tasks of *split* in the Assembly benchmark's `split.json`, drawn or read back like `sampled_tasks`."""
+def _sample(directory, mode, split, count, out, labels_file):
+    """The `(label, folder)` tasks of *split* in the `split.json` of *directory*'s benchmark under *mode*, drawn at random (the seed written to `seed.txt`) or read back from *labels_file*; the labels go to `labels.txt`."""
     if labels_file:
         with open(labels_file, encoding="utf-8") as handle:
             labels = handle.read().split()
     else:
-        with open(os.path.join(ASSEMBLY_DIR, "split.json"), encoding="utf-8") as handle:
+        with open(os.path.join(directory, "split.json"), encoding="utf-8") as handle:
             pool = json.load(handle)[mode][split]
         seed = random.SystemRandom().randrange(2 ** 32)
         labels = random.Random(seed).sample(pool, count)
@@ -520,23 +527,33 @@ def sampled_assembly_tasks(split, count, out, labels_file=None, mode=ASSEMBLY_MO
             handle.write(str(seed))
     with open(os.path.join(out, "labels.txt"), "w", encoding="utf-8") as handle:
         handle.write("\n".join(labels) + "\n")
-    return [(label, os.path.join(ASSEMBLY_DIR, mode, label)) for label in labels]
+    return [(label, os.path.join(directory, mode, label)) for label in labels]
+
+
+def sampled_assembly_tasks(split, count, out, labels_file=None, mode=ASSEMBLY_MODE):
+    """The `(label, folder)` tasks of *split* in the Assembly benchmark's `split.json`, drawn or read back like `sampled_tasks`."""
+    return _sample(ASSEMBLY_DIR, mode, split, count, out, labels_file)
+
+
+def _table(header, rows, cells, means):
+    """A Markdown table of *header* with the *cells* of each of *rows* and, last, the `mean` row of *means*."""
+    lines = [_row(header), _row(["---"] * len(header))]
+    lines += [_row(cells(row)) for row in rows]
+    lines.append(_row(["mean", *means]))
+    return "\n".join(lines)
 
 
 def assembly_table(rows):
     """One row per task of *rows* (label, passed, score, parts, minutes, usd) and the means under them; the pass mean is the share that passed the Assertion and the parts mean the share of `build_part` calls that came back ok."""
-    header = ["task", "Assertion pass", "score", "parts ok", "min", "$"]
-    lines = [_row(header), _row(["---"] * len(header))]
-    for row in rows:
-        lines.append(_row([row["label"], "yes" if row["passed"] else "no", "%.4f" % row["score"],
-                           "%d/%d" % row["parts"] if row.get("parts") else "-",
-                           "%.1f" % row["minutes"], "%.2f" % row["usd"]]))
     built = [r["parts"] for r in rows if r.get("parts")]
     passed, score, minutes, usd = _means(rows)
-    lines.append(_row(["mean", passed, score,
-                       "%d%%" % round(100 * sum(ok for ok, _ in built) / (sum(n for _, n in built) or 1))
-                       if built else "-", minutes, usd]))
-    return "\n".join(lines)
+    parts = ("%d%%" % round(100 * sum(ok for ok, _ in built) / (sum(n for _, n in built) or 1))
+             if built else "-")
+    return _table(["task", "Assertion pass", "score", "parts ok", "min", "$"], rows,
+                  lambda row: [row["label"], "yes" if row["passed"] else "no", "%.4f" % row["score"],
+                               "%d/%d" % row["parts"] if row.get("parts") else "-",
+                               "%.1f" % row["minutes"], "%.2f" % row["usd"]],
+                  [passed, score, parts, minutes, usd])
 
 
 def _means(rows):
@@ -572,28 +589,77 @@ def parts_built(log):
     return sum(answers), len(answers)
 
 
-def assembly_rows(out, mode=ASSEMBLY_MODE):
-    """The `assembly_table` rows of the sweep under *out*: the Assertion passed where the run exited 0, the Score from `harness/assembly_score` against the task's reference, and minutes and dollars from the log."""
+def _swept_rows(out, suffix, scored):
+    """One row per run of the sweep under *out*: the label, the Assertion passed where the run exited 0 and left its *suffix* file, minutes and dollars from the log, and what `scored(run, saved)` adds, *saved* being the file or `None`."""
     import sdk
-
-    sys.path.insert(0, os.path.join(os.path.dirname(ROOT), "harness"))
-    import assembly_score
 
     state = load_state(os.path.join(out, "state.json"))
     rows = []
     for key, run in sorted(state["runs"].items()):
-        saved = run["log"][: -len(".jsonl")] + ".FCStd"
+        saved = run["log"][: -len(".jsonl")] + suffix
         reading = sdk.measure(run["log"])
-        passed = run.get("returncode") == 0 and os.path.isfile(saved)
-        score = 0.0
-        if os.path.isfile(saved):
-            reference = os.path.join(ASSEMBLY_DIR, mode, run["label"], "reference.FCStd")
-            score = assembly_score.score(saved, reference)["score"]
-        kind = read_task(os.path.join(ASSEMBLY_DIR, mode, run["label"]))["inputs"].get("edit")
-        rows.append({"label": run["label"], "kind": kind, "passed": passed, "score": score,
-                     "parts": parts_built(run["log"]) if mode == FROM_SCRATCH else None,
-                     "minutes": reading.working_seconds / 60, "usd": reading.cost_usd})
+        found = os.path.isfile(saved)
+        rows.append({"label": run["label"], "passed": run.get("returncode") == 0 and found,
+                     "minutes": reading.working_seconds / 60, "usd": reading.cost_usd,
+                     **scored(run, saved if found else None)})
     return rows
+
+
+def assembly_rows(out, mode=ASSEMBLY_MODE):
+    """The `assembly_table` rows of the sweep under *out*, the Score from `harness/assembly_score` against the task's reference."""
+    sys.path.insert(0, os.path.join(os.path.dirname(ROOT), "harness"))
+    import assembly_score
+
+    def scored(run, saved):
+        folder = os.path.join(ASSEMBLY_DIR, mode, run["label"])
+        return {"score": assembly_score.score(saved, os.path.join(folder, "reference.FCStd"))["score"]
+                if saved else 0.0,
+                "kind": read_task(folder)["inputs"].get("edit"),
+                "parts": parts_built(run["log"]) if mode == FROM_SCRATCH else None}
+
+    return _swept_rows(out, ".FCStd", scored)
+
+
+BIM_DIR = os.path.join(TEST_DATA_DIR, "bim")
+BIM_MODE = "create"
+BIM_COMPONENTS = ("counts", "walls", "spaces", "hosting", "openings", "adjacency")
+
+
+def bim_task(folder):
+    """The Intent and the absolute path of the floor plan of the BIM benchmark task in *folder*."""
+    task = read_task(folder)
+    return task["text"], [os.path.join(folder, task["inputs"]["plan"])]
+
+
+def sampled_bim_tasks(split, count, out, labels_file=None):
+    """The `(label, folder)` create tasks of *split* in the BIM benchmark's `split.json`, drawn or read back like `sampled_tasks`."""
+    return _sample(BIM_DIR, BIM_MODE, split, count, out, labels_file)
+
+
+def bim_table(rows):
+    """One row per task of *rows* (label, passed, score, its six components, minutes, usd) and the means under them."""
+    passed, score, minutes, usd = _means(rows)
+    count = len(rows) or 1
+    return _table(["task", "Assertion pass", "score", *BIM_COMPONENTS, "min", "$"], rows,
+                  lambda row: [row["label"], "yes" if row["passed"] else "no", "%.4f" % row["score"],
+                               *("%.3f" % row["components"][name] for name in BIM_COMPONENTS),
+                               "%.1f" % row["minutes"], "%.2f" % row["usd"]],
+                  [passed, score, *("%.3f" % (sum(r["components"][name] for r in rows) / count)
+                                    for name in BIM_COMPONENTS), minutes, usd])
+
+
+def bim_rows(out):
+    """The `bim_table` rows of the sweep under *out*, the Score from `harness/bim_score` against the task's reference."""
+    sys.path.insert(0, os.path.join(os.path.dirname(ROOT), "harness"))
+    import bim_score
+
+    def scored(run, saved):
+        reference = os.path.join(BIM_DIR, BIM_MODE, run["label"], "reference.ifc")
+        components = (bim_score.score(saved, reference) if saved
+                      else dict.fromkeys(("score", *BIM_COMPONENTS), 0.0))
+        return {"score": components["score"], "components": components}
+
+    return _swept_rows(out, ".ifc", scored)
 
 
 def _exemplar_for(label):
@@ -770,6 +836,8 @@ def report(out):
 def main():
     from tests import modelmania_harness
 
+    part, assembly, bim = _domains()
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", action="append", default=[],
                         help="Repeatable; each model sweeps every --task")
@@ -807,9 +875,9 @@ def main():
                              "default (on)")
     parser.add_argument("--arm", choices=("agent", "pipeline"), default="agent",
                         help="Which arm tools/run.py runs each task as; pipeline is the phased pipeline")
-    parser.add_argument("--domain", choices=_domains(), default=_domains()[0],
-                        help="The Domain every run builds under; assembly takes --assembly-task or --sample/--labels over the from_parts tasks")
-    parser.add_argument("--assembly-task", action="append", default=[],
+    parser.add_argument("--domain", choices=_domains(), default=part,
+                        help="The Domain every run builds under; assembly takes --assembly-task or --sample/--labels over the from_parts tasks, bim --sample/--labels over the create tasks")
+    parser.add_argument("--assembly-task", dest="task_folder", action="append", default=[],
                         help="label=/path/to/task-folder, repeatable; the assembly benchmark task whose text and parts the run is given")
     parser.add_argument("--mode", choices=(FROM_PARTS, FROM_SCRATCH, EDIT), default=ASSEMBLY_MODE,
                         help="The assembly benchmark mode --sample, --labels and --report read; from_scratch gives the text and graph and builds every part, edit opens input.FCStd and changes it")
@@ -823,7 +891,15 @@ def main():
         status(args.out)
         return 0
 
-    if args.report and args.domain == _domains()[1]:
+    if args.report and args.domain == bim:
+        text = bim_table(bim_rows(args.out)) + "\n"
+        print(text)
+        if args.save:
+            with open(args.save, "w", encoding="utf-8") as handle:
+                handle.write(text)
+        return 0
+
+    if args.report and args.domain == assembly:
         table = edit_table if args.mode == EDIT else assembly_table
         text = table(assembly_rows(args.out, args.mode)) + "\n"
         print(text)
@@ -854,28 +930,32 @@ def main():
         if len(args.model) != 1:
             raise SystemExit("--baseline takes exactly one --model, run twice as its own replicate")
         tasks = baseline_tasks()
-    elif args.domain == _domains()[1] and (args.sample or args.labels):
+    elif args.domain == bim and (args.sample or args.labels):
+        os.makedirs(args.out, exist_ok=True)
+        tasks = sampled_bim_tasks(args.split, args.sample, args.out, args.labels)
+        args.task_folder = ["%s=%s" % task for task in tasks]
+    elif args.domain == assembly and (args.sample or args.labels):
         os.makedirs(args.out, exist_ok=True)
         tasks = sampled_assembly_tasks(args.split, args.sample, args.out, args.labels, args.mode)
-        args.assembly_task = ["%s=%s" % task for task in tasks]
+        args.task_folder = ["%s=%s" % task for task in tasks]
     elif args.sample or args.labels:
         os.makedirs(args.out, exist_ok=True)
         tasks = sampled_tasks(args.split, args.sample, args.out, args.labels)
-    elif args.assembly_task:
-        tasks = [(task.split("=", 1)[0], "") for task in args.assembly_task]
+    elif args.task_folder:
+        tasks = [(task.split("=", 1)[0], "") for task in args.task_folder]
     else:
         tasks = [t.split("=", 1) for t in args.task]
         if not tasks and not args.edit_task or not args.model:
             raise SystemExit("--status, --report, or --model and --task, each at least once")
 
     edits = dict(t.split("=", 1) for t in args.edit_task)
-    assemblies = dict(t.split("=", 1) for t in args.assembly_task)
+    task_folders = dict(t.split("=", 1) for t in args.task_folder)
     tasks = list(tasks) + [(label, "") for label in edits]
     os.makedirs(args.out, exist_ok=True)
     stopped = sweep(tasks, args.model, args.effort, args.budget_usd, args.intent,
                     args.out, args.hang_seconds, args.retries, args.resume, args.provider,
                     args.run_seconds, args.conflicts, edits=edits, arm=args.arm,
-                    domain=args.domain, assemblies=assemblies)
+                    domain=args.domain, task_folders=task_folders)
     return QUOTA_EXIT if stopped else 0
 
 

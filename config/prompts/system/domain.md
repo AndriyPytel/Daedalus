@@ -1,0 +1,1 @@
+Decide which kind of CAD job this request is. Answer with one word: 'assembly' if it joins, mates, places or edits several parts together, 'bim' only if it names a building, a flat, a floor plan, or walls, slabs, doors, windows or rooms, 'part' if it models, or edits, a single part, including any request that is only a drawing or a sheet with no building in it.

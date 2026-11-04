@@ -4267,7 +4267,7 @@ def the_domain_choice(monkeypatch):
     return stored
 
 
-def test_the_composer_offers_auto_part_and_assembly_and_starts_on_auto(panel, the_domain_choice, monkeypatch):
+def test_the_composer_offers_auto_part_assembly_and_bim_and_starts_on_auto(panel, the_domain_choice, monkeypatch):
     offered = []
     monkeypatch.setattr(panel.domain_selector, "open_at", lambda levels, anchor: offered.extend(levels))
 
@@ -4275,7 +4275,7 @@ def test_the_composer_offers_auto_part_and_assembly_and_starts_on_auto(panel, th
     panel._open_domain_selector()
 
     assert panel.domain_button.text() == "Auto"
-    assert offered == ["Auto", "Part", "Assembly"]
+    assert offered == ["Auto", "Part", "Assembly", "BIM"]
 
 
 def test_picking_a_domain_stores_it_and_shows_it(panel, the_domain_choice):
@@ -4283,6 +4283,13 @@ def test_picking_a_domain_stores_it_and_shows_it(panel, the_domain_choice):
 
     assert the_domain_choice["domain"] == "assembly"
     assert panel.domain_button.text() == "Assembly"
+
+
+def test_picking_bim_shows_it_in_capitals(panel, the_domain_choice):
+    panel._on_domain_selected("bim")
+
+    assert the_domain_choice["domain"] == "bim"
+    assert panel.domain_button.text() == "BIM"
 
 
 def test_the_pill_reads_what_was_stored(panel, the_domain_choice):

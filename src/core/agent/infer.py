@@ -1,29 +1,26 @@
 """
-The Domain a run builds under: the Document's own Assembly decides first, one short model call decides otherwise, and the user's pick skips both.
-The call carries the Intent and a summary of the Document's object types, takes no tools and is asked at the lowest effort; an answer that is not "assembly" is Part.
+The Domain a run builds under: the Document's own Assembly or Arch objects decide first, one short model call decides otherwise, and the user's pick skips both.
+The call carries the Intent and a summary of the Document's object types, takes no tools and is asked at the lowest effort; an answer that is neither "assembly" nor "bim" is Part.
 """
 import collections
 import copy
 
-from core.agent.domain import ASSEMBLY, PART
+from core.agent.domain import ASSEMBLY, BIM, PART
 import time
 
 from core.events import COST, DOMAIN
 from core.llm import EFFORTS, TEXT
+from core.prompts import read_prompt
 from core.settings import AUTO
 
-CHOICES = (AUTO, PART, ASSEMBLY)
-
-PROMPT = (
-    "Decide which kind of CAD job this request is. Answer with one word: "
-    "'assembly' if it joins, mates, places or edits several parts together, "
-    "'part' if it models, or edits, a single part."
-)
+CHOICES = (AUTO, PART, ASSEMBLY, BIM)
 
 
-def from_document(types):
-    """`ASSEMBLY` where *types* holds an Assembly object, else `None`."""
-    return ASSEMBLY if any(t.startswith("Assembly::") for t in types) else None
+def from_document(types, arch=False):
+    """`ASSEMBLY` where *types* holds an Assembly object, else `BIM` where *arch* says the Document holds an Arch object, else `None`."""
+    if any(t.startswith("Assembly::") for t in types):
+        return ASSEMBLY
+    return BIM if arch else None
 
 
 def summary(types):
@@ -38,7 +35,7 @@ def classify(intent, types, llm, events=None):
     client.effort = EFFORTS[0]
     start = time.time()
     said = "".join(chunk.text for chunk in client.stream(
-        [{"role": "system", "content": PROMPT},
+        [{"role": "system", "content": read_prompt("domain.md").strip()},
          {"role": "user", "content": "Request: %s\n\nThe Document holds: %s" % (intent, summary(types))}])
         if chunk.kind == TEXT)
     if events is not None:
@@ -46,12 +43,13 @@ def classify(intent, types, llm, events=None):
         events.emit(COST, phase="domain", seconds=time.time() - start,
                     model=spent.get("model", getattr(client, "model", "")),
                     **{k: v for k, v in spent.items() if k != "model"})
-    return ASSEMBLY if said.strip().strip(".!\"'").lower() == ASSEMBLY else PART
+    answer = said.strip().strip(".!\"'").lower()
+    return answer if answer in (ASSEMBLY, BIM) else PART
 
 
-def choose(choice, intent, types, llm, events):
-    """The Domain for *choice*: itself where it names one, else inferred from the Document and then the model; it is said on *events* before the loop starts."""
+def choose(choice, intent, types, llm, events, arch=False):
+    """The Domain for *choice*: itself where it names one, else inferred from the Document (*types*, and *arch* for an Arch object in it) and then the model; it is said on *events* before the loop starts."""
     inferred = choice == AUTO
-    domain = (from_document(types) or classify(intent, types, llm, events)) if inferred else choice
+    domain = (from_document(types, arch) or classify(intent, types, llm, events)) if inferred else choice
     events.emit(DOMAIN, domain=domain, inferred=inferred)
     return domain

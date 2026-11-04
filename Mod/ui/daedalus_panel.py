@@ -1307,9 +1307,9 @@ left over is what the name is elided to.
             UIHelpers.get_icon("chevron_down", size=ICON_DENSE, on=self.effort_button))
 
     def _open_domain_selector(self):
-        from sdk import CHOICES
+        from sdk import CHOICES, domain_label
 
-        self.domain_selector.open_at([choice.capitalize() for choice in CHOICES],
+        self.domain_selector.open_at([domain_label(choice) for choice in CHOICES],
                                      self.domain_button)
 
     def _on_domain_selected(self, choice: str):
@@ -1319,9 +1319,9 @@ left over is what the name is elided to.
         self._show_domain()
 
     def _show_domain(self):
-        from sdk import get_domain
+        from sdk import domain_label, get_domain
 
-        self.domain_button.setText(get_domain().capitalize())
+        self.domain_button.setText(domain_label(get_domain()))
         self.domain_button.setIcon(
             UIHelpers.get_icon("chevron_down", size=ICON_DENSE, on=self.domain_button))
 

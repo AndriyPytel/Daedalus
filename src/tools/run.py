@@ -82,10 +82,15 @@ def finish(client, result, save, only=None):
     """
     Write *save* and give the process exit code: 0 for a passing run, 1 for a failed one.
 
-    A Document with no solid writes nothing, since an empty STEP is a file a
+    A Document with no solid, or for an IFC no Arch object, writes nothing, since an empty file is one a
     scorer reads as a candidate, and exits `NO_SOLID_EXIT` whatever the verdict was.
     *only* names the one object a STEP carries, which an edit run sets to its Body.
     """
+    if save and save.lower().endswith(".ifc"):
+        if client.export_ifc(save) is None:
+            return NO_SOLID_EXIT
+        print("saved         :", save)
+        return 0 if result.ok else 1
     if not client.has_solid():
         return NO_SOLID_EXIT
     if save:
@@ -126,7 +131,7 @@ def main():
                         help="agent is the reader loop the panel runs; pipeline is the phased "
                              "pipeline, kept to compare against")
     parser.add_argument("--domain", default="part",
-                        help="The Domain the agent arm builds under, part or assembly; assembly builds from the STEP parts in --attach")
+                        help="The Domain the agent arm builds under, part, assembly or bim; assembly builds from the STEP parts in --attach and bim from the floor plan in --attach")
     parser.add_argument("--base-document", default=None,
                         help="An editing run under the Assembly Domain: the saved Document the agent opens and changes")
     parser.add_argument("--base-step", default=None,
