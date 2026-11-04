@@ -116,6 +116,14 @@ class Settings:
         """Return the stored server address for *provider*, or '' if not set."""
         return self.get_base_urls().get(provider, "")
 
+    def get_providers(self) -> list:
+        """The catalog's providers, then each name the user added on the Providers page and stored a key or an address under."""
+        from core import model_catalog
+
+        known = model_catalog.providers()
+        stored = [entry.get("provider") for entry in self.get_api_keys()] + list(self.get_base_urls())
+        return known + [name for name in dict.fromkeys(stored) if name and name not in known]
+
     def get_sessions(self) -> list:
         """
         The Session index: name, created_at, document, and the log's path.

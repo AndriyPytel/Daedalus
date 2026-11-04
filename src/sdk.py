@@ -60,7 +60,7 @@ def __getattr__(name):
 
 def providers():
     """Every provider name a role or the Providers page can offer."""
-    return model_catalog.providers()
+    return _settings.instance().get_providers()
 
 
 def needs_base_url(provider):

@@ -7,7 +7,6 @@ _PREFIX = {
     "Anthropic": "anthropic",
     "OpenCode Go": "openai",
     "OpenRouter": "openrouter",
-    "Custom/Local": "openai",
 }
 
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp")
@@ -30,7 +29,17 @@ def cache_control_supported(model: str) -> bool:
 
 
 def litellm_model_name(provider: str, model_id: str) -> str:
-    """'Anthropic', 'claude-3-7-sonnet-20250219' -> 'anthropic/claude-3-7-...'."""
+    """
+    'Anthropic', 'claude-3-7-sonnet-20250219' -> 'anthropic/claude-3-7-...'.
+
+    A provider the user added speaks the OpenAI shape, and its own ids are
+    prefixed even when they already start with `openai/`, since LiteLLM
+    strips one prefix and Groq sells `openai/gpt-oss-120b` under that name.
+    """
+    from core.model_catalog import needs_base_url
+
+    if needs_base_url(provider):
+        return "openai/" + model_id
     prefix = _PREFIX.get(provider)
     if prefix is None:
         return model_id

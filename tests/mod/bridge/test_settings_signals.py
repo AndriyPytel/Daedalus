@@ -21,7 +21,7 @@ def test_each_sdk_write_reaches_the_engine_and_emits_once(heard):
     import sdk
 
     keys = [{"provider": "Anthropic", "api_key": "k"}]
-    urls = {"Custom/Local": "http://localhost:1"}
+    urls = {"Home server": "http://localhost:1"}
     table = [{"role": "design", "provider": "Anthropic", "model": "m", "effort": "low"}]
 
     sdk.set_api_keys(keys)
@@ -40,10 +40,10 @@ def test_an_upsert_through_sdk_emits_once(heard):
     import sdk
 
     sdk.set_api_key_for_provider("OpenAI", "sk-1")
-    sdk.set_base_url_for_provider("Custom/Local", "http://localhost:2")
+    sdk.set_base_url_for_provider("Home server", "http://localhost:2")
 
     assert sdk.get_api_key_for_provider("OpenAI") == "sk-1"
-    assert sdk.get_base_url_for_provider("Custom/Local") == "http://localhost:2"
+    assert sdk.get_base_url_for_provider("Home server") == "http://localhost:2"
     assert len(heard["api_keys"]) == 1
     assert len(heard["base_urls"]) == 1
 

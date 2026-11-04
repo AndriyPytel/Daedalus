@@ -3,8 +3,8 @@ ProviderManager – Singleton that derives the live model list from the API keys
 currently stored in SettingsManager.
 
 The list each key really entitles you to is fetched from the provider by
-``core.model_catalog`` on a worker thread, which is also the registry of which
-providers exist at all.
+``core.model_catalog`` on a worker thread; which providers exist is
+``core.settings``'s answer, the catalog's plus the ones the user added.
 
 Emits ``models_changed`` whenever the key list or a fetched list changes so the
 Chat UI can refresh its model combo without a restart.
@@ -58,8 +58,6 @@ class _ProviderManager(QObject):
 
     def __init__(self):
         super().__init__()
-        from core import model_catalog
-        self._providers: list = model_catalog.providers()
         self._fetched: dict = {}
         self._threads: dict = {}
         self._fetched_with: dict = {}
@@ -68,6 +66,13 @@ class _ProviderManager(QObject):
         from bridge import settings_manager
         settings_manager.instance().api_keys_changed.connect(self._on_keys_changed)
         settings_manager.instance().base_urls_changed.connect(self._on_keys_changed)
+
+    @property
+    def _providers(self) -> list:
+        """Read on every call, since a provider the user adds is a key or an address saved under a new name."""
+        from bridge import settings_manager
+
+        return settings_manager.instance().get_providers()
 
     def _configured(self, provider: str) -> tuple:
         """

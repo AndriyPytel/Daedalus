@@ -18,7 +18,7 @@ from conftest import NO_QT, QT_APP
 
 pytestmark = pytest.mark.freecad
 
-LOCAL = "Custom/Local"
+LOCAL = "Home server"
 
 
 @pytest.fixture
@@ -44,9 +44,23 @@ def providers_page(settings_are_the_tests_own):
     page = ProvidersPage()
     page.show()
     QT_APP.processEvents()
+    _add(page, LOCAL)
     yield page
     page.close()
     page.deleteLater()
+    QT_APP.processEvents()
+
+
+def _add(page, name):
+    """Press "Add Custom Provider" and type *name* into its dialog."""
+    from conftest import QtWidgets
+
+    real = QtWidgets.QInputDialog.getText
+    QtWidgets.QInputDialog.getText = staticmethod(lambda *args, **kwargs: (name, True))
+    try:
+        page.add_btn.click()
+    finally:
+        QtWidgets.QInputDialog.getText = real
     QT_APP.processEvents()
 
 
@@ -336,3 +350,47 @@ def test_the_page_shows_what_was_stored_after_a_save(providers_page,
 
     assert providers_page.naming_model_combo.currentData() == wanted
     assert sm.get_naming_model() == wanted
+
+
+def test_a_provider_added_by_name_lists_its_models_and_runs_them(
+        providers_page, settings_are_the_tests_own, monkeypatch):
+    """
+    Add a provider, save its address and key, and its models reach the picker
+    and the role table, and a run with one of them goes to that address.
+    """
+    from bridge import provider_manager
+    from core import model_catalog
+    from core.llm.factory import client_from_settings
+    from ui.roles_page import RolesPage
+
+    asked = []
+
+    def _groq(provider, api_key, base_url=None):
+        asked.append((provider, api_key, base_url))
+        if provider != "Groq":
+            return []
+        return [{"id": "openai/gpt-oss-120b", "display": "GPT OSS 120B"}]
+
+    monkeypatch.setattr(model_catalog, "fetch", _groq)
+    manager = provider_manager.instance()
+    _drain(manager)
+    for cache in ("_fetched", "_fetched_with", "_threads"):
+        monkeypatch.setattr(manager, cache, {})
+
+    _add(providers_page, "Groq")
+    _select(providers_page, "Groq")
+    providers_page.base_url_edit.setText("https://api.groq.com/openai/v1")
+    providers_page.key_edit.setText("gsk-test")
+    providers_page.saveSettings()
+    manager.get_available_models()
+    _drain(manager)
+
+    assert ("Groq", "gsk-test", "https://api.groq.com/openai/v1") in asked
+    assert {"id": "openai/gpt-oss-120b", "display": "GPT OSS 120B",
+            "provider": "Groq"} in manager.get_available_models()
+    assert "Groq" in RolesPage()._providers()
+
+    client = client_from_settings("openai/gpt-oss-120b")
+    assert client.model == "openai/openai/gpt-oss-120b"
+    assert client.api_base == "https://api.groq.com/openai/v1"
+    assert client.api_key == "gsk-test"

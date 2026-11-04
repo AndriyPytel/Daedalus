@@ -762,11 +762,12 @@ def test_cache_control_is_only_claimed_supported_on_the_route_the_spike_measured
     ("Anthropic", "claude-3-7-sonnet-20250219", "anthropic/claude-3-7-sonnet-20250219"),
     ("OpenAI", "gpt-4o", "openai/gpt-4o"),
     ("Google", "gemini-2.5-pro", "gemini/gemini-2.5-pro"),
-    ("Custom/Local", "llama3", "openai/llama3"),
+    ("Home server", "llama3", "openai/llama3"),
     ("OpenCode Go", "kimi-k3", "openai/kimi-k3"),
     ("OpenRouter", "x-ai/grok-4.1", "openrouter/x-ai/grok-4.1"),
     ("Anthropic", "anthropic/claude-3-opus-20240229", "anthropic/claude-3-opus-20240229"),
-    ("Something The User Typed", "vendor/model", "vendor/model"),
+    ("Groq", "moonshotai/kimi-k2", "openai/moonshotai/kimi-k2"),
+    ("Groq", "openai/gpt-oss-120b", "openai/openai/gpt-oss-120b"),
 ])
 def test_model_names_get_the_provider_prefix_litellm_wants(provider, model_id, expected):
     assert litellm_model_name(provider, model_id) == expected
@@ -866,7 +867,7 @@ def test_a_model_that_cannot_see_is_named_before_the_run(tmp_path):
 
 def test_a_model_litellm_does_not_know_is_given_the_benefit_of_the_doubt(tmp_path):
     """
-    A Custom/Local model is absent from LiteLLM's table, and absent is not the
+    A Home server model is absent from LiteLLM's table, and absent is not the
     same as cannot. Guessing 'no' here would refuse to send a picture to a
     local vision model that would have taken it; the post-hoc Refusal covers
     the case we get wrong.

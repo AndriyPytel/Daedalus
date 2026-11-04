@@ -40,3 +40,28 @@ def test_auto_approve_plan_round_trips(clean_auto_approve):
     clean_auto_approve.set_auto_approve_plan(False)
 
     assert clean_auto_approve.get_auto_approve_plan() is False
+
+
+@pytest.fixture
+def no_keys_or_addresses(the_settings_never_reach_the_user_s_freecad):
+    """The store is the session's, so what a test writes is put back."""
+    from core import settings
+
+    sm = settings.instance()
+    keys, urls = sm.get_api_keys(), sm.get_base_urls()
+    yield sm
+    sm.set_api_keys(keys)
+    sm.set_base_urls(urls)
+
+
+def test_a_provider_added_by_name_is_offered_after_the_catalogs_own(no_keys_or_addresses):
+    """A key or an address stored under a name the catalog does not know is a provider the user added."""
+    from core import model_catalog
+
+    sm = no_keys_or_addresses
+    sm.set_api_keys([{"provider": "Groq", "api_key": "gsk"},
+                     {"provider": "OpenAI", "api_key": "sk"}])
+    sm.set_base_urls({"Groq": "https://api.groq.com/openai/v1",
+                      "Home server": "http://localhost:11434"})
+
+    assert sm.get_providers() == model_catalog.providers() + ["Groq", "Home server"]

@@ -20,7 +20,6 @@ _DEFAULT_BASE = {
     "Google": "https://generativelanguage.googleapis.com/v1beta",
     "OpenCode Go": "https://opencode.ai/zen/go/v1",
     "OpenRouter": "https://openrouter.ai/api/v1",
-    "Custom/Local": "",
 }
 
 _VENDORS = ("OpenAI", "Anthropic", "Google", "OpenRouter")
@@ -29,12 +28,12 @@ MODELS_DEV = "https://models.dev"
 
 
 def providers() -> list[str]:
-    """Every provider the Preferences page offers, in the order it offers them."""
+    """Every provider the addon knows by name, in the order the Preferences page offers them."""
     return list(_DEFAULT_BASE)
 
 
 def needs_base_url(provider: str) -> bool:
-    """True for a provider whose address only the user knows — a local server."""
+    """True for a provider the user added by name, whose address only the user knows."""
     return not needs_no_key(provider) and not _DEFAULT_BASE.get(provider)
 
 
@@ -111,8 +110,8 @@ def fetch(provider: str, api_key: str, base_url: str | None = None,
           accepts_images=None) -> list[dict]:
     """
     Return ``[{id, display}]`` for ``provider``, raising on transport or HTTP
-    failure; ``base_url`` overrides the provider's endpoint, for the
-    Custom/Local server or a test. A local server's address is a setting of
+    failure; ``base_url`` overrides the provider's endpoint, for a
+    provider the user added or a test. A local server's address is a setting of
     its own, never the API key, since a key read as a URL breaks the
     request; its key stays optional, ignored by a server that wants none.
     The subscription's list comes from models.dev, since its CLI validates a

@@ -106,7 +106,7 @@ def test_a_local_endpoint_lists_what_has_been_pulled(provider_endpoint):
     server, base = provider_endpoint
     server.payload = _recorded("local_models.json")
 
-    models = fetch("Custom/Local", "", base_url=base + "/v1")
+    models = fetch("Home server", "", base_url=base + "/v1")
 
     assert models == [
         {"id": "llama3.2:latest", "display": "llama3.2:latest"},
@@ -124,7 +124,7 @@ def test_a_bare_local_host_is_asked_at_its_v1_root(provider_endpoint):
     server, base = provider_endpoint
     server.payload = _recorded("local_models.json")
 
-    fetch("Custom/Local", "", base_url=base)
+    fetch("Home server", "", base_url=base)
 
     assert server.last_path.startswith("/v1/models")
 
@@ -133,7 +133,7 @@ def test_a_local_base_url_that_already_says_v1_is_not_doubled(provider_endpoint)
     server, base = provider_endpoint
     server.payload = _recorded("local_models.json")
 
-    fetch("Custom/Local", "", base_url=base + "/v1/")
+    fetch("Home server", "", base_url=base + "/v1/")
 
     assert server.last_path.startswith("/v1/models")
 
@@ -143,7 +143,7 @@ def test_a_local_token_is_sent_when_there_is_one(provider_endpoint):
     server, base = provider_endpoint
     server.payload = _recorded("local_models.json")
 
-    fetch("Custom/Local", "sk-local", base_url=base)
+    fetch("Home server", "sk-local", base_url=base)
 
     assert server.last_headers.get("authorization") == "Bearer sk-local"
 
@@ -152,7 +152,7 @@ def test_a_local_endpoint_with_no_token_sends_no_authorisation(provider_endpoint
     server, base = provider_endpoint
     server.payload = _recorded("local_models.json")
 
-    fetch("Custom/Local", "", base_url=base)
+    fetch("Home server", "", base_url=base)
 
     assert "authorization" not in server.last_headers
 
@@ -164,7 +164,7 @@ def test_a_local_provider_with_no_base_url_refuses_rather_than_guessing():
     nowhere left to guess from.
     """
     with pytest.raises(ValueError) as raised:
-        fetch("Custom/Local", "http://127.0.0.1:1/v1")
+        fetch("Home server", "http://127.0.0.1:1/v1")
 
     assert "Base URL" in str(raised.value)
 
@@ -231,8 +231,8 @@ def test_a_vendor_litellm_names_itself_is_given_no_address():
 
 
 def test_a_local_server_is_still_reached_where_the_user_said():
-    assert api_base_for("Custom/Local", "http://localhost:11434") == "http://localhost:11434/v1"
-    assert api_base_for("Custom/Local", "") is None
+    assert api_base_for("Home server", "http://localhost:11434") == "http://localhost:11434/v1"
+    assert api_base_for("Home server", "") is None
 
 
 def test_opencode_go_lists_what_the_gateway_sells(provider_endpoint):
@@ -356,6 +356,6 @@ def test_a_local_server_lists_what_it_serves_and_is_asked_nothing(provider_endpo
     def refuse_everything(model):
         raise AssertionError("a pulled model is not LiteLLM's to judge: %s" % model)
 
-    models = fetch("Custom/Local", "", base_url=base, accepts_images=refuse_everything)
+    models = fetch("Home server", "", base_url=base, accepts_images=refuse_everything)
 
     assert len(models) == 2

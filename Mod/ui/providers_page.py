@@ -388,31 +388,15 @@ reset the selection and throw away a key the user had typed but not saved.
 
     def _populate_list(self):
         from bridge import provider_manager
-        from sdk import get_api_keys
 
         self.provider_list.clear()
-        
-        all_supported = provider_manager.instance().get_all_providers()
-        saved_keys = get_api_keys()
-        
-        seen = set()
-        for p in all_supported:
-            seen.add(p)
+        for p in provider_manager.instance().get_all_providers():
             item = QtWidgets.QListWidgetItem(p)
             item.setData(QtCore.Qt.UserRole, p)
-            icon = "factory" if p != "Custom/Local" else "user"
+            icon = "user" if self._wants_base_url(p) else "factory"
             item.setIcon(UIHelpers.get_icon(icon, size=18, on=self.provider_list))
             self.provider_list.addItem(item)
-            
-        for key_info in saved_keys:
-            p = key_info["provider"]
-            if p not in seen:
-                seen.add(p)
-                item = QtWidgets.QListWidgetItem(p)
-                item.setData(QtCore.Qt.UserRole, p)
-                item.setIcon(UIHelpers.get_icon("user", size=18, on=self.provider_list))
-                self.provider_list.addItem(item)
-                
+
         if self.provider_list.count() > 0:
             self.provider_list.setCurrentRow(0)
 
