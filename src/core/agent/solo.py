@@ -1,7 +1,7 @@
 """
 The loop's builder: one model choosing its own route over the kernel, the read tools and the render, with no Design, Plan, Plan Gate or Review around it.
 
-Each `code` call is linted, rehearsed in the kernel and landed on the live Document; the first `finish` is answered with the Domain's Assertion, and every `finish` is refused until the Domain's done-check holds.
+Each `code` call is linted, rehearsed in the kernel and landed on the live Document; the first `finish` is answered with the Domain's Assertion, and every `finish` is refused until the Domain's done-check holds. A reply keyed by one of the Domain's own calls is answered by that call.
 """
 import json
 import os
@@ -117,6 +117,13 @@ def run_solo(intent, *, domain, llm, kernel, tools, events, attachments=(), canc
         events.emit(TOOL_RESULT, name=name, result=answer)
         return json.dumps(answer, default=str)
 
+    def call_turn(name, argument):
+        argument = argument if isinstance(argument, dict) else {}
+        events.emit(TOOL_CALL, name=name, arguments=argument)
+        answer = domain.calls[name](argument)
+        events.emit(TOOL_RESULT, name=name, result=answer)
+        return json.dumps(answer, default=str)
+
     def render_turn(view):
         state["renders"] += 1
         view = view if isinstance(view, str) else None
@@ -165,6 +172,8 @@ def run_solo(intent, *, domain, llm, kernel, tools, events, attachments=(), canc
                 content = inspect_turn(message["inspect"])
             elif message.get("render"):
                 content = render_turn(message["render"])
+            elif call := next((name for name in domain.calls if name in message), None):
+                content = call_turn(call, message[call])
             else:
                 content = read_prompt("solo_correction.md")
     except Exception as exc:

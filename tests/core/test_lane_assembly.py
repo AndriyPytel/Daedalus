@@ -115,7 +115,60 @@ def test_the_table_has_a_row_per_task_and_the_means_under_it():
 
     table = lane.assembly_table(rows).splitlines()
 
-    assert table[0].startswith("| task | Assertion pass | score | min | $ |")
-    assert "| a | yes | 0.5000 | 10.0 | 2.00 |" in table
-    assert "| b | no | 0.0000 | 20.0 | 4.00 |" in table
-    assert table[-1] == "| mean | 50% | 0.2500 | 15.0 | 3.00 |"
+    assert table[0].startswith("| task | Assertion pass | score | parts ok | min | $ |")
+    assert "| a | yes | 0.5000 | - | 10.0 | 2.00 |" in table
+    assert "| b | no | 0.0000 | - | 20.0 | 4.00 |" in table
+    assert table[-1] == "| mean | 50% | 0.2500 | - | 15.0 | 3.00 |"
+
+
+def _scratch(root, label="from_scratch_01"):
+    folder = root / "from_scratch" / label
+    folder.mkdir(parents=True)
+    graph = {"nodes": [{"name": "Part1", "size_mm": [10, 10, 5], "volume_mm3": 500.0, "faces": 6,
+                        "bbox_mm": [0, 0, 0, 10, 10, 5]}], "edges": [], "fixed": "Part1"}
+    (folder / "task.json").write_text(json.dumps({
+        "text": "Model every part of the graph.", "inputs": {"graph": graph}}))
+    return folder, graph
+
+
+def test_a_from_scratch_task_is_its_text_and_its_graph_with_no_part_files(tmp_path):
+    folder, graph = _scratch(tmp_path)
+
+    intent, attachments = lane.assembly_task(str(folder))
+
+    assert intent.startswith("Model every part of the graph.")
+    assert json.loads(intent[intent.index("{"):]) == graph
+    assert attachments == []
+
+
+def test_sample_draws_from_the_mode_it_is_given(monkeypatch, tmp_path):
+    _task(tmp_path, "from_parts_01")
+    _scratch(tmp_path, "from_scratch_01")
+    (tmp_path / "split.json").write_text(json.dumps({
+        "from_parts": {"validation": ["from_parts_01"], "test": []},
+        "from_scratch": {"validation": ["from_scratch_01"], "test": []}}))
+    monkeypatch.setattr(lane, "ASSEMBLY_DIR", str(tmp_path))
+    out = tmp_path / "out"
+    out.mkdir()
+
+    tasks = lane.sampled_assembly_tasks("validation", 1, str(out), mode="from_scratch")
+
+    assert tasks == [("from_scratch_01", str(tmp_path / "from_scratch" / "from_scratch_01"))]
+
+
+def test_the_table_counts_the_parts_that_built_ok():
+    rows = [{"label": "a", "passed": True, "score": 0.5, "minutes": 10.0, "usd": 2.0, "parts": (2, 3)},
+            {"label": "b", "passed": False, "score": 0.0, "minutes": 20.0, "usd": 4.0, "parts": (1, 2)}]
+
+    table = lane.assembly_table(rows).splitlines()
+
+    assert "| a | yes | 0.5000 | 2/3 | 10.0 | 2.00 |" in table
+    assert "| mean | 50% | 0.2500 | 60% | 15.0 | 3.00 |" in table
+
+
+def test_the_parts_that_built_ok_are_counted_off_the_build_part_results_in_the_log(tmp_path):
+    log = tmp_path / "run.jsonl"
+    result = lambda ok: json.dumps({"kind": "tool_result", "at": 0, "data": {"name": "build_part", "result": {"ok": ok}}})
+    log.write_text("\n".join([result(True), json.dumps({"kind": "cost", "at": 0, "data": {}}), result(False), result(True)]))
+
+    assert lane.parts_built(str(log)) == (2, 3)

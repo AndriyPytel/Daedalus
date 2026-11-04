@@ -11,6 +11,7 @@ from core.loop.prompt import _as_image
 from core.prompts import read_prompt
 
 MAX_TURNS = 60
+PART_SHARE = 0.4
 INTERFERENCE_SHARE = 0.001
 STEP_SUFFIXES = (".step", ".stp")
 SOLVE_FAULTS = {-1: "the solver failed", -2: "redundant joints", -3: "conflicting joints",
@@ -143,9 +144,36 @@ def opening(intent, attachments):
     return blocks
 
 
-def run_assembly(intent, *, llm, kernel, tools, events, attachments=(), cancelled=None):
-    """Build the Assembly *intent* asks for from the parts in the Document and *attachments*, under the Assembly Domain."""
+def part_summary(document):
+    """The bounding box, volume and face count of the one solid *document* holds at the top, or `None` where it holds none."""
+    import Part
+
+    solids = [o.Shape for o in document.Objects
+              if not o.InList and getattr(o, "Shape", None) is not None
+              and not o.Shape.isNull() and o.Shape.Solids]
+    if not solids:
+        return None
+    shape = solids[0] if len(solids) == 1 else Part.Compound(solids)
+    box = shape.BoundBox
+    return {"bbox": [round(v, 3) for v in (box.XMin, box.YMin, box.ZMin, box.XMax, box.YMax, box.ZMax)],
+            "volume": round(shape.Volume, 3), "faces": len(shape.Faces)}
+
+
+def part_call(build_part):
+    """The `build_part` call: it checks the reply's name and intent and answers with whatever *build_part* returns for them."""
+    def call(argument):
+        missing = [key for key in ("name", "intent") if not argument.get(key)]
+        if missing:
+            return {"error": "build_part needs a " + " and an ".join(missing)}
+        return build_part(argument["name"], argument["intent"], list(argument.get("attachments") or ()))
+    return call
+
+
+def run_assembly(intent, *, llm, kernel, tools, events, attachments=(), cancelled=None,
+                 build_part=None):
+    """Build the Assembly *intent* asks for from the parts in the Document and *attachments*, under the Assembly Domain; *build_part* builds a part the Document lacks in a Session of its own."""
     domain = Domain(ASSEMBLY, read_prompt("assembly.md"), opening(intent, list(attachments)),
-                    lambda: None, unfinished)
+                    lambda: None, unfinished,
+                    {"build_part": part_call(build_part)} if build_part else {})
     return run_solo(intent, domain=domain, llm=llm, kernel=kernel, tools=tools, events=events,
                     attachments=attachments, cancelled=cancelled, max_turns=MAX_TURNS)

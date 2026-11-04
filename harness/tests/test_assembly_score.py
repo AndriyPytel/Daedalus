@@ -1,4 +1,5 @@
 import os
+import subprocess
 
 import pytest
 
@@ -189,3 +190,27 @@ def test_unsolvable_document_scores_zero(docs):
 def test_repeat_gives_the_same_score(docs):
     first = assembly_score.score(docs["moved"], docs["reference"])
     assert first == assembly_score.score(docs["moved"], docs["reference"])
+
+
+@needs_freecad
+def test_a_part_whose_shape_is_a_compound_is_measured(tmp_path):
+    path = tmp_path / "compound.FCStd"
+    script = tmp_path / "make.py"
+    script.write_text(f"""
+import FreeCAD as App, JointObject, Part
+doc = App.newDocument("A")
+assembly = doc.addObject("Assembly::AssemblyObject", "Assembly")
+assembly.Type = "Assembly"
+group = assembly.newObject("Assembly::JointGroup", "Joints")
+part = doc.addObject("Part::Feature", "A")
+part.Shape = Part.Compound([Part.makeBox(10, 20, 30)])
+assembly.addObject(part)
+doc.recompute()
+JointObject.GroundedJoint(group.newObject("App::FeaturePython", "Ground"), part)
+doc.saveAs({str(path)!r})
+""")
+    subprocess.run([FREECADCMD, "-c", f"exec(open({str(script)!r}).read())"], check=True, capture_output=True)
+
+    (measured,) = assembly_score.measure([path])
+
+    assert measured["parts"]["A"]["com"] == pytest.approx([5, 10, 15])

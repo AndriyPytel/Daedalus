@@ -9,6 +9,9 @@ the two surviving scripts in the harness directory, drive this same object to
 start a run.
 """
 import importlib
+import os
+import re
+import tempfile
 
 from core import events, freecad_apply, model_catalog
 from core import settings as _settings
@@ -25,7 +28,7 @@ from core.loop import (ACCEPT, APPROVE, ASSERTION_PHASE, DECISIONS, DESIGN_PHASE
                        START_OVER, Approval, NeedsAnswer, auto_approve,
                        nobody_to_ask, revise_by_default, run)
 from core.loop.budgets import Budgets
-from core.agent.assembly import run_assembly
+from core.agent.assembly import PART_SHARE, part_summary, run_assembly
 from core.agent.domain import ASSEMBLY, PART
 from core.agent.reader import run_reader
 from core.narrate import narrate
@@ -331,12 +334,47 @@ class Client:
         else:
             return design(prompt)
 
-    def agent(self, prompt, attachments=(), cancelled=None, base=False, domain=PART):
+    def part_builder(self, folder, cancelled, budget_usd):
+        """
+        The `build_part` of the Assembly Domain: each call runs the Part Domain in a Client of its own, with its own kernel, Document and Session, and saves its Body in *folder*.
+        Only its cost reaches this Client's events, and the call ends once it has spent `PART_SHARE` of *budget_usd*.
+        """
+        def build(name, intent, attachments):
+            spent = {"usd": 0.0}
+            share = PART_SHARE * budget_usd if budget_usd is not None else None
+
+            def over():
+                return share is not None and spent["usd"] >= share
+
+            def forward(event):
+                if event.kind == COST:
+                    spent["usd"] += event.data.get("usd") or 0.0
+                    self.events.emit(COST, **event.data)
+
+            sub = Client(llm=self.llm, dispatch=self.dispatch)
+            sub.events.subscribe(forward)
+            try:
+                result = sub.agent(intent, attachments=attachments, domain=PART,
+                                   cancelled=lambda: over() or bool(cancelled and cancelled()))
+                measured = part_summary(sub.document)
+                path = None
+                if measured is not None:
+                    path = sub.save(os.path.join(folder, re.sub(r"\W", "_", name) + ".FCStd"))
+            finally:
+                sub.close()
+            reason = "the part's share of the budget was spent" if over() else result.reason
+            return {"name": name, "ok": bool(result.ok and measured and not over()), "reason": reason,
+                    "path": path, "usd": round(spent["usd"], 4), **(measured or {})}
+
+        return build
+
+    def agent(self, prompt, attachments=(), cancelled=None, base=False, domain=PART,
+              budget_usd=None):
         """
         The loop under *domain*: for the Part Domain the drawing is read into a table, then one model
         builds over this Client's kernel and lands each code call on this
         Client's Document, so `save` and `export_step` write what it built.
-        *base* says the Document already holds the part to edit; the Assembly Domain builds from parts and has no editing.
+        *base* says the Document already holds the part to edit; the Assembly Domain builds from parts and has no editing, and *budget_usd* is the cap its parts' shares are taken from.
         """
         if self.kernel is None:
             raise ValueError("the agent works through a kernel")
@@ -349,9 +387,11 @@ class Client:
         self.kernel.check("pass", document=seed)
         freecad_apply.discard(seed)
         if domain == ASSEMBLY:
-            return run_assembly(prompt, llm=self.llm, kernel=self.kernel, tools=tools,
-                                events=self.events, attachments=list(attachments),
-                                cancelled=cancelled)
+            with tempfile.TemporaryDirectory(prefix="fcc-parts-") as folder:
+                return run_assembly(prompt, llm=self.llm, kernel=self.kernel, tools=tools,
+                                    events=self.events, attachments=list(attachments),
+                                    cancelled=cancelled,
+                                    build_part=self.part_builder(folder, cancelled, budget_usd))
         return run_reader(prompt, llm=self.llm, kernel=self.kernel, tools=tools,
                           events=self.events, attachments=list(attachments),
                           cancelled=cancelled, base=base)

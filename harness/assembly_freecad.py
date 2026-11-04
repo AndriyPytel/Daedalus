@@ -54,6 +54,12 @@ def build(spec, path):
     App.closeDocument(doc.Name)
 
 
+def centre(shape):
+    solids = shape.Solids
+    total = sum(solid.Volume for solid in solids)
+    return sum((solid.CenterOfMass * solid.Volume for solid in solids), App.Vector()) * (1 / total)
+
+
 def measure(path):
     doc = App.openDocument(path)
     doc.recompute()
@@ -67,7 +73,7 @@ def measure(path):
         box = obj.Shape.BoundBox
         result["parts"][label] = {
             "bbox": [box.XMin, box.YMin, box.ZMin, box.XMax, box.YMax, box.ZMax],
-            "com": list(obj.Shape.CenterOfMass),
+            "com": list(centre(obj.Shape)),
             "volume": obj.Shape.Volume,
             "rot": list((anchor * obj.Placement.Rotation).Q),
             "faces": len(obj.Shape.Faces),

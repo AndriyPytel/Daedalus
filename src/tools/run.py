@@ -159,7 +159,8 @@ def main():
     cancelled = (lambda: spent["usd"] >= args.budget_usd) if args.budget_usd is not None else None
     if args.arm == "agent":
         result = client.agent(args.intent, attachments=list(args.attach), cancelled=cancelled,
-                              base=bool(args.base_step), domain=args.domain)
+                              base=bool(args.base_step), domain=args.domain,
+                              budget_usd=args.budget_usd)
     else:
         result = client.send(args.intent, attachments=list(args.attach), cancelled=cancelled,
                              ask=nobody_to_ask, budgets=budgets, arm="pipeline")

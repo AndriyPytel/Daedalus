@@ -478,24 +478,28 @@ def sampled_tasks(split, count, out, labels_file=None):
 
 
 ASSEMBLY_DIR = os.path.join(TEST_DATA_DIR, "assembly")
-ASSEMBLY_MODE = "from_parts"
+FROM_PARTS = "from_parts"
+FROM_SCRATCH = "from_scratch"
+ASSEMBLY_MODE = FROM_PARTS
 
 
 def assembly_task(folder):
-    """The Intent and the absolute STEP paths of the assembly benchmark task in *folder*."""
+    """The Intent and the absolute STEP paths of the assembly benchmark task in *folder*; a from-scratch task has its graph in the Intent and no paths."""
     with open(os.path.join(folder, "task.json"), encoding="utf-8") as handle:
         task = json.load(handle)
+    if "graph" in task["inputs"]:
+        return task["text"] + "\n\nThe graph:\n" + json.dumps(task["inputs"]["graph"], indent=1), []
     return task["text"], [os.path.join(folder, part["file"]) for part in task["inputs"]["parts"]]
 
 
-def sampled_assembly_tasks(split, count, out, labels_file=None):
+def sampled_assembly_tasks(split, count, out, labels_file=None, mode=ASSEMBLY_MODE):
     """The `(label, folder)` tasks of *split* in the Assembly benchmark's `split.json`, drawn or read back like `sampled_tasks`."""
     if labels_file:
         with open(labels_file, encoding="utf-8") as handle:
             labels = handle.read().split()
     else:
         with open(os.path.join(ASSEMBLY_DIR, "split.json"), encoding="utf-8") as handle:
-            pool = json.load(handle)[ASSEMBLY_MODE][split]
+            pool = json.load(handle)[mode][split]
         seed = random.SystemRandom().randrange(2 ** 32)
         labels = random.Random(seed).sample(pool, count)
         print("seed", seed)
@@ -503,25 +507,40 @@ def sampled_assembly_tasks(split, count, out, labels_file=None):
             handle.write(str(seed))
     with open(os.path.join(out, "labels.txt"), "w", encoding="utf-8") as handle:
         handle.write("\n".join(labels) + "\n")
-    return [(label, os.path.join(ASSEMBLY_DIR, ASSEMBLY_MODE, label)) for label in labels]
+    return [(label, os.path.join(ASSEMBLY_DIR, mode, label)) for label in labels]
 
 
 def assembly_table(rows):
-    """One row per task of *rows* (label, passed, score, minutes, usd) and the means under them; the pass mean is the share that passed the Assertion."""
-    header = ["task", "Assertion pass", "score", "min", "$"]
+    """One row per task of *rows* (label, passed, score, parts, minutes, usd) and the means under them; the pass mean is the share that passed the Assertion and the parts mean the share of `build_part` calls that came back ok."""
+    header = ["task", "Assertion pass", "score", "parts ok", "min", "$"]
     lines = [_row(header), _row(["---"] * len(header))]
     for row in rows:
         lines.append(_row([row["label"], "yes" if row["passed"] else "no", "%.4f" % row["score"],
+                           "%d/%d" % row["parts"] if row.get("parts") else "-",
                            "%.1f" % row["minutes"], "%.2f" % row["usd"]]))
     count = len(rows) or 1
+    built = [r["parts"] for r in rows if r.get("parts")]
     lines.append(_row(["mean", "%d%%" % round(100 * sum(r["passed"] for r in rows) / count),
                        "%.4f" % (sum(r["score"] for r in rows) / count),
+                       "%d%%" % round(100 * sum(ok for ok, _ in built) / (sum(n for _, n in built) or 1))
+                       if built else "-",
                        "%.1f" % (sum(r["minutes"] for r in rows) / count),
                        "%.2f" % (sum(r["usd"] for r in rows) / count)]))
     return "\n".join(lines)
 
 
-def assembly_rows(out):
+def parts_built(log):
+    """How many `build_part` results in the event log *log* are ok, and how many there are."""
+    answers = []
+    with open(log, encoding="utf-8") as handle:
+        for line in handle:
+            event = json.loads(line)
+            if event["kind"] == "tool_result" and event["data"].get("name") == "build_part":
+                answers.append(bool(event["data"]["result"].get("ok")))
+    return sum(answers), len(answers)
+
+
+def assembly_rows(out, mode=ASSEMBLY_MODE):
     """The `assembly_table` rows of the sweep under *out*: the Assertion passed where the run exited 0, the Score from `harness/assembly_score` against the task's reference, and minutes and dollars from the log."""
     import sdk
 
@@ -536,9 +555,10 @@ def assembly_rows(out):
         passed = run.get("returncode") == 0 and os.path.isfile(saved)
         score = 0.0
         if os.path.isfile(saved):
-            reference = os.path.join(ASSEMBLY_DIR, ASSEMBLY_MODE, run["label"], "reference.FCStd")
+            reference = os.path.join(ASSEMBLY_DIR, mode, run["label"], "reference.FCStd")
             score = assembly_score.score(saved, reference)["score"]
         rows.append({"label": run["label"], "passed": passed, "score": score,
+                     "parts": parts_built(run["log"]) if mode == FROM_SCRATCH else None,
                      "minutes": reading.working_seconds / 60, "usd": reading.cost_usd})
     return rows
 
@@ -758,6 +778,8 @@ def main():
                         help="The Domain every run builds under; assembly takes --assembly-task or --sample/--labels over the from_parts tasks")
     parser.add_argument("--assembly-task", action="append", default=[],
                         help="label=/path/to/task-folder, repeatable; the assembly benchmark task whose text and parts the run is given")
+    parser.add_argument("--mode", choices=(FROM_PARTS, FROM_SCRATCH), default=ASSEMBLY_MODE,
+                        help="The assembly benchmark mode --sample, --labels and --report read; from_scratch gives the text and graph and builds every part")
     parser.add_argument("--sample", type=int, help="Draw this many random labels of --split from test-data/split.json")
     parser.add_argument("--split", choices=SPLITS, default="validation")
     parser.add_argument("--labels", help="A labels.txt of an earlier --sample, reused as the tasks")
@@ -769,7 +791,7 @@ def main():
         return 0
 
     if args.report and args.domain == _domains()[1]:
-        text = assembly_table(assembly_rows(args.out)) + "\n"
+        text = assembly_table(assembly_rows(args.out, args.mode)) + "\n"
         print(text)
         if args.save:
             with open(args.save, "w", encoding="utf-8") as handle:
@@ -800,7 +822,7 @@ def main():
         tasks = baseline_tasks()
     elif args.domain == _domains()[1] and (args.sample or args.labels):
         os.makedirs(args.out, exist_ok=True)
-        tasks = sampled_assembly_tasks(args.split, args.sample, args.out, args.labels)
+        tasks = sampled_assembly_tasks(args.split, args.sample, args.out, args.labels, args.mode)
         args.assembly_task = ["%s=%s" % task for task in tasks]
     elif args.sample or args.labels:
         os.makedirs(args.out, exist_ok=True)
