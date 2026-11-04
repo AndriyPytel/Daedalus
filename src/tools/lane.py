@@ -119,12 +119,12 @@ def quota_refusal(log):
 
 def run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
             python=sys.executable, conflicts=None, base_step=None, attach=(), arm="agent",
-            domain=None):
+            domain=None, base_document=None):
     """
     One run of one sheet, as a subprocess of `tools/run.py`.
 
     A task with no sheet — `--task bolt-nut=` — is a run of the Intent alone.
-    *conflicts* is `tools/run.py --conflicts`; an editing run names *base_step* and the renders in *attach*; *arm* is `--arm`, left off the command line for the default agent; *domain* is `--domain`, left off for Part, and an Assembly run saves an FCStd.
+    *conflicts* is `tools/run.py --conflicts`; an editing run names *base_step* and the renders in *attach*; *arm* is `--arm`, left off the command line for the default agent; *domain* is `--domain`, left off for Part, and an Assembly run saves an FCStd; *base_document* is the Document an editing Assembly run opens, whose objects the run may change.
     """
     part, assembly = _domains()
     domain = domain or part
@@ -147,6 +147,8 @@ def run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
         cmd += ["--arm", arm]
     if domain != part:
         cmd += ["--domain", domain]
+    if base_document:
+        cmd += ["--base-document", base_document, "--allow-user-objects"]
     return subprocess.Popen(cmd)
 
 
@@ -347,6 +349,9 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
                     kwargs["domain"] = domain
                 if label in assemblies:
                     run_intent, kwargs["attach"] = assembly_task(assemblies[label])
+                    document = os.path.join(assemblies[label], "input.FCStd")
+                    if os.path.isfile(document):
+                        kwargs["base_document"] = document
                 process = run_one(label, sheet, model, effort, budget_usd, log, run_intent, provider,
                                   **kwargs)
                 outcome = watch(process, log, hang_seconds, run_seconds)
@@ -480,13 +485,21 @@ def sampled_tasks(split, count, out, labels_file=None):
 ASSEMBLY_DIR = os.path.join(TEST_DATA_DIR, "assembly")
 FROM_PARTS = "from_parts"
 FROM_SCRATCH = "from_scratch"
+EDIT = "edit"
 ASSEMBLY_MODE = FROM_PARTS
 
 
-def assembly_task(folder):
-    """The Intent and the absolute STEP paths of the assembly benchmark task in *folder*; a from-scratch task has its graph in the Intent and no paths."""
+def read_task(folder):
+    """The parsed `task.json` of the assembly benchmark task in *folder*."""
     with open(os.path.join(folder, "task.json"), encoding="utf-8") as handle:
-        task = json.load(handle)
+        return json.load(handle)
+
+
+def assembly_task(folder):
+    """The Intent and the absolute STEP paths of the assembly benchmark task in *folder*; a from-scratch task has its graph in the Intent and no paths, and an edit task has the STEP files of `parts/`, if it has any."""
+    task = read_task(folder)
+    if "input" in task["inputs"]:
+        return task["text"], sorted(glob.glob(os.path.join(folder, "parts", "*.step")))
     if "graph" in task["inputs"]:
         return task["text"] + "\n\nThe graph:\n" + json.dumps(task["inputs"]["graph"], indent=1), []
     return task["text"], [os.path.join(folder, part["file"]) for part in task["inputs"]["parts"]]
@@ -518,14 +531,33 @@ def assembly_table(rows):
         lines.append(_row([row["label"], "yes" if row["passed"] else "no", "%.4f" % row["score"],
                            "%d/%d" % row["parts"] if row.get("parts") else "-",
                            "%.1f" % row["minutes"], "%.2f" % row["usd"]]))
-    count = len(rows) or 1
     built = [r["parts"] for r in rows if r.get("parts")]
-    lines.append(_row(["mean", "%d%%" % round(100 * sum(r["passed"] for r in rows) / count),
-                       "%.4f" % (sum(r["score"] for r in rows) / count),
+    passed, score, minutes, usd = _means(rows)
+    lines.append(_row(["mean", passed, score,
                        "%d%%" % round(100 * sum(ok for ok, _ in built) / (sum(n for _, n in built) or 1))
-                       if built else "-",
-                       "%.1f" % (sum(r["minutes"] for r in rows) / count),
-                       "%.2f" % (sum(r["usd"] for r in rows) / count)]))
+                       if built else "-", minutes, usd]))
+    return "\n".join(lines)
+
+
+def _means(rows):
+    """The pass share, score, minutes and dollars of *rows*, averaged and formatted as the tables show them."""
+    count = len(rows) or 1
+    return ("%d%%" % round(100 * sum(r["passed"] for r in rows) / count),
+            "%.4f" % (sum(r["score"] for r in rows) / count),
+            "%.1f" % (sum(r["minutes"] for r in rows) / count),
+            "%.2f" % (sum(r["usd"] for r in rows) / count))
+
+
+def edit_table(rows):
+    """One row per edit task of *rows* (label, kind, passed, score, minutes, usd), then the means over all of them and over each kind."""
+    header = ["task", "kind", "Assertion pass", "score", "min", "$"]
+    lines = [_row(header), _row(["---"] * len(header))]
+    for row in rows:
+        lines.append(_row([row["label"], row["kind"], "yes" if row["passed"] else "no",
+                           "%.4f" % row["score"], "%.1f" % row["minutes"], "%.2f" % row["usd"]]))
+    for kind, group in [("all", rows)] + [(k, [r for r in rows if r["kind"] == k])
+                                          for k in sorted({r["kind"] for r in rows})]:
+        lines.append(_row(["mean", kind, *_means(group)]))
     return "\n".join(lines)
 
 
@@ -557,7 +589,8 @@ def assembly_rows(out, mode=ASSEMBLY_MODE):
         if os.path.isfile(saved):
             reference = os.path.join(ASSEMBLY_DIR, mode, run["label"], "reference.FCStd")
             score = assembly_score.score(saved, reference)["score"]
-        rows.append({"label": run["label"], "passed": passed, "score": score,
+        kind = read_task(os.path.join(ASSEMBLY_DIR, mode, run["label"]))["inputs"].get("edit")
+        rows.append({"label": run["label"], "kind": kind, "passed": passed, "score": score,
                      "parts": parts_built(run["log"]) if mode == FROM_SCRATCH else None,
                      "minutes": reading.working_seconds / 60, "usd": reading.cost_usd})
     return rows
@@ -778,8 +811,8 @@ def main():
                         help="The Domain every run builds under; assembly takes --assembly-task or --sample/--labels over the from_parts tasks")
     parser.add_argument("--assembly-task", action="append", default=[],
                         help="label=/path/to/task-folder, repeatable; the assembly benchmark task whose text and parts the run is given")
-    parser.add_argument("--mode", choices=(FROM_PARTS, FROM_SCRATCH), default=ASSEMBLY_MODE,
-                        help="The assembly benchmark mode --sample, --labels and --report read; from_scratch gives the text and graph and builds every part")
+    parser.add_argument("--mode", choices=(FROM_PARTS, FROM_SCRATCH, EDIT), default=ASSEMBLY_MODE,
+                        help="The assembly benchmark mode --sample, --labels and --report read; from_scratch gives the text and graph and builds every part, edit opens input.FCStd and changes it")
     parser.add_argument("--sample", type=int, help="Draw this many random labels of --split from test-data/split.json")
     parser.add_argument("--split", choices=SPLITS, default="validation")
     parser.add_argument("--labels", help="A labels.txt of an earlier --sample, reused as the tasks")
@@ -791,7 +824,8 @@ def main():
         return 0
 
     if args.report and args.domain == _domains()[1]:
-        text = assembly_table(assembly_rows(args.out, args.mode)) + "\n"
+        table = edit_table if args.mode == EDIT else assembly_table
+        text = table(assembly_rows(args.out, args.mode)) + "\n"
         print(text)
         if args.save:
             with open(args.save, "w", encoding="utf-8") as handle:

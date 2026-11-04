@@ -172,3 +172,92 @@ def test_the_parts_that_built_ok_are_counted_off_the_build_part_results_in_the_l
     log.write_text("\n".join([result(True), json.dumps({"kind": "cost", "at": 0, "data": {}}), result(False), result(True)]))
 
     assert lane.parts_built(str(log)) == (2, 3)
+
+
+def _edit(root, label="edit_02", kind="add", parts=("Part2",)):
+    folder = root / "edit" / label
+    (folder / "parts").mkdir(parents=True)
+    for name in parts:
+        (folder / "parts" / (name + ".step")).write_text("step")
+    (folder / "input.FCStd").write_text("input")
+    (folder / "reference.FCStd").write_text("reference")
+    (folder / "task.json").write_text(json.dumps({
+        "text": "Add Part2 to the assembly.", "inputs": {"input": "input.FCStd", "edit": kind}}))
+    return folder
+
+
+def test_an_edit_task_is_its_text_and_the_step_files_of_the_part_to_add(tmp_path):
+    folder = _edit(tmp_path)
+
+    assert lane.assembly_task(str(folder)) == (
+        "Add Part2 to the assembly.", [str(folder / "parts" / "Part2.step")])
+
+
+def test_a_remove_task_has_no_part_files(tmp_path):
+    folder = _edit(tmp_path, kind="remove", parts=())
+    (folder / "parts").rmdir()
+
+    assert lane.assembly_task(str(folder))[1] == []
+
+
+def test_an_assembly_run_names_the_document_it_edits(monkeypatch):
+    cmd = _command(monkeypatch, domain="assembly", base_document="/d/edit_02/input.FCStd")
+
+    assert cmd[cmd.index("--base-document") + 1] == "/d/edit_02/input.FCStd"
+    assert "--allow-user-objects" in cmd
+
+
+def test_a_run_without_a_document_to_edit_names_none(monkeypatch):
+    cmd = _command(monkeypatch, domain="assembly")
+
+    assert "--base-document" not in cmd and "--allow-user-objects" not in cmd
+
+
+def test_sweep_opens_the_input_of_an_edit_task_as_the_runs_document(monkeypatch, tmp_path):
+    folder = _edit(tmp_path)
+    seen = []
+
+    class Done:
+        returncode = 0
+
+    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider, **kwargs):
+        seen.append(kwargs)
+        open(log[:-len(".jsonl")] + ".FCStd", "w").write("saved")
+        open(log, "w").close()
+        return Done()
+
+    monkeypatch.setattr(lane, "run_one", fake_run_one)
+    monkeypatch.setattr(lane, "watch", lambda *a, **k: "exited")
+
+    lane.sweep([("edit_02", "")], ["opus"], "medium", 8.0, "unused", str(tmp_path / "out"),
+               1800, 1, False, "Claude (subscription)", None, domain="assembly",
+               assemblies={"edit_02": str(folder)})
+
+    assert seen[0]["base_document"] == str(folder / "input.FCStd")
+    assert seen[0]["attach"] == [str(folder / "parts" / "Part2.step")]
+
+
+def test_the_edit_table_has_the_kind_of_each_task_and_the_means_overall_and_per_kind():
+    rows = [{"label": "a", "kind": "add", "passed": True, "score": 0.8, "minutes": 10.0, "usd": 2.0},
+            {"label": "b", "kind": "add", "passed": False, "score": 0.0, "minutes": 20.0, "usd": 4.0},
+            {"label": "c", "kind": "remove", "passed": True, "score": 1.0, "minutes": 6.0, "usd": 1.0}]
+
+    table = lane.edit_table(rows).splitlines()
+
+    assert table[0].startswith("| task | kind | Assertion pass | score | min | $ |")
+    assert "| a | add | yes | 0.8000 | 10.0 | 2.00 |" in table
+    assert "| mean | all | 67% | 0.6000 | 12.0 | 2.33 |" in table
+    assert "| mean | add | 50% | 0.4000 | 15.0 | 3.00 |" in table
+    assert "| mean | remove | 100% | 1.0000 | 6.0 | 1.00 |" in table
+
+
+def test_the_parser_accepts_the_edit_mode(monkeypatch, tmp_path):
+    captured = {}
+    monkeypatch.setattr(lane, "sweep", lambda *a, **k: captured.update(k=k))
+    monkeypatch.setattr(sys, "argv", ["lane.py", "--model", "opus", "--domain", "assembly",
+                                      "--mode", "edit", "--assembly-task", "edit_02=/d/edit_02",
+                                      "--out", str(tmp_path)])
+
+    lane.main()
+
+    assert captured["k"]["assemblies"] == {"edit_02": "/d/edit_02"}

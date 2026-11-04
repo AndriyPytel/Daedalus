@@ -28,7 +28,7 @@ from core.loop import (ACCEPT, APPROVE, ASSERTION_PHASE, DECISIONS, DESIGN_PHASE
                        START_OVER, Approval, NeedsAnswer, auto_approve,
                        nobody_to_ask, revise_by_default, run)
 from core.loop.budgets import Budgets
-from core.agent.assembly import PART_SHARE, part_summary, run_assembly
+from core.agent.assembly import PART_SHARE, part_summary, run_assembly, unfinished
 from core.agent.domain import ASSEMBLY, PART
 from core.agent.reader import run_reader
 from core.narrate import narrate
@@ -374,7 +374,7 @@ class Client:
         The loop under *domain*: for the Part Domain the drawing is read into a table, then one model
         builds over this Client's kernel and lands each code call on this
         Client's Document, so `save` and `export_step` write what it built.
-        *base* says the Document already holds the part to edit; the Assembly Domain builds from parts and has no editing, and *budget_usd* is the cap its parts' shares are taken from.
+        *base* says the Document already holds the part to edit; under the Assembly Domain it is the Assembly the intent changes, and *budget_usd* is the cap its parts' shares are taken from.
         """
         if self.kernel is None:
             raise ValueError("the agent works through a kernel")
@@ -391,7 +391,8 @@ class Client:
                 return run_assembly(prompt, llm=self.llm, kernel=self.kernel, tools=tools,
                                     events=self.events, attachments=list(attachments),
                                     cancelled=cancelled,
-                                    build_part=self.part_builder(folder, cancelled, budget_usd))
+                                    build_part=self.part_builder(folder, cancelled, budget_usd),
+                                    edit=base)
         return run_reader(prompt, llm=self.llm, kernel=self.kernel, tools=tools,
                           events=self.events, attachments=list(attachments),
                           cancelled=cancelled, base=base)

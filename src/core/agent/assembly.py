@@ -1,5 +1,6 @@
 """
 The Assembly Domain: the agent writes FreeCAD Python against the native Assembly workbench, and `finish` is refused until the Document holds one Assembly whose parts all reach a grounded part through joints, whose `solve()` returns 0 and leaves every Fixed, Revolute and Ball joint met, and no two parts sharing more than a thousandth of the smaller one.
+An Assembly of exactly one part needs no joint, only that part grounded.
 The solver returns 0 for some inconsistent joints and leaves one unsatisfied, so a Fixed, Revolute or Ball joint whose frames do not meet after solving counts as over-constrained.
 """
 import json
@@ -90,7 +91,7 @@ def refusals(facts):
     if facts["loose"]:
         found.append("Parts not in the Assembly: %s. Add each with assembly.addObject(part)."
                      % ", ".join(facts["loose"]))
-    if not facts["joints"]:
+    if not facts["joints"] and len(facts["parts"]) != 1:
         found.append("The Assembly has no joint. Join the parts with JointObject joints.")
     if not facts["grounded"]:
         found.append("The Assembly has no grounded part. Ground one with JointObject.GroundedJoint.")
@@ -170,9 +171,10 @@ def part_call(build_part):
 
 
 def run_assembly(intent, *, llm, kernel, tools, events, attachments=(), cancelled=None,
-                 build_part=None):
-    """Build the Assembly *intent* asks for from the parts in the Document and *attachments*, under the Assembly Domain; *build_part* builds a part the Document lacks in a Session of its own."""
-    domain = Domain(ASSEMBLY, read_prompt("assembly.md"), opening(intent, list(attachments)),
+                 build_part=None, edit=False):
+    """Build the Assembly *intent* asks for from the parts in the Document and *attachments*, under the Assembly Domain; *build_part* builds a part the Document lacks in a Session of its own, and *edit* says the Document already holds the Assembly the intent changes."""
+    system = read_prompt("assembly.md") + ("\n\n" + read_prompt("assembly_edit.md") if edit else "")
+    domain = Domain(ASSEMBLY, system, opening(intent, list(attachments)),
                     lambda: None, unfinished,
                     {"build_part": part_call(build_part)} if build_part else {})
     return run_solo(intent, domain=domain, llm=llm, kernel=kernel, tools=tools, events=events,

@@ -92,3 +92,19 @@ def test_a_group_of_parts_joined_to_each_other_but_not_to_the_grounded_one_is_re
     found = refusals(_facts(parts=["A", "B", "C"], links=[["B", "C"]]))
 
     assert len(found) == 1 and "B" in found[0] and "C" in found[0]
+
+
+def test_one_grounded_part_passes_without_a_joint():
+    assert refusals(_facts(parts=["A"], joints=0, links=[], pairs=[])) == []
+
+
+def test_one_part_that_is_not_grounded_is_still_refused():
+    found = refusals(_facts(parts=["A"], joints=0, grounded=[], links=[], pairs=[], solve=-6))
+
+    assert len(found) == 1 and "no grounded part" in found[0]
+
+
+def test_two_parts_without_a_joint_are_still_refused():
+    found = refusals(_facts(parts=["A", "B"], joints=0, links=[]))
+
+    assert any("no joint" in line for line in found)

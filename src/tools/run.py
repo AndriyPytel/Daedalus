@@ -127,6 +127,8 @@ def main():
                              "pipeline, kept to compare against")
     parser.add_argument("--domain", default="part",
                         help="The Domain the agent arm builds under, part or assembly; assembly builds from the STEP parts in --attach")
+    parser.add_argument("--base-document", default=None,
+                        help="An editing run under the Assembly Domain: the saved Document the agent opens and changes")
     parser.add_argument("--base-step", default=None,
                         help="An editing run: the part to edit, the BaseFeature of the Document's Body")
     args = parser.parse_args()
@@ -141,7 +143,7 @@ def main():
     from sdk import COST, Budgets, Client, nobody_to_ask
 
     llm = client_for(args.provider, args.model, args.effort) if args.model else None
-    seed = base_document(args.base_step) if args.base_step else None
+    seed = base_document(args.base_step) if args.base_step else args.base_document
     client = Client(document=seed, llm=llm, confirm=lambda kinds: args.allow_user_objects is True)
     client.events.log_to(args.log)
     if seed:
@@ -159,7 +161,7 @@ def main():
     cancelled = (lambda: spent["usd"] >= args.budget_usd) if args.budget_usd is not None else None
     if args.arm == "agent":
         result = client.agent(args.intent, attachments=list(args.attach), cancelled=cancelled,
-                              base=bool(args.base_step), domain=args.domain,
+                              base=bool(seed), domain=args.domain,
                               budget_usd=args.budget_usd)
     else:
         result = client.send(args.intent, attachments=list(args.attach), cancelled=cancelled,
