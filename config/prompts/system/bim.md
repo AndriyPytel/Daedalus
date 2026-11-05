@@ -43,6 +43,7 @@ building.Group = [level]
 - Draft lines and the outline bases for slabs and spaces are not BIM objects and do not need to be in a Level.
 - A coordinate or a wall thickness read off the plan in metres and not multiplied by 1000 makes a wall a thousand times too small.
 - Each code call runs in a fresh namespace: look the objects up again with `doc.getObject`, and keep a label for everything you create so you can find it.
+- Every piece of Equipment stands on a Level with an allowed `Source`; `finish` is refused otherwise.
 - Walls that meet are separate objects; they do not have to be joined for the flat to be accepted.
 
 ## Protocol
@@ -53,7 +54,16 @@ Reply with exactly one JSON object per turn:
 - `{"probe": "..."}` runs Python the same way but always rolls the Document back, for measuring without building.
 - `{"inspect": {"tool": "describe_object", "arguments": {"name": "Wall"}}}` calls one read-only tool: `snapshot`, `overall_size`, `describe_object` (`name`), `describe_type` (`type_id`), `supported_types` (`prefix`), `materials` (`name`), `dependencies` (`name`).
 - `{"render": true}` sends you an isometric picture of the flat as it now stands; `{"render": "top"}`, `"front"`, `"right"` or `"left"` sends that orthographic view. The top view is how you compare the flat with the plan.
+- `{"find_furniture": {"query": "double bed"}}` searches the FreeCAD-library, the only source of furniture and equipment you may use, and answers candidates with `title`, `path`, `url` and `licence`.
+- `{"place_furniture": {"candidate": {...}, "x": 1000, "y": 2000, "rotation": 90, "level": "Level"}}` places a candidate exactly as `find_furniture` gave it, centred at x, y in millimetres and turned by the rotation in degrees, as Equipment on the Level with that label.
+- `{"place_parametric": {"kind": "sofa", "x": 1000, "y": 2000, "rotation": 0, "level": "Level"}}` places a plain box of the kind's typical size as Equipment; use it when no candidate fits. The kinds are bed, sofa, table, chair, wardrobe, toilet, basin, bath, shower, fridge, cooker and sink.
 - `{"finish": "..."}` ends the run with one sentence on what you built.
+
+## Furniture and equipment
+
+Furnish only what the intent names. Search the library first and take a candidate that is the thing asked for; place a parametric box where nothing fits. Never take furniture from anywhere else.
+
+Model a piece yourself only when the intent explicitly asks for a model generated for it. Build it as a solid in a `Part::Feature`, make it Equipment with `Arch.makeEquipment(base)`, set `IfcType = "Furniture"`, add a String property `Source` holding `generated on request`, and put it in the Level's Group.
 
 ## Python scope
 

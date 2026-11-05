@@ -16,6 +16,8 @@ import tempfile
 from core import events, freecad_apply, model_catalog
 from core import settings as _settings
 from core.arch import arch_type, export_ifc
+from core import furniture
+from core.equipment import write_attribution
 from core.freecad_apply import ApplyPipeline, active_document, build_registry
 from core.events import (ASSERTION, BLOCKED, COST, REVIEW_VERDICT, EventStream,
                          replay)
@@ -405,8 +407,11 @@ class Client:
         return export_step(self.document, path, only)
 
     def export_ifc(self, path):
-        """Write this Client's Arch objects to *path* as IFC4 and hand the path back, or `None` where it holds none."""
-        return export_ifc(self.document, path)
+        """Write this Client's Arch objects to *path* as IFC4 and hand the path back, or `None` where it holds none; where library furniture is in it, `<stem>.ATTRIBUTION.md` goes beside it."""
+        written = export_ifc(self.document, path)
+        if written:
+            write_attribution(self.document, written, furniture.index(furniture.CACHE, furniture.http_get))
+        return written
 
     def has_solid(self):
         """Whether this Client's Document holds a solid; a document without one has no STEP to write."""

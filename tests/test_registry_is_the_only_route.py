@@ -13,6 +13,9 @@ The Document is reached from exactly these places, and each has a reason:
   - core/sheets/sketch_check.py: Builds the reading as a sketch in a document of its
     own, to ask the solver whether what was read can be true at once, and
     closes it in a `finally`. It reads a drawing and never the user's Document.
+  - core/equipment.py: `place_library` opens a library file in a document of its own to copy
+    its shape, closes it in a `finally` and makes the user's Document active again. The guard
+    allows a file, not a function, so the rest of the module is covered by this line too.
   - src/sdk.py: `Client` owns the Document a caller hands it, opening the
     path or making the empty one the whole run is then applied to. It is the
     assembly point, above the registry rather than around it.
@@ -34,6 +37,7 @@ ALLOWED = {
     "src/core/freecad_apply.py",
     "src/core/kernel/kernel_worker.py",
     "src/core/sheets/sketch_check.py",
+    "src/core/equipment.py",
     "src/sdk.py",
     "src/tools/run.py",
 }

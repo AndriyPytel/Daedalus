@@ -51,3 +51,10 @@ stray = Arch.makeWall(Draft.makeLine(App.Vector(0, 5000, 0), App.Vector(3000, 50
                       width=200, height=2600)
 doc.recompute()
 """
+
+WALL = {"label": "Wall", "length": 4000.0, "height": 2600.0, "width": 200.0, "volume": 1.0}
+HOLDS = {"walls": [WALL], "slabs": ["Slab"], "doors": [{"label": "Door", "hosts": ["Wall"]}],
+         "windows": [{"label": "Window", "hosts": ["Wall"]}], "spaces": ["Space"],
+         "buildings": 1, "unplaced": [], "equipment": [], "ifc": {"schema": "IFC4", "IfcWall": 1, "IfcSlab": 1, "IfcDoor": 1,
+                                                "IfcWindow": 1, "IfcSpace": 1,
+                                                "IfcFurnishingElement": 0}}

@@ -1,7 +1,7 @@
 """
 The loop's builder: one model choosing its own route over the kernel, the read tools and the render, with no Design, Plan, Plan Gate or Review around it.
 
-Each `code` call is linted, rehearsed in the kernel and landed on the live Document; the first `finish` is answered with the Domain's Assertion, and every `finish` is refused until the Domain's done-check holds. A reply keyed by one of the Domain's own calls is answered by that call.
+Each `code` call is linted, rehearsed in the kernel and landed on the live Document; the first `finish` is answered with the Domain's Assertion, and every `finish` is refused until the Domain's done-check holds. A reply keyed by one of the Domain's own calls is answered by that call, or by the `code` call it answers with.
 """
 import json
 import os
@@ -121,6 +121,8 @@ def run_solo(intent, *, domain, llm, kernel, tools, events, attachments=(), canc
         argument = argument if isinstance(argument, dict) else {}
         events.emit(TOOL_CALL, name=name, arguments=argument)
         answer = domain.calls[name](argument)
+        if "code" in answer:
+            return code_turn(answer["code"])
         events.emit(TOOL_RESULT, name=name, result=answer)
         return json.dumps(answer, default=str)
 
