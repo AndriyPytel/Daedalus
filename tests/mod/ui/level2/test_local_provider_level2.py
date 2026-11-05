@@ -46,6 +46,10 @@ def providers_page(settings_are_the_tests_own):
     QT_APP.processEvents()
     _add(page, LOCAL)
     yield page
+    test_thread = getattr(page, "_thread", None)
+    if test_thread is not None:
+        test_thread.quit()
+        test_thread.wait()
     page.close()
     page.deleteLater()
     QT_APP.processEvents()
@@ -191,6 +195,8 @@ def _provider_manager_threads_join_before_the_next_test():
 
     manager = provider_manager.instance()
     _drain(manager)
+    for thread in manager._threads.values():
+        thread.wait()
     manager._threads.clear()
 
 

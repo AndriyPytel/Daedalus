@@ -40,11 +40,21 @@ def settings_are_the_tests_own():
 
 
 def _drain(manager, turns=400):
-    """Let every fetch already in flight finish before a test asserts anything."""
+    """
+    Let every fetch already in flight finish before a test asserts anything.
+
+    A worker posts its signal and then returns, so `isRunning()` goes false
+    before the posted event is dispatched; quiescence is trusted on the second look.
+    """
+    quiet = 0
     for _ in range(turns):
         QT_APP.processEvents()
         if not any(thread.isRunning() for thread in manager._threads.values()):
-            return
+            quiet += 1
+            if quiet >= 2:
+                return
+        else:
+            quiet = 0
         QT_APP.thread().msleep(5)
 
 
@@ -65,6 +75,8 @@ def _provider_manager_threads_join_before_the_next_test():
 
     manager = provider_manager.instance()
     _drain(manager)
+    for thread in manager._threads.values():
+        thread.wait()
     manager._threads.clear()
 
 
@@ -95,6 +107,10 @@ def providers_page(settings_are_the_tests_own, monkeypatch):
     page.show()
     QT_APP.processEvents()
     yield page
+    test_thread = getattr(page, "_thread", None)
+    if test_thread is not None:
+        test_thread.quit()
+        test_thread.wait()
     page.close()
     page.deleteLater()
     QT_APP.processEvents()

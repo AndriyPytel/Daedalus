@@ -155,6 +155,25 @@ if HAVE_QT:
     QtCore.QThread.start = _tracked_start
 
 
+@pytest.fixture(autouse=True)
+def no_test_leaves_a_fetch_thread_running():
+    """
+    A `_FetchThread` still running when its test ends outlives the monkeypatch
+    that answered it and the manager that owns it. It then runs the real fetch
+    (SSL setup and an import) beside the next test's own imports, which
+    segfaults the xdist worker; the other threads are left to the module check
+    below, because a Session's own thread is meant to outlive a test.
+    """
+    if not HAVE_QT:
+        yield
+        return
+    before = {id(t) for t in _STARTED_QTHREADS}
+    yield
+    for thread in list(_STARTED_QTHREADS):
+        if id(thread) not in before and type(thread).__name__ == "_FetchThread":
+            thread.wait()
+
+
 @pytest.fixture(autouse=True, scope="module")
 def no_module_leaves_a_qthread_running():
     """

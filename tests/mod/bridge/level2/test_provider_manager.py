@@ -62,13 +62,16 @@ def manager(monkeypatch):
     answered here rather than by models.dev.
     """
     pytest.importorskip("FreeCAD")
+    from PySide.QtCore import QThread
     from bridge.provider_manager import _ProviderManager
     from core import model_catalog
 
     monkeypatch.setattr(model_catalog, "fetch", lambda *args, **kwargs: [])
 
     built = _ProviderManager()
-    return built
+    yield built
+    for thread in built.findChildren(QThread):
+        thread.wait()
 
 
 def _fetched(manager, provider, models):
