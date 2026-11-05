@@ -98,6 +98,30 @@ def test_the_agent_picks_its_own_route_and_the_step_it_built_is_exported(kernel,
     client.close()
 
 
+def test_a_run_saved_the_way_run_py_saves_it_is_a_solid_a_scorer_can_read(kernel, tmp_path):
+    import sys
+
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "src", "tools"))
+    import run
+
+    llm = ScriptedLLMClient([_say(code=BOX), _say(finish="a 10 mm cube")])
+    client = _client(llm, kernel)
+    result = client.agent("Make a 10 mm cube")
+
+    step, fcstd = str(tmp_path / "out.step"), str(tmp_path / "out.FCStd")
+    assert run.finish(client, result, step) == 0
+    assert run.finish(client, result, fcstd) == 0
+
+    client.close()
+    import FreeCAD
+
+    assert _volume_of(step) == pytest.approx(1000)
+    reopened = FreeCAD.openDocument(fcstd)
+    assert any(getattr(o, "Shape", None) is not None and o.Shape.Volume == pytest.approx(1000)
+               for o in reopened.Objects)
+    FreeCAD.closeDocument(reopened.Name)
+
+
 def test_an_agent_out_of_turns_is_stopped_and_keeps_what_it_built(kernel, tmp_path, monkeypatch):
     monkeypatch.setattr(reader, "MAX_TURNS", 2)
     llm = ScriptedLLMClient([_say(code=BOX), _say(probe="print(1)"), _say(probe="print(2)")])

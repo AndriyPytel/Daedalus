@@ -124,13 +124,13 @@ def quota_refusal(log):
 
 
 def run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
-            python=sys.executable, conflicts=None, base_step=None, attach=(), arm="agent",
+            python=sys.executable, base_step=None, attach=(),
             domain=None, base_document=None):
     """
     One run of one sheet, as a subprocess of `tools/run.py`.
 
     A task with no sheet — `--task bolt-nut=` — is a run of the Intent alone.
-    *conflicts* is `tools/run.py --conflicts`; an editing run names *base_step* and the renders in *attach*; *arm* is `--arm`, left off the command line for the default agent; *domain* is `--domain`, left off for Part, and an Assembly run saves an FCStd; *base_document* is the Document an editing Assembly run opens, whose objects the run may change.
+    An editing run names *base_step* and the renders in *attach*; *domain* is `--domain`, left off for Part, and an Assembly run saves an FCStd; *base_document* is the Document an editing Assembly run opens, whose objects the run may change.
     """
     part, _, _ = _domains()
     domain = domain or part
@@ -145,12 +145,8 @@ def run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
         cmd += ["--attach"] + list(attach)
     if budget_usd is not None:
         cmd += ["--budget-usd", str(budget_usd)]
-    if conflicts is not None:
-        cmd += ["--conflicts", conflicts]
     if base_step:
         cmd += ["--base-step", base_step]
-    if arm != "agent":
-        cmd += ["--arm", arm]
     if domain != part:
         cmd += ["--domain", domain]
     if base_document:
@@ -298,18 +294,15 @@ def _has_step(log, suffix=".step"):
 
 
 def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
-          resume, provider, run_seconds, conflicts=None, timestamp=None, edits=None, arm="agent",
+          resume, provider, run_seconds, timestamp=None, edits=None,
           domain=None, task_folders=None):
     """
-    *conflicts* ("on"/"off"/`None`) is the append-only model's own A/B arm:
-    set, it suffixes every task's label the way `logs/ab-rlm-agentic`
-    already names an arm (`mm23-off`) and is passed on to
-    `tools/run.py --conflicts`. Every attempt gets its own `<stem>.<timestamp>`
+    Every attempt gets its own `<stem>.<timestamp>`
     log and, from `run_one`'s own naming, STEP, so a retry's save never
     lands on the same path as any other attempt's. *timestamp* is
     injectable so a test can make attempts distinguishable without a real
     clock, and *edits* maps a label to its editing fixture folder, whose run ends in
-    `<model>/<label>/output.step`: the edit, or a copy of `input.step`; *arm* and *domain* go to every run, and *task_folders* maps a label to the task folder whose text and parts, or floor plan, it runs on.
+    `<model>/<label>/output.step`: the edit, or a copy of `input.step`; *domain* goes to every run, and *task_folders* maps a label to the task folder whose text and parts, or floor plan, it runs on.
     """
     import sdk
 
@@ -326,13 +319,12 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
         model_dir = os.path.join(out, model)
         os.makedirs(model_dir, exist_ok=True)
         for label, sheet in tasks:
-            arm_label = "%s-%s" % (label, conflicts) if conflicts else label
-            key = "%s/%s" % (arm_label, model)
+            key = "%s/%s" % (label, model)
             if state["runs"].get(key, {}).get("status") == "done":
                 print("SKIP %s: already done" % key, flush=True)
                 continue
 
-            stem = os.path.join(model_dir, arm_label)
+            stem = os.path.join(model_dir, label)
             outcome = "hung"
             refusal = None
             attempts = []
@@ -342,15 +334,13 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
             for attempt in range(1, retries + 1):
                 log = _unique_stem(stem, timestamp()) + ".jsonl"
                 attempts.append(log)
-                kwargs = {"conflicts": conflicts} if conflicts is not None else {}
+                kwargs = {}
                 if fixture:
                     with open(os.path.join(fixture, "edit_description.txt"), encoding="utf-8") as handle:
                         run_intent = sdk.read_prompt("edit_task_intent.md").strip().format(desc=handle.read().strip())
                     kwargs["base_step"] = os.path.join(fixture, "input.step")
                     kwargs["attach"] = [os.path.join(fixture, "renders", view + ".png")
                                         for view in RENDER_VIEWS]
-                if arm != "agent":
-                    kwargs["arm"] = arm
                 if domain != part:
                     kwargs["domain"] = domain
                 if label in task_folders:
@@ -371,7 +361,7 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
                       % (key, attempt, outcome, process.returncode), flush=True)
 
             succeeded = outcome == "exited" and process.returncode == 0 and _has_step(log, saved)
-            state["runs"][key] = {"label": arm_label, "model": model, "log": log,
+            state["runs"][key] = {"label": label, "model": model, "log": log,
                                   "attempts": attempts, "returncode": process.returncode,
                                   "status": "quota" if refusal
                                   else "done" if succeeded else "failed"}
@@ -870,11 +860,6 @@ def main():
     parser.add_argument("--smoke-sheet", choices=sorted(modelmania_harness.PHASES),
                         default=SMOKE_SHEET_DEFAULT,
                         help="Sheet --smoke runs; defaults to %r" % SMOKE_SHEET_DEFAULT)
-    parser.add_argument("--conflicts", choices=("on", "off"), default=None,
-                        help="The conflict-recording A/B arm; unset runs tools/run.py's own "
-                             "default (on)")
-    parser.add_argument("--arm", choices=("agent", "pipeline"), default="agent",
-                        help="Which arm tools/run.py runs each task as; pipeline is the phased pipeline")
     parser.add_argument("--domain", choices=_domains(), default=part,
                         help="The Domain every run builds under; assembly takes --assembly-task or --sample/--labels over the from_parts tasks, bim --sample/--labels over the create tasks")
     parser.add_argument("--assembly-task", dest="task_folder", action="append", default=[],
@@ -954,7 +939,7 @@ def main():
     os.makedirs(args.out, exist_ok=True)
     stopped = sweep(tasks, args.model, args.effort, args.budget_usd, args.intent,
                     args.out, args.hang_seconds, args.retries, args.resume, args.provider,
-                    args.run_seconds, args.conflicts, edits=edits, arm=args.arm,
+                    args.run_seconds, edits=edits,
                     domain=args.domain, task_folders=task_folders)
     return QUOTA_EXIT if stopped else 0
 

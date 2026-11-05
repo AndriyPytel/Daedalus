@@ -41,6 +41,14 @@ def bb(f):
 """
 
 
+def with_design(design, code):
+    """*code* preceded by the `design` name its recorded Steps read."""
+    features = design["features"]
+    if isinstance(features, list):
+        features = {feature["id"]: feature for feature in features}
+    return "design = %r\n" % ({**design, "features": features},) + code
+
+
 def _load(name):
     with open(os.path.join(FIXTURES, name)) as fh:
         return json.load(fh)
@@ -48,10 +56,10 @@ def _load(name):
 
 def _build_steps_1_to_26(kernel, design, steps, fillet_1730_code):
     """Body ready for Step 27 onward: Steps 1-16 plus the base/hook fillets 17-26."""
-    boot = kernel.check("doc.addObject('PartDesign::Body', 'Body')", design=design)
+    boot = kernel.check("doc.addObject('PartDesign::Body', 'Body')")
     assert boot.ok, boot.traceback
     for n in range(1, 17):
-        result = kernel.check(steps[str(n)])
+        result = kernel.check(with_design(design, steps[str(n)]))
         assert result.ok, "Step %d failed: %s" % (n, result.traceback)
     base_and_hook = fillet_1730_code.split("def make_ring_predicates")[0]
     result = kernel.check(HELPERS + base_and_hook)
@@ -203,10 +211,10 @@ def reproduce_event_16094(kernel, design, steps):
     selection builds when Base is the Tip captured before
     `body.addObject(fillet)` runs.
     """
-    boot = kernel.check("doc.addObject('PartDesign::Body', 'Body')", design=design)
+    boot = kernel.check("doc.addObject('PartDesign::Body', 'Body')")
     assert boot.ok, boot.traceback
     for n in range(1, 17):
-        result = kernel.check(steps[str(n)])
+        result = kernel.check(with_design(design, steps[str(n)]))
         assert result.ok, "Step %d failed: %s" % (n, result.traceback)
 
     event_code = _load("ring_fillet_event_selector.json")["code"]

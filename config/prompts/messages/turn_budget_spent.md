@@ -1,1 +1,0 @@
-Step %d of %d never reached a build attempt this pass: the phase's turn budget ran out first, and this reply is the forced declaration `budget_last_call.md` demands once that happens, not a verdict on whether the Step can be built. The Document keeps whatever Steps already applied; nothing about the Step in progress is settled.

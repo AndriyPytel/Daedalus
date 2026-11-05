@@ -1,1 +1,0 @@
-Your reply was not one of the three shapes this phase takes. Reply with exactly one JSON object: {"code": "..."} to run Python, {"delegate": "..."} to ask a sub-agent, or {"declare": ...} to finish. Whatever you meant to say, wrap it in the right key.

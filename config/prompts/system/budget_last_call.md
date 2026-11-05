@@ -1,1 +1,0 @@
-This phase's turn budget is spent, so this is your last turn: nothing you write as code will be run. Reply with {"declare": ...} for what you have actually built and verified so far -- the Steps that passed, not the ones you meant to write next. A declaration of half a part is an outcome the run can show and carry on from; another attempt at code is nothing at all.

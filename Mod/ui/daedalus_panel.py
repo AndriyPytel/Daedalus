@@ -7,8 +7,7 @@ FreeCAD paints its UI with one global stylesheet and leaves QPalette at
 whatever the OS handed over, so what is left in the stylesheet is geometry
 and typography. `RESTORE_CHUNK` bounds events replayed per event-loop turn
 when a Session opens, `ATTACHMENT_WIDTH` bounds an attached picture's
-width, `OPEN_AT_MOST` bounds entries beside the Plan that stand open,
-`FOLDS_OVER` is how long a narrated line may be before it folds into a row
+width, `FOLDS_OVER` is how long a narrated line may be before it folds into a row
 and `TITLE_KEPT` how much of its sentence titles it, while every
 `sdk` import is deferred to the method that needs it since the SDK
 reaches `core`, which imports FreeCAD's Qt bindings not yet guaranteed to
@@ -28,10 +27,7 @@ from .chat_widgets        import TextMessageWidget, AssistantMessageWidget
 from .multi_tab_manager   import ChatSessionManager
 from .upload_widget       import FileChip, UploadWidget, FileChipBar
 from .accordion_widget    import AccordionWidget
-from .plan_widget         import PlanWidget, DONE as PLAN_DONE, FAILED as PLAN_FAILED
 from .queue_widget        import QueueWidget
-from .review_verdict_widget import ReviewVerdictWidget
-from .assertion_results_widget import AssertionResultsWidget, summary_line
 from ui.design_tokens     import (CONTROL, CONTROL_DENSE, HAIRLINE, ICON, ICON_DENSE, RADIUS_CONTROL,
                                   RADIUS_SURFACE, RUNNING, SPACE_COMPOSER, SPACE_MD,
                                   SPACE_SM, SPACE_XS, WASH)
@@ -132,44 +128,10 @@ padding is added on top of them.
             margin: 0px {SPACE_MD}px {SPACE_SM}px {SPACE_MD}px;
         }}
 
-        QFrame#QueueRow {{ border-radius: {RADIUS_CONTROL}px; }}
-
-        QFrame#QueueRow:hover {{ background-color: {WASH}; }}
-
         /* What is being asked is asked in the open: the Confirmation this
            follows carries no card at all, and the accent on its answer is
            what marks it out. */
         QFrame#GateCard {{ border: none; }}
-
-        /* The Plan, editable until Build locks it: a surface. */
-        QFrame#PlanCard {{
-            background-color: {WASH};
-            border: 1px solid {HAIRLINE};
-            border-radius: {RADIUS_SURFACE}px;
-        }}
-
-        QListWidget#PlanSteps {{
-            border: none;
-            background: transparent;
-        }}
-
-        QListWidget#PlanSteps::item {{
-            padding: {SPACE_XS}px {ICON + SPACE_SM}px {SPACE_XS}px {SPACE_SM}px;
-            border-radius: {RADIUS_CONTROL}px;
-        }}
-
-        QListWidget#PlanSteps::item:selected {{
-            background-color: {WASH};
-        }}
-
-        QPushButton#PlanAddStep {{
-            border: none;
-            background: transparent;
-            text-align: left;
-            padding: {SPACE_XS}px {SPACE_SM}px;
-            min-width: 0px;
-            {css(CAPTION)}
-        }}
 
         /* An action offered beside a primary one: a label, a hairline, and no
            fill of its own. */
@@ -198,13 +160,6 @@ padding is added on top of them.
 
         QPushButton#PickerButton:hover {{ background-color: {WASH}; }}
 
-        /* The Review verdict card and acceptance checks: surfaces. */
-        QFrame#ReviewVerdictCard, QFrame#AssertionResultsCard {{
-            background-color: {WASH};
-            border: 1px solid {HAIRLINE};
-            border-radius: {RADIUS_SURFACE}px;
-        }}
-
         /* A call the run made, in the shape Figma's Tool card takes: a
            hairline, no fill, and the control radius rather than a surface's. */
         QFrame#ToolCard {{
@@ -229,7 +184,7 @@ padding is added on top of them.
         /* Send and Stop: the glyph alone, in the idiom the attach button and
            the pickers beside them already use. A filled pill here was the one
            thing in the composer's strip wearing a colour, and it read as a
-           second primary action next to the Plan Gate's. */
+           second primary action. */
         QPushButton#SendButton {{
             background: transparent;
             border: none;
@@ -376,30 +331,19 @@ class EventBridge(QtCore.QObject):
 
 
 class AskTheUser(QtCore.QObject):
-    """Blocks the worker thread until the user answers, on the GUI thread: four
-questions go through here, the Plan Gate, the Owned Object rule, missing
-Plan values, and what to do about a failed result, all asked from the
+    """Blocks the worker thread until the user answers, on the GUI thread: the Owned Object rule is asked from the
 loop's thread and answered by a person, so the signal crosses to the GUI
 thread and the worker waits on an Event. A run parked here waits on a
 person who may be away, so `_ask` pages them through FreeCAD's Notification
 Area before blocking.
 """
 
-    plan_gate = QtCore.Signal(object)
     owned_objects = QtCore.Signal(object)
-    missing_values = QtCore.Signal(object)
-    revision = QtCore.Signal(object)
 
     def __init__(self):
         super().__init__()
         self._answered = threading.Event()
         self._answer = None
-
-    def about_the_plan(self, steps, history=(), rollback=None):
-        payload = ({"steps": steps, "history": history, "rollback": rollback}
-                  if history or rollback else steps)
-        return self._ask(self.plan_gate, payload,
-                         "Daedalus needs you to approve its Plan before it continues.")
 
     def about_objects_we_do_not_own(self, kinds):
         """
@@ -414,34 +358,6 @@ Area before blocking.
         return self._ask(self.owned_objects, kinds,
                          "Daedalus wants to delete something it did not create and "
                          "needs your permission.")
-
-    def about_missing_values(self, question):
-        """
-        The values Plan has not been given: the question itself is already in the
-transcript, since it arrived as an event, and this is only the card that
-takes the answer, taking it from the composer the same way Amend does.
-Enter is the only route to Send here, the button being hidden mid-run.
-"""
-        answer = self._ask(self.missing_values, question,
-                           "Daedalus needs a value it could not find on the drawing.")
-        return answer if isinstance(answer, str) else ""
-
-    def about_the_revision(self, failure):
-        """
-        What to do about a result that did not pass, before anything is wiped.
-
-        `abandon` releases every waiting question with an Approval, which is
-        not one of these three answers, so Stop falls to the default. That is
-        deliberately not "accept": the loop asks `cancelled()` before it plans
-        anything, so a stopped run is recorded as stopped rather than as a
-        result the user took.
-        """
-        from sdk import DECISIONS, REVISE
-
-        answer = self._ask(self.revision, failure,
-                           "Daedalus needs you to say what to do about a result that "
-                           "did not pass its checks.")
-        return answer if answer in DECISIONS else REVISE
 
     def _ask(self, signal, payload, notify):
         """
@@ -480,9 +396,7 @@ does not need paging back.
     def abandon(self):
         """Release a waiting question so Stop is not swallowed by a prompt."""
         if not self._answered.is_set():
-            from sdk import REJECT, Approval
-
-            self._answer = Approval(REJECT)
+            self._answer = False
             self._answered.set()
 
 
@@ -498,7 +412,7 @@ closing over it. This object lives on the worker thread, and Qt uses the
 resolves to a direct call, and runs the panel's slot on the worker thread,
 measured as sixteen `QObject::setParent` (different thread) warnings, one
 `QObject::killTimer` (another thread) warning, and a segfault inside
-`queue_widget.py :: _Elided.set_full`; a bound method of a main-thread
+`queue_widget.py :: _NowLabel.set_full`; a bound method of a main-thread
 QObject gives Qt that QObject as the context instead, which is what makes
 the hop queued, and `Qt.QueuedConnection` on the lambda does not help since
 it still posts to the context's thread, which is still this object. The
@@ -551,7 +465,7 @@ run rebuilds it from settings when the model changes.
         Ends the run without waiting out a provider call already in flight.
 
         `cancelled()` is only polled between provider calls
-        (`core/loop/run.py`, `describe.py`, `plan.py`, `assertion.py`), and one
+        (`core/agent/solo.py`), and one
         of those calls is a `claude` subprocess under a ceiling of up to 1500
         seconds (`core/llm/claude.py :: _CEILING`). Killing this run's own live
         processes ends that call at once, the same as `abort`, while leaving
@@ -595,16 +509,13 @@ run rebuilds it from settings when the model changes.
                 dispatch=on_main_thread)
         return self.sdk_client
 
-    @QtCore.Slot(str, object, str, object, str)
-    def do_work(self, intent: str, attachments: list, transcript: str,
-                outstanding: list = None, the_part_path: str = ""):
+    @QtCore.Slot(str, object, str)
+    def do_work(self, intent: str, attachments: list, transcript: str):
         """Runs one Intent and emits the result: a missing transcript log must not
 cost the user their run, nor must a Session that cannot be named after its
 Document, so both fail quietly, and a model that cannot be resolved is a
 known outcome that belongs in the transcript as a sentence, not a
-traceback. `the_part_path` is the Session's last run's read/written part,
-forwarded here unless a new attachment replaces it; empty means describe
-the part from `attachments` alone.
+traceback.
 """
         from sdk import events as ev, EventStream, build_registry, get_domain
         from bridge.logger import generate_crash_report, logger
@@ -641,13 +552,8 @@ the part from `attachments` alone.
             domain = sdk_client.domain_for(intent, get_domain(), events)
             result = sdk_client.send(
                 intent,
-                gate=self.ask.about_the_plan,
-                ask=self.ask.about_missing_values,
-                decide=self.ask.about_the_revision,
                 attachments=attachments,
                 cancelled=self._stop.is_set,
-                outstanding=list(outstanding or ()),
-                the_part_path=the_part_path or None,
                 events=events, domain=domain)
             self.finished.emit(result, transcript)
         except Exception as exc:
@@ -675,8 +581,6 @@ RESTORE_CHUNK = 25
 
 ATTACHMENT_WIDTH = 320
 
-OPEN_AT_MOST = 5
-
 FOLDS_OVER = 400
 
 TITLE_KEPT = 70
@@ -694,20 +598,18 @@ Document is in focus when the Session's first Intent is sent, rather than
 to `FreeCAD.ActiveDocument` at the moment of the call, which is whichever
 Document the user happens to be looking at right then; a Preflight Worker
 comes along for free, living on `worker.pipeline`, this Session's own.
-`running`, `outstanding` and `sent_attachments` are carried here so a
+`running` and `sent_attachments` are carried here so a
 Session backgrounded mid-run keeps its own state rather than sharing the
-one the panel happens to be looking at; `the_part_path` is the same idea
-for the Part a run last read or wrote, forwarded into the next Intent
-unless a new attachment replaces it; `dirty` is set when an event lands for
+one the panel happens to be looking at; `dirty` is set when an event lands for
 this Session while it is not the one on screen, so the panel resyncs from
 the transcript rather than trusting stale widgets; `pending_question` is
 the one live Ask this Session is blocked on, if any, so switching back to a
-Session parked at its Plan Gate puts the same card up again. One file, one
+Session parked on its Owned Object question puts the same card up again. One file, one
 Intent: a second Intent while `running` is already `True` is refused at the
 composer, never queued here.
 """
 
-    request_work = QtCore.Signal(str, object, str, object, str)
+    request_work = QtCore.Signal(str, object, str)
 
     def __init__(self, bridge: EventBridge, ask: AskTheUser):
         super().__init__()
@@ -718,8 +620,6 @@ composer, never queued here.
         self.worker.moveToThread(self.thread)
         self.request_work.connect(self.worker.do_work)
         self.running = False
-        self.outstanding: list = []
-        self.the_part_path: str = ""
         self.sent_attachments: list = []
         self.dirty = False
         self.pending_question = None
@@ -758,22 +658,16 @@ rendered into a transcript, carrying an object name since
 position. The status line sits outside the transcript's scroll area, so an
 unbreakable Step widens the dock and Qt never gives it back. One
 `_SessionWorker` per Session lives in `self._workers`, keyed by its stable
-log path, with `outstanding` and the Part path living there too since both
-belong to the Session.
+log path.
 """
 
     _ON_EVENT_DISPATCH = None
-    _QUEUE_DISPATCH = None
-    _EVIDENCE_DISPATCH = None
     _intent_on_screen = None
 
     @classmethod
     def _dispatch_table(cls, attr, build):
         """
-        Build-once-per-class cache one of the three dispatch tables shares:
-        `on_event`, `_update_queue` and `_update_review_evidence` each had
-        the same `if attr is None: attr = build()` dance written out three
-        times; this is the one copy they call instead.
+        Build-once-per-class cache of the dispatch table `on_event` reads.
         """
         table = getattr(cls, attr)
         if table is None:
@@ -865,14 +759,8 @@ belong to the Session.
             bundle.worker.finished.connect(self.on_run_finished)
             bundle.worker.document_named.connect(self.on_document_named)
             bundle.bridge.event.connect(lambda event, log=log: self._route_event(log, event))
-            bundle.ask.plan_gate.connect(
-                lambda payload, log=log: self._route_ask(log, "plan_gate", payload))
             bundle.ask.owned_objects.connect(
                 lambda payload, log=log: self._route_ask(log, "owned_objects", payload))
-            bundle.ask.missing_values.connect(
-                lambda payload, log=log: self._route_ask(log, "missing_values", payload))
-            bundle.ask.revision.connect(
-                lambda payload, log=log: self._route_ask(log, "revision", payload))
             self._workers[log] = bundle
         return bundle
 
@@ -913,10 +801,7 @@ belong to the Session.
             self._dispatch_ask(kind, payload)
 
     def _dispatch_ask(self, kind: str, payload):
-        {"plan_gate": self.on_plan_gate,
-         "owned_objects": self.on_owned_objects,
-         "missing_values": self.on_missing_values,
-         "revision": self.on_revision}[kind](payload)
+        {"owned_objects": self.on_owned_objects}[kind](payload)
 
     def _build_header(self):
         bar = QtWidgets.QFrame()
@@ -1375,7 +1260,6 @@ left over is what the name is elided to.
         answer, so it cannot have asked a second thing while the first is on
         screen.
         """
-        self._plan_widget = None
         self._live_rows = {}
         self._subagent_rows = {}
         self._current_step = 0
@@ -1385,28 +1269,20 @@ left over is what the name is elided to.
         self._domain_usd = 0.0
         self._run_start_time = None
         self._last_event_time = None
-        self._waiting_on_you_since = None
-        self._waited_seconds = 0.0
         self._last_tool_call_time = None
         self._last_tool_call_widget = None
         self._last_tool_call_name = None
         self._update_usage_total()
-        self._last_assertion_event = None
-        self._last_review_verdict_event = None
-        self._last_review_views = []
 
     def _update_usage_total(self):
         """
         Redraw the header's total: what the run cost and what it took.
 
-        Elapsed is `event.at` deltas less the wait on the user, so a run held
-        at the Plan Gate for half an hour stops reading as 31 minutes of work
-        where the model answered in one.
+        Elapsed is the `event.at` delta from the Intent to the last event.
         """
         elapsed_seconds = 0.0
         if self._run_start_time is not None and self._last_event_time is not None:
-            elapsed_seconds = (self._last_event_time - self._run_start_time
-                               - self._waited_seconds)
+            elapsed_seconds = self._last_event_time - self._run_start_time
 
         time_str = _format_elapsed(elapsed_seconds)
         self.usage_label.setText(f"{_format_cost(self._total_usd)}  {time_str}")
@@ -1545,8 +1421,7 @@ switched away from is abandoned rather than rendered.
         """One muted line, so an empty panel still says where the user stands."""
         model = self.model_button.text().strip() or "no model"
         label = QtWidgets.QLabel(
-            "%s. The Plan Gate asks before anything is written to your Document."
-            % model)
+            "%s. Describe what to build." % model)
         label.setObjectName("EmptyState")
         label.setWordWrap(True)
         label.setAlignment(QtCore.Qt.AlignCenter)
@@ -1583,8 +1458,7 @@ switched away from is abandoned rather than rendered.
 
         One file, one Intent: a Document already running -- this Session's or
         another bound to the same Document -- refuses the Intent at the
-        composer, before the Session is named or the composer cleared. The
-        Part path a run last read or wrote travels unless this one brings its own.
+        composer, before the Session is named or the composer cleared.
         """
         if self._answers_to_enter is not None:
             self._answer_with(self._answers_to_enter)
@@ -1632,9 +1506,7 @@ switched away from is abandoned rather than rendered.
         self.add_chat_widget(TextMessageWidget(intent))
         self._intent_on_screen = intent
         self._queue_widget.now("Routing\u2026")
-        outstanding = list(bundle.outstanding)
-        the_part_path = "" if attachments else bundle.the_part_path
-        bundle.request_work.emit(intent, attachments, log, outstanding, the_part_path)
+        bundle.request_work.emit(intent, attachments, log)
 
     def _document_busy(self, bundle: _SessionWorker) -> bool:
         """
@@ -1743,8 +1615,8 @@ switched away from is abandoned rather than rendered.
     @QtCore.Slot(object)
     def on_event(self, event):
         """The whole panel is this method: what an event *says* is `core.narrate`'s,
-what is left here is where a line goes and what shape it takes, Plan Steps,
-a code block, a picture, streaming reasoning, or the document path as a
+what is left here is where a line goes and what shape it takes, a
+code block, a picture, streaming reasoning, or the document path as a
 link, with no calls back into the loop. `_ON_EVENT_DISPATCH` maps every
 `core.events.KINDS` member to a `_oe_*` method, True ending here and False
 falling through, and an unmapped kind reaches `_report_unknown_kind` rather
@@ -1760,20 +1632,12 @@ it up, so a prompt shows once whether live or restored.
             self._total_usd, self._domain_usd = self._domain_usd, 0.0
             self._run_start_time = event.at
             self._last_event_time = event.at
-            self._waiting_on_you_since = None
-            self._waited_seconds = 0.0
             self._update_usage_total()
-            self._last_assertion_event = None
-            self._last_review_verdict_event = None
-            self._last_review_views = []
             if data.get("text", "") != self._intent_on_screen:
                 self.add_chat_widget(TextMessageWidget(data.get("text", "")))
             self._intent_on_screen = None
-            self._update_queue(event)
+            self._queue_widget.reset()
             return
-
-        self._update_queue(event)
-        self._update_review_evidence(event)
 
         handler = DaedalusPanel._dispatch_table("_ON_EVENT_DISPATCH", lambda: {
             ev.CALL_STARTED: DaedalusPanel._oe_call_started,
@@ -1784,17 +1648,17 @@ it up, so a prompt shows once whether live or restored.
             ev.TOOL_CALL: DaedalusPanel._oe_tool_call,
             ev.TOOL_RESULT: DaedalusPanel._oe_tool_result,
             ev.PART: DaedalusPanel._oe_part,
-            ev.PLAN: DaedalusPanel._oe_plan,
-            ev.ASSERTION: DaedalusPanel._oe_assertion,
+            ev.PLAN: DaedalusPanel._noop,
+            ev.ASSERTION: DaedalusPanel._noop,
             ev.STEP_STARTED: DaedalusPanel._noop,
             ev.STEP_DECLARED: DaedalusPanel._oe_step_declared,
-            ev.APPLIED: DaedalusPanel._oe_applied,
-            ev.BLOCKED: DaedalusPanel._oe_blocked,
-            ev.STOPPED: DaedalusPanel._oe_blocked,
-            ev.ABORTED: DaedalusPanel._oe_blocked,
-            ev.BUDGET_EXHAUSTED: DaedalusPanel._oe_blocked,
+            ev.APPLIED: DaedalusPanel._noop,
+            ev.BLOCKED: DaedalusPanel._noop,
+            ev.STOPPED: DaedalusPanel._noop,
+            ev.ABORTED: DaedalusPanel._noop,
+            ev.BUDGET_EXHAUSTED: DaedalusPanel._noop,
             ev.TURN_BUDGET_EXHAUSTED: DaedalusPanel._noop,
-            ev.FAILED: DaedalusPanel._oe_blocked,
+            ev.FAILED: DaedalusPanel._noop,
             ev.COMPLETED: DaedalusPanel._noop,
             ev.DISPUTED: DaedalusPanel._noop,
             ev.QUESTION: DaedalusPanel._noop,
@@ -1821,12 +1685,7 @@ it up, so a prompt shows once whether live or restored.
         elif handler(self, event, data):
             return
 
-        if not self._card_will_repeat_it(event):
-            self._say(narrate(event))
-
-        if event.kind == ev.PLAN_REVISED:
-            self._render_plan(data["steps"], "Revised Plan", data.get("acceptance", ()),
-                              data.get("unanswered", ()), data.get("decided", ()))
+        self._say(narrate(event))
 
     def _oe_call_started(self, event, data):
         return True
@@ -1866,38 +1725,9 @@ it up, so a prompt shows once whether live or restored.
         self._render_part(narrate(event).line, data["path"])
         return True
 
-    def _oe_plan(self, event, data):
-        self._render_plan(data["steps"], "Plan", data.get("acceptance", ()),
-                          data.get("unanswered", ()), data.get("decided", ()))
-        return True
-
-    def _oe_assertion(self, event, data):
-        if data.get("ok") is not None:
-            self.add_chat_widget(AssertionResultsWidget(data))
-            return True
-        return False
-
     def _oe_step_declared(self, event, data):
-        """
-        Highlights the Step the moment it is declared, not once `_work_through`
-gets to it, since a Step lands against the Document inline with its own
-declaration, so waiting for the trailing `step_started` would highlight it
-as running only after it already shows `applied`.
-"""
         self._the_thinking_stops()
         self._current_step = data["step"]
-        if self._plan_widget:
-            self._plan_widget.highlight(data["step"])
-        return False
-
-    def _oe_applied(self, event, data):
-        if self._plan_widget:
-            self._plan_widget.mark(data["step"], PLAN_DONE)
-        return False
-
-    def _oe_blocked(self, event, data):
-        if self._plan_widget and self._current_step:
-            self._plan_widget.mark(self._current_step, PLAN_FAILED)
         return False
 
     def _oe_sub_agent_spawned(self, event, data):
@@ -1917,205 +1747,9 @@ as running only after it already shows `applied`.
         return False
 
     def _report_unknown_kind(self, event, dispatcher):
-        """An `event.kind` none of the three dispatch tables names."""
+        """An `event.kind` the dispatch table does not name."""
         self.add_chat_widget(AssistantMessageWidget(
             "\u26a0 %s: unrecognized event kind %r" % (dispatcher, event.kind)))
-
-    @staticmethod
-    def _card_will_repeat_it(event) -> bool:
-        """Whether the verdict card about to go up already carries this
-        event's line, so the transcript does not need it twice.
-        A failed Review is always followed by a question, and that card is
-        headed by the sentence `narrate()` returns -- saying it again above
-        reads as two verdicts.
-        """
-        from sdk import events as ev
-
-        return (event.kind == ev.REVIEW_VERDICT
-                and event.data.get("verdict") != "pass")
-
-    def _update_queue(self, event):
-        """The Queue's phase and Step marks and elapsed times.
-        Times use event.at deltas so replayed sessions match the live run;
-        CALL_STARTED starts the live call clock, COST ends it. `_QUEUE_DISPATCH`
-        reuses `on_event`'s table shape, one `_uq_*` per `core.events.KINDS`
-        member, so a missing kind is caught by its completeness test.
-        """
-        data = event.data
-
-        from sdk import events as ev
-
-        handler = DaedalusPanel._dispatch_table("_QUEUE_DISPATCH", lambda: {
-            ev.INTENT: DaedalusPanel._uq_intent,
-            ev.CALL_STARTED: DaedalusPanel._uq_call_started,
-            ev.COST: DaedalusPanel._uq_cost,
-            ev.THOUGHT: DaedalusPanel._noop,
-            ev.WRITING: DaedalusPanel._noop,
-            ev.QUESTION: DaedalusPanel._noop,
-            ev.ANSWER: DaedalusPanel._noop,
-            ev.ATTACHED: DaedalusPanel._noop,
-            ev.DESIGN: DaedalusPanel._noop,
-            ev.CHANGE_SET: DaedalusPanel._noop,
-            ev.ROUTED: DaedalusPanel._noop,
-            ev.DOMAIN: DaedalusPanel._noop,
-            ev.PART: DaedalusPanel._uq_part,
-            ev.PLAN: DaedalusPanel._uq_plan,
-            ev.PLAN_REVISED: DaedalusPanel._uq_plan,
-            ev.GATE: DaedalusPanel._uq_gate,
-            ev.STEP_STARTED: DaedalusPanel._noop,
-            ev.STEP_DECLARED: DaedalusPanel._uq_step_declared,
-            ev.TOOL_CALL: DaedalusPanel._noop,
-            ev.TOOL_RESULT: DaedalusPanel._noop,
-            ev.PREFLIGHT_FAILED: DaedalusPanel._uq_preflight_failed,
-            ev.APPLIED: DaedalusPanel._uq_applied,
-            ev.ASSERTION: DaedalusPanel._uq_assertion,
-            ev.OUTSTANDING: DaedalusPanel._noop,
-            ev.UNBUILT: DaedalusPanel._uq_unbuilt,
-            ev.REVIEW_VERDICT: DaedalusPanel._uq_review_verdict,
-            ev.REVIEW_SUSPECTED: DaedalusPanel._noop,
-            ev.BLOCKED: DaedalusPanel._uq_fail_current,
-            ev.STOPPED: DaedalusPanel._uq_fail_current,
-            ev.ABORTED: DaedalusPanel._uq_fail_current,
-            ev.BUDGET_EXHAUSTED: DaedalusPanel._uq_fail_current,
-            ev.TURN_BUDGET_EXHAUSTED: DaedalusPanel._noop,
-            ev.FAILED: DaedalusPanel._uq_fail_current,
-            ev.COMPLETED: DaedalusPanel._noop,
-            ev.DISPUTED: DaedalusPanel._noop,
-            ev.ERROR: DaedalusPanel._uq_fail_current,
-            ev.SUB_AGENT_SPAWNED: DaedalusPanel._noop,
-            ev.SUB_AGENT_ANSWERED: DaedalusPanel._noop,
-            ev.SUB_AGENT_REFUSED: DaedalusPanel._noop,
-            ev.INVOKE_MARKUP: DaedalusPanel._noop,
-        }).get(event.kind)
-        if handler is None:
-            self._report_unknown_kind(event, "_update_queue")
-        else:
-            handler(self, event, data)
-
-    def _uq_intent(self, event, data):
-        self._queue_widget.reset(at=event.at)
-
-    def _uq_call_started(self, event, data):
-        self._queue_widget.call_started(data.get("phase"), data.get("ceiling"), event.at)
-
-    def _uq_cost(self, event, data):
-        self._queue_widget.call_ended(event.at)
-
-    def _uq_part(self, event, data):
-        self._queue_widget.design_written(at=event.at)
-
-    def _uq_plan(self, event, data):
-        self._queue_widget.start_plan(data["steps"], at=event.at)
-
-    def _uq_gate(self, event, data):
-        """
-        The Gate opens a wait on the user, and its decision closes one.
-
-        Measured here, not in `on_event`'s own table: after `start_execute`
-        the running phase is Execute, and the wait belongs to the phase that
-        was running while it lasted.
-        """
-        from sdk import APPROVE
-
-        if "decision" not in data:
-            self._waiting_on_you_since = event.at
-            return
-
-        if self._waiting_on_you_since is not None:
-            waited = event.at - self._waiting_on_you_since
-            self._waiting_on_you_since = None
-            self._waited_seconds += waited
-            self._queue_widget.waited(waited)
-            self._update_usage_total()
-
-        if data.get("decision") == APPROVE:
-            self._queue_widget.start_execute(data.get("steps"), at=event.at)
-
-    def _uq_step_declared(self, event, data):
-        """Same reasoning as `_oe_step_declared`: the Queue starts a Step's clock at declare time, not at the trailing `step_started`."""
-        self._queue_widget.step_started(data["step"], at=event.at)
-
-    def _uq_applied(self, event, data):
-        self._queue_widget.step_applied(data["step"], at=event.at)
-
-    def _uq_unbuilt(self, event, data):
-        self._queue_widget.step_unbuilt(data["step"], at=event.at)
-
-    def _uq_preflight_failed(self, event, data):
-        self._queue_widget.step_failed(data["step"], at=event.at)
-
-    def _uq_assertion(self, event, data):
-        self._queue_widget.start_review(at=event.at)
-
-    def _uq_review_verdict(self, event, data):
-        self._queue_widget.finish_review(at=event.at)
-
-    def _uq_fail_current(self, event, data):
-        self._queue_widget.fail_current(at=event.at)
-
-    def _update_review_evidence(self, event):
-        """What the Review verdict card shows, tracked off the stream as it passes."""
-        data = event.data
-
-        from sdk import events as ev
-
-        handler = DaedalusPanel._dispatch_table("_EVIDENCE_DISPATCH", lambda: {
-            ev.INTENT: DaedalusPanel._noop,
-            ev.THOUGHT: DaedalusPanel._noop,
-            ev.WRITING: DaedalusPanel._noop,
-            ev.QUESTION: DaedalusPanel._noop,
-            ev.ANSWER: DaedalusPanel._noop,
-            ev.ATTACHED: DaedalusPanel._noop,
-            ev.DESIGN: DaedalusPanel._noop,
-            ev.CHANGE_SET: DaedalusPanel._noop,
-            ev.ROUTED: DaedalusPanel._noop,
-            ev.DOMAIN: DaedalusPanel._noop,
-            ev.PART: DaedalusPanel._noop,
-            ev.PLAN: DaedalusPanel._noop,
-            ev.PLAN_REVISED: DaedalusPanel._noop,
-            ev.GATE: DaedalusPanel._noop,
-            ev.STEP_STARTED: DaedalusPanel._noop,
-            ev.STEP_DECLARED: DaedalusPanel._noop,
-            ev.TOOL_CALL: DaedalusPanel._noop,
-            ev.TOOL_RESULT: DaedalusPanel._ev_tool_result,
-            ev.PREFLIGHT_FAILED: DaedalusPanel._noop,
-            ev.APPLIED: DaedalusPanel._noop,
-            ev.ASSERTION: DaedalusPanel._ev_assertion,
-            ev.OUTSTANDING: DaedalusPanel._noop,
-            ev.UNBUILT: DaedalusPanel._noop,
-            ev.REVIEW_VERDICT: DaedalusPanel._ev_review_verdict,
-            ev.REVIEW_SUSPECTED: DaedalusPanel._noop,
-            ev.BLOCKED: DaedalusPanel._noop,
-            ev.STOPPED: DaedalusPanel._noop,
-            ev.ABORTED: DaedalusPanel._noop,
-            ev.BUDGET_EXHAUSTED: DaedalusPanel._noop,
-            ev.TURN_BUDGET_EXHAUSTED: DaedalusPanel._noop,
-            ev.FAILED: DaedalusPanel._noop,
-            ev.COMPLETED: DaedalusPanel._noop,
-            ev.DISPUTED: DaedalusPanel._noop,
-            ev.CALL_STARTED: DaedalusPanel._noop,
-            ev.COST: DaedalusPanel._noop,
-            ev.ERROR: DaedalusPanel._noop,
-            ev.SUB_AGENT_SPAWNED: DaedalusPanel._noop,
-            ev.SUB_AGENT_ANSWERED: DaedalusPanel._noop,
-            ev.SUB_AGENT_REFUSED: DaedalusPanel._noop,
-            ev.INVOKE_MARKUP: DaedalusPanel._noop,
-        }).get(event.kind)
-        if handler is None:
-            self._report_unknown_kind(event, "_update_review_evidence")
-        else:
-            handler(self, event, data)
-
-    def _ev_assertion(self, event, data):
-        self._last_assertion_event = event
-        self._last_review_verdict_event = None
-
-    def _ev_tool_result(self, event, data):
-        if data.get("name") == "review_views":
-            self._last_review_views = list((data.get("result") or {}).get("views") or [])
-
-    def _ev_review_verdict(self, event, data):
-        self._last_review_verdict_event = event
 
     def _say(self, narration):
         """Put a narrated event where it belongs: a line in the transcript, a
@@ -2246,45 +1880,6 @@ never a broken image or a raised exception.
             line.replace(path, "").strip().rstrip(":").strip()))
         self.add_chat_widget(_at_the_left_margin(FileChip(path, removable=False)))
 
-    def _render_plan(self, steps, title, acceptance=(), unanswered=(), decided=()):
-        """
-        Values the model settled for itself stand above the Steps, since nothing is
-asked between the attachment and the Gate, so such a value is read here or
-not at all, and it is read before the Steps built on it; the questions
-nobody answered stand above the acceptance criteria, since those Steps
-carry values the Plan chose for itself and the Gate is the only place to
-overrule them, and the criteria stand under the Steps for the same reason,
-the Gate being the only place a wrong criterion is correctable. Each of the
-three says in its heading how many it holds and stands open while short
-enough to be read where it stands; `OPEN_AT_MOST` is where that stops,
-since the session this was measured against decided 22 values and set 40
-acceptance criteria, each a sentence long, and opening those two alone is
-some four screens of dense text between the user and the Build button that
-nobody scrolls to the bottom of, so past that the row folds and the count
-carries it, "40 criteria" being the part that has to be seen while the
-click is for the reader who wants the forty. Few is not the same as short,
-since the four values a run settled for itself were four paragraphs of a
-conflict it could not resolve, 1,900 characters between the user and the
-Plan, so a list stands open only while it is both short in entries and
-short in words, `FOLDS_OVER` being the second budget.
-"""
-        self._the_thinking_stops()
-        def beside_the_steps(heading, entries):
-            if not entries:
-                return
-            row = AccordionWidget("%s (%d)" % (heading, len(entries)))
-            self.add_chat_widget(row)
-            listed = "\n".join("• " + str(entry) for entry in entries)
-            row.append_text(listed)
-            if len(entries) <= OPEN_AT_MOST and len(listed) <= FOLDS_OVER:
-                row.toggle_content()
-
-        beside_the_steps("Decided for you", decided)
-        self._plan_widget = PlanWidget(steps, title=title)
-        self.add_chat_widget(self._plan_widget)
-        beside_the_steps("Nobody answered these — the Plan chose", unanswered)
-        beside_the_steps("What it has to satisfy", acceptance)
-
     def _render_tool_call(self, name, arguments, event_time):
         """A call takes one collapsible shape in the stream, not three, naming its
 Step: open, four Steps of code fill the whole panel and the run reads idle
@@ -2319,127 +1914,6 @@ code stays one click away. Duration is added at `TOOL_RESULT`, from
         self._last_tool_call_widget = None
         self._last_tool_call_time = None
         self._last_tool_call_name = None
-
-    @QtCore.Slot(object)
-    def on_plan_gate(self, payload):
-        """The Plan Gate: one approval covers every Step, there is no per-Step
-approval, so this appears once per Plan and the run waits on it, and a
-revised Plan is a new Plan and gets its own card. One answer now, not four,
-since the Plan is edited directly on `self._plan_widget`, and Build reads
-whatever it holds when pressed, locking the widget in the same breath so
-nothing typed after Build changes what already ran. *payload* is a bare
-Steps list where nothing was ever applied yet, or `{"steps", "history",
-"rollback"}` on a revision, since `about_the_plan` sends the richer shape
-only once there is History or a rollback to show.
-"""
-        from sdk import APPROVE, Approval
-
-        if isinstance(payload, dict):
-            steps, history, rollback = payload["steps"], payload.get("history") or (), \
-                payload.get("rollback")
-        else:
-            steps, history, rollback = payload, (), None
-
-        plan_widget = self._plan_widget
-
-        def build():
-            edited = list(plan_widget.steps()) if plan_widget else list(steps)
-            if plan_widget:
-                plan_widget.lock()
-            return Approval(APPROVE, steps=tuple(edited))
-
-        prompt = ("Run this Plan? Approving covers all %d Steps \u2014 no Step is confirmed "
-                 "separately." % len(steps))
-        if history:
-            prompt = ("%d Step%s already built. %s"
-                     % (len(history), "" if len(history) == 1 else "s", prompt))
-        notes = []
-        if rollback:
-            notes.append("Steps %d\u2013%d will be rolled back: %s"
-                         % (rollback["to_step"] + 1, rollback["upto"], rollback["reason"]))
-        notes.append(
-            "Click a Step to edit it, or add and remove Steps above, then Build. You are "
-            "still asked before anything of yours is deleted, before the model is "
-            "rebuilt, and about a result that did not pass.")
-
-        self._put_the_question(
-            "Waiting for you to approve the Plan\u2026",
-            prompt,
-            "\n".join(notes),
-            (("Build", build),))
-
-    @QtCore.Slot(object)
-    def on_revision(self, failure):
-        """What to do about a result that did not pass, before a revision may wipe it:
-three answers, not the Gate's three, since REJECT stops a run without
-licensing a restart, so "start over" needs its own word. Whether Review ran
-tells the two askers behind this signal apart, since acceptance checks can
-fail and stop the run before Review is asked anything and
-`_last_review_verdict_event` is `None` for that case; Review having run
-puts up the Confirmation card, Approve, Reject, Start Over, and without one
-this stays the plain question.
-"""
-        from sdk import ACCEPT, REVISE, START_OVER
-
-        applied = failure.get("applied", 0)
-        if self._last_review_verdict_event is not None:
-            self._put_the_review_verdict(ACCEPT, REVISE, START_OVER)
-            return
-
-        self.add_chat_widget(AssistantMessageWidget(
-            "The result did not pass, after %d Step%s were applied:\n%s"
-            % (applied, "" if applied == 1 else "s", failure.get("why", ""))))
-
-        self._put_the_question(
-            "Waiting for you to decide what to do\u2026",
-            "What should happen to what has been built?",
-            "Take it as it is ends the run and keeps the model. Fix it keeps the model "
-            "and plans the rest. Start over lets the next Plan delete it and build again.",
-            (("Take it as it is", lambda: ACCEPT),
-             ("Fix it", lambda: REVISE),
-             ("Start over", lambda: START_OVER)))
-
-    def _put_the_review_verdict(self, accept, revise, start_over):
-        """The Confirmation card: `ReviewVerdictWidget`, fed from `_update_review_evidence`."""
-        from sdk import narrate
-
-        self._queue_widget.now("Waiting for you to review the result\u2026")
-
-        assertion_data = self._last_assertion_event.data if self._last_assertion_event else {}
-        card = ReviewVerdictWidget(
-            view_paths=self._last_review_views,
-            assertion_line=(summary_line(assertion_data)
-                            or (narrate(self._last_assertion_event).line
-                                if self._last_assertion_event else "")),
-            verdict_line=narrate(self._last_review_verdict_event).line)
-        answers = {"approve": lambda: accept, "reject": lambda: revise,
-                  "start_over": lambda: start_over}
-        card.decided.connect(lambda choice: self._answer_with(answers[choice]))
-
-        self._question_card = card
-        self._answers_to_enter = None
-        self.add_chat_widget(card)
-
-    @QtCore.Slot(object)
-    def on_missing_values(self, question):
-        """
-        The values Plan has not been given: the question itself is already in the
-transcript, since it arrived as an event, and this is only the card that
-takes the answer, taking it from the composer the same way Amend does.
-Enter is the only route to Send here, the button being hidden mid-run.
-        """
-        def send():
-            return self._from_composer("Give the values, then press Send\u2026",
-                                       lambda said: said)
-
-        self._put_the_question(
-            "Waiting for the values the Plan needs\u2026",
-            "",
-            "Answer in the box below, then Send. Or let Daedalus choose \u2014 it will "
-            "write each assumed value into the Plan, so you can still correct it.",
-            (("Send", send),
-             ("You decide", lambda: "")),
-            enter=send)
 
     @QtCore.Slot(object)
     def on_owned_objects(self, kinds):
@@ -2561,12 +2035,7 @@ palette.
         return into(said)
 
     def on_run_finished(self, result, log: str):
-        """Ends the run and carries its unmet acceptance checks and Part path forward,
-whatever the run ended as: a passed run clears the acceptance list, and the
-Part path is what the run read or wrote. `ok=True` covers two endings,
-Review passed or the user took a build whose own checks had failed,
-`result.unmet` telling the two apart so only a genuinely clean pass gets
-the blank status line; *log* names which Session finished, its worker keeps
+        """Ends the run; *log* names which Session finished, its worker keeps
 running regardless, so only the widgets are guarded behind "is this the
 Session on screen".
 """
@@ -2576,20 +2045,13 @@ Session on screen".
         bundle.running = False
         self.upload_widget.discard(*bundle.sent_attachments)
         bundle.sent_attachments = []
-        bundle.outstanding = list(getattr(result, "unmet", None) or ())
-        bundle.the_part_path = str(getattr(result, "the_part_path", None) or "")
         if log != self._current_log():
             bundle.dirty = True
             return
 
         self._the_thinking_stops()
         self._set_running(False)
-        if result is not None and result.ok and result.unmet:
-            self._queue_widget.now(
-                "Finished, but not verified — you took it as it is over %d failed "
-                "check%s: %s" % (len(result.unmet), "" if len(result.unmet) == 1 else "s",
-                                 ", ".join(result.unmet)))
-        elif result is not None and result.ok:
+        if result is not None and result.ok:
             self._queue_widget.now("")
         else:
             self._queue_widget.now("Stopped. Your Document is unchanged beyond the "

@@ -16,7 +16,7 @@ from test_service_runs import FAKE, final
 
 TOKEN = "t" * 40
 HEADERS = {"Authorization": "Bearer " + TOKEN}
-DEFAULTS = {"auto_approve_plan": True, "interactive": False, "confirm": False, "budget_usd": 5.0}
+DEFAULTS = {"interactive": False, "confirm": False, "budget_usd": 5.0}
 SECRETS = ({"api_keys": [{"provider": "Anthropic", "api_key": "sk-x"}]}, {"base_urls": {"Ollama": "http://x"}},
            {"api_key": "sk-x"}, {"base_url": "http://x"}, {"anthropic_api_key": "sk-x"},
            {"role_table": [{"role": "design", "provider": "Anthropic", "model": "m", "api_key": "sk-x"}]},
@@ -73,7 +73,7 @@ def test_every_preference_the_ticket_names_can_be_stored(api):
     table = [{"role": "design", "provider": "Anthropic", "model": "claude-x", "effort": "high"}]
     body = {"role_table": table, "default_model": {"provider": "Anthropic", "model": "claude-x"},
             "naming_model": {"provider": "Anthropic", "model": "claude-y"}, "effort": "medium",
-            "auto_approve_plan": False, "interactive": True, "confirm": True, "budget_usd": 1.0}
+            "interactive": True, "confirm": True, "budget_usd": 1.0}
     assert api.patch("/v1/users/usr_alice/preferences", json=body).json()["preferences"] == body
 
 

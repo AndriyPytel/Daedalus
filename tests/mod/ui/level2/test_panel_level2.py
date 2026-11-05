@@ -157,27 +157,6 @@ def test_the_composer_stays_usable_while_a_run_is_going(panel):
     assert panel.user_input.isEnabled()
 
 
-def test_the_composer_answers_a_gate_without_being_switched_on_for_it(panel, monkeypatch):
-    """
-    A Gate's own answer is typed in the composer (Amend, the values Plan was
-    not given), and it is typed there whether or not a card is up.
-    """
-    monkeypatch.setattr(panel.ask, "answer", lambda answer: None)
-
-    panel._set_running(True)
-    panel.on_missing_values("How many teeth?")
-    QT_APP.processEvents()
-    assert panel.user_input.isEnabled()
-
-    panel.user_input.setPlainText("20 teeth, module 2")
-    _button(panel._question_card, "Send").click()
-    QT_APP.processEvents()
-
-    assert panel.user_input.isEnabled()
-
-    panel._set_running(False)
-
-
 def test_a_second_intent_on_a_running_document_is_refused(panel, monkeypatch):
     """
     One file, one Intent: a second Intent sent while this Session's
@@ -204,7 +183,7 @@ def test_a_second_intent_on_a_running_document_is_refused(panel, monkeypatch):
         "a refused Intent is left in the composer, not thrown away"
     assert "run in flight" in _said_in(panel)
 
-    panel.on_run_finished(types.SimpleNamespace(ok=True, unmet=[], the_part_path=""), log)
+    panel.on_run_finished(types.SimpleNamespace(ok=True), log)
 
     assert (bundle.running, panel._running) == (False, False)
 
@@ -279,7 +258,7 @@ def test_the_empty_chat_says_where_the_user_stands(panel):
     and that race is not what this test is for.
     """
     text = panel._build_empty_state().text()
-    assert "Plan Gate" in text
+    assert "Describe what to build" in text
     assert panel.model_button.text().strip() in text
 
 
@@ -825,79 +804,6 @@ def test_send_hands_the_attachments_over_and_clears_the_bar(panel, tmp_path):
     assert not panel.chip_bar.isVisible(), "the next Intent would reuse this one's files"
 
 
-def test_a_part_path_a_run_left_behind_carries_into_the_next_send_unless_a_new_drawing_arrives(
-        panel, tmp_path):
-    """
-    Mirrors `bundle.outstanding`: `on_run_finished` remembers the
-    last Part path a run left behind, and `on_send` forwards it into the next
-    request unless the composer has a fresh attachment waiting.
-    """
-    import types
-
-    log = panel._current_log()
-    bundle = panel._worker_for(log)
-    written = str(tmp_path / "part.yaml")
-
-    panel.on_run_finished(types.SimpleNamespace(ok=True, unmet=[], the_part_path=written), log)
-    assert bundle.the_part_path == written
-
-    _never_call_the_real_model(panel)
-
-    sent = []
-    bundle.request_work.connect(
-        lambda intent, files, log, outstanding, the_part_path=None: sent.append(the_part_path))
-    try:
-        panel.user_input.setPlainText("make this hole 5 mm wider")
-        panel.on_send()
-    finally:
-        bundle.request_work.disconnect()
-        panel.worker.stop()
-        bundle.running = False
-        panel._set_running(False)
-
-    assert sent == [written]
-
-    drawing = tmp_path / "bracket.png"
-    drawing.write_bytes(b"a file; whether it decodes is the loop's problem")
-    panel.chip_bar.add_file(str(drawing))
-
-    sent_with_new_drawing = []
-    bundle.request_work.connect(
-        lambda intent, files, log, outstanding, the_part_path=None:
-        sent_with_new_drawing.append(the_part_path))
-    try:
-        panel.user_input.setPlainText("Build this bracket")
-        panel.on_send()
-    finally:
-        bundle.request_work.disconnect()
-        panel.worker.stop()
-        bundle.running = False
-        panel._set_running(False)
-
-    assert sent_with_new_drawing == [""]
-
-
-def test_a_run_accepted_over_failed_checks_is_not_shown_as_a_plain_success(panel):
-    """
-    `result.ok=True` covers two endings: Review passed, and the user took a
-    build its own checks had already failed. A blank status line read as the
-    first for both, which is the blank a saved Part with a known-bad pocket
-    and lug left behind it (logs/analysis-mm2023-defects.md).
-    """
-    import types
-
-    log = panel._current_log()
-    panel._worker_for(log)
-
-    panel.on_run_finished(
-        types.SimpleNamespace(ok=True, unmet=["pocket-front", "lug-right"],
-                              the_part_path=""), log)
-
-    status = panel._queue_widget._now_label._full
-    assert "not verified" in status
-    assert "pocket-front" in status and "lug-right" in status
-
-
 def test_a_clean_pass_still_clears_the_queue_line(panel):
     """The honest branch does not cost the quiet one: no `unmet` is still blank."""
     import types
@@ -906,7 +812,7 @@ def test_a_clean_pass_still_clears_the_queue_line(panel):
     panel._worker_for(log)
     panel._queue_widget.now("Working…")
 
-    panel.on_run_finished(types.SimpleNamespace(ok=True, unmet=[], the_part_path=""), log)
+    panel.on_run_finished(types.SimpleNamespace(ok=True), log)
 
     assert panel._queue_widget._now_label._full == ""
 
@@ -1356,16 +1262,13 @@ def test_deleting_a_session_releases_a_run_parked_on_the_main_thread(
 
 
 @pytest.mark.parametrize("asker, args, snippet", [
-    ("about_missing_values", ({"q": "diameter?"},), "could not find on the drawing"),
     ("about_objects_we_do_not_own", (["Sketch"],), "did not create"),
-    ("about_the_plan", (["a step"],), "approve its Plan"),
-    ("about_the_revision", ({"why": "no", "applied": 1},), "did not pass its checks"),
 ])
 def test_a_blocked_question_pages_freecads_notification_area(
         sessions_are_the_tests_own, monkeypatch, asker, args, snippet):
     """
-    A person who walked away from a two-hour run is exactly who any of the
-    four questions `AskTheUser` asks may be waiting on, so `_ask` raises
+    A person who walked away from a two-hour run is exactly who the
+    question `AskTheUser` asks may be waiting on, so `_ask` raises
     FreeCAD's own Notification Area before it blocks -- something to come
     back to beyond a status line under a composer nobody is looking at.
     """
@@ -1852,14 +1755,45 @@ def _a_transcript(path):
     stream.emit(REVIEW_VERDICT, verdict="pass", reason="Looks like a box.")
 
 
+def _a_recorded_p_transcript(path):
+    from core import events as ev
+
+    stream = ev.EventStream()
+    stream.log_to(path)
+    stream.emit(ev.INTENT, text="a box, then a fillet")
+    stream.emit(ev.DESIGN, part={"features": []})
+    stream.emit(ev.PLAN, steps=["Make a box", "Fillet it"], acceptance=["It is a box"])
+    stream.emit(ev.GATE, decision="approve", standing=False)
+    stream.emit(ev.STEP_DECLARED, step=1, label="Make a box", checkpoint="c1")
+    stream.emit(ev.APPLIED, step=1, label="Box", created=["Box"])
+    stream.emit(ev.ASSERTION, ok=True, code="assert True", confirmed=["It is a box"],
+                uncovered=[], traceback="")
+    stream.emit(ev.REVIEW_SUSPECTED, suspected=["the views disagree"])
+    stream.emit(ev.REVIEW_VERDICT, verdict="fail", reason="No fillet.")
+    stream.emit(ev.PLAN_REVISED, steps=["Fillet it"], acceptance=[], reason="no fillet")
+    stream.emit(ev.OUTSTANDING, unmet=["It is filleted"])
+    stream.emit(ev.BLOCKED, reason="You rejected the Plan.", tried=[], provider_said="")
+
+
+def test_a_recorded_p_session_replays_without_error_as_chat_lines(panel, tmp_path):
+    log = str(tmp_path / "p.jsonl")
+    _a_recorded_p_transcript(log)
+    index, _ = panel.chat_sessions.add_new_chat("p")
+    panel.chat_sessions.get_session_info(index).update({"log": log, "restored": False})
+
+    panel.switch_session(index)
+
+    said = _said_in(panel)
+    assert "unrecognized event kind" not in said
+    assert "Applied" in said and "Box" in said
+
+
 def test_a_session_comes_back_with_its_whole_transcript(panel, tmp_path):
     """
     Restoring replays the log through the switch that rendered it live, so a
     restored Session cannot drift from a live one.
     """
     from ui.accordion_widget import AccordionWidget
-    from ui.plan_widget import PlanWidget
-
     log = str(tmp_path / "yesterday.jsonl")
     _a_transcript(log)
     index, _ = panel.chat_sessions.add_new_chat("yesterday")
@@ -1869,7 +1803,6 @@ def test_a_session_comes_back_with_its_whole_transcript(panel, tmp_path):
     panel.switch_session(index)
 
     kinds = [type(w).__name__ for w in _widgets_in(panel)]
-    assert any(isinstance(w, PlanWidget) for w in _widgets_in(panel)), kinds
     assert any(isinstance(w, AccordionWidget) for w in _widgets_in(panel)), kinds
     said = _said_in(panel)
     assert "Applied" in said and "Box" in said
@@ -1896,71 +1829,6 @@ def _a_queue_transcript(path):
     stream.emit(ASSERTION, ok=True, code="assert True", confirmed=["It is a box"],
                uncovered=[], traceback="")
     stream.emit(REVIEW_VERDICT, verdict="pass", reason="Looks like a box.")
-
-
-def test_a_session_comes_back_with_its_queue_at_every_phase_done(panel, tmp_path):
-    """
-    The Queue is restored the same way the Plan and the transcript are: by
-    replaying the log through `on_event`, the one switch that also renders it
-    live.
-    """
-    from ui.queue_widget import ASSERTION, DESIGN, DONE, EXECUTE, PLAN, REVIEW
-
-    log = str(tmp_path / "queue-run.jsonl")
-    _a_queue_transcript(log)
-    index, _ = panel.chat_sessions.add_new_chat("queue-run")
-    panel.chat_sessions.get_session_info(index)["log"] = log
-    panel.chat_sessions.get_session_info(index)["restored"] = False
-
-    panel.switch_session(index)
-
-    queue = panel._queue_widget
-    assert queue is not None
-    for phase in (DESIGN, PLAN, EXECUTE, ASSERTION, REVIEW):
-        assert queue._states[phase] == DONE, phase
-    assert len(queue._step_states) == 1
-    assert queue._step_states[0] == DONE
-
-
-def test_a_new_intent_opens_a_fresh_queue_running_design(panel, tmp_path):
-    from core.events import EventStream, INTENT
-    from ui.queue_widget import DESIGN, RUNNING
-
-    log = str(tmp_path / "fresh-run.jsonl")
-    stream = EventStream()
-    stream.log_to(log)
-    stream.emit(INTENT, text="a plain box")
-    index, _ = panel.chat_sessions.add_new_chat("fresh-run")
-    panel.chat_sessions.get_session_info(index)["log"] = log
-    panel.chat_sessions.get_session_info(index)["restored"] = False
-
-    panel.switch_session(index)
-
-    queue = panel._queue_widget
-    assert queue is not None
-    assert queue._states[DESIGN] == RUNNING
-
-
-def test_a_run_blocked_in_plan_marks_the_queue_plan_failed(panel, tmp_path):
-    from core.events import BLOCKED, EventStream, INTENT, PLAN
-    from ui.queue_widget import EXECUTE, FAILED, PLAN as QUEUE_PLAN, QUEUED
-
-    log = str(tmp_path / "blocked-run.jsonl")
-    stream = EventStream()
-    stream.log_to(log)
-    stream.emit(INTENT, text="an impossible box")
-    stream.emit(PLAN, steps=["Make a box"])
-    stream.emit(BLOCKED, reason="You rejected the Plan.", tried=[], provider_said="")
-    index, _ = panel.chat_sessions.add_new_chat("blocked-run")
-    panel.chat_sessions.get_session_info(index)["log"] = log
-    panel.chat_sessions.get_session_info(index)["restored"] = False
-
-    panel.switch_session(index)
-
-    queue = panel._queue_widget
-    assert queue is not None
-    assert queue._states[QUEUE_PLAN] == FAILED
-    assert queue._states[EXECUTE] == QUEUED
 
 
 def _a_cost_transcript(path):
@@ -1990,29 +1858,6 @@ def test_cost_events_accumulate_into_one_running_total(panel):
 
     panel.on_event(Event(COST, {"phase": "plan", "usd": 0.07, "model": "sonnet", "seconds": 1.0}))
     assert panel.usage_label.text().startswith("$0.11")
-
-
-def test_the_wait_for_the_build_button_is_not_run_time(panel):
-    """
-    The header's clock is what the run took, and a run sitting at the Plan
-    Gate is not running: it is waiting on a click. Thirty minutes between the
-    ask and the decision read as thirty minutes of work, so a run answered in
-    a minute was reported at half an hour.
-    """
-    from sdk import APPROVE
-    from core.events import COST, GATE, INTENT, Event
-
-    panel.new_chat()
-    panel.on_event(Event(INTENT, {"text": "a box"}, at=1000.0))
-    panel.on_event(Event(COST, {"phase": "plan", "usd": 0.01, "model": "sonnet",
-                                "seconds": 1.0}, at=1040.0))
-    panel.on_event(Event(GATE, {"steps": 1, "asked": True}, at=1041.0))
-    panel.on_event(Event(GATE, {"decision": APPROVE, "standing": False,
-                                "steps": ["Make a box"]}, at=2841.0))
-    panel.on_event(Event(COST, {"phase": "execute", "usd": 0.01, "model": "sonnet",
-                                "seconds": 1.0}, at=2861.0))
-
-    assert panel.usage_label.text() == "$0.02  1:01"
 
 
 def test_a_call_under_a_cent_still_shows_what_it_cost(panel):
@@ -2309,13 +2154,8 @@ def test_returning_to_a_session_does_not_keep_another_ones_widgets(panel, tmp_pa
     second = panel.chat_sessions.stack.currentIndex()
 
     panel.switch_session(first)
-    plan_of_first = panel._plan_widget
-    assert plan_of_first is not None, "the fixture transcript rendered no Plan"
-
     panel.switch_session(second)
 
-    assert panel._plan_widget is not plan_of_first, \
-        "a Step would mark the Plan of the Session the user left"
     assert panel._empty_state is None or \
         panel._empty_state.parent() is not None, "empty state points at a dead widget"
 
@@ -2425,100 +2265,6 @@ def test_the_question_reaches_the_transcript(panel):
     assert "How many teeth, and what module?" in _said_in(panel)
 
 
-def test_an_answer_typed_in_the_composer_reaches_the_loop(panel, monkeypatch):
-    answered = []
-    monkeypatch.setattr(panel.ask, "answer", answered.append)
-
-    panel.on_missing_values("How many teeth?")
-    QT_APP.processEvents()
-    panel.user_input.setPlainText("20 teeth, module 2")
-    _button(panel._question_card, "Send").click()
-    QT_APP.processEvents()
-
-    assert answered == ["20 teeth, module 2"]
-    assert panel.user_input.toPlainText() == "", "the composer kept the answer"
-    assert "20 teeth, module 2" in _said_in(panel), "the answer is not in the transcript"
-
-
-def test_an_empty_answer_does_not_start_the_run_on_nothing(panel, monkeypatch):
-    answered = []
-    monkeypatch.setattr(panel.ask, "answer", answered.append)
-
-    panel.on_missing_values("How many teeth?")
-    QT_APP.processEvents()
-    panel.user_input.clear()
-    _button(panel._question_card, "Send").click()
-    QT_APP.processEvents()
-
-    assert answered == [], "an empty composer was sent as the answer"
-    assert panel._question_card is not None, "the card went away without being answered"
-
-    _button(panel._question_card, "You decide").click()
-    QT_APP.processEvents()
-    assert answered == [""], "'You decide' did not decline for the user"
-
-
-def test_enter_while_a_question_is_open_answers_it_rather_than_starting_a_run(panel, monkeypatch):
-    """
-    Enter in the composer goes to `on_send`, which had exactly one behaviour: a
-    new Intent, a new run, a new Plan. The question stayed on screen unanswered
-    and the re-plan asked it again — which is what "it planned first and only
-    then started asking" looked like from the outside.
-    """
-    answered, sent = [], []
-    monkeypatch.setattr(panel.ask, "answer", answered.append)
-    bundle = panel._worker_for(panel._current_log())
-    listener = lambda intent, files, log: sent.append(intent)
-    bundle.request_work.connect(listener)
-    try:
-        panel.on_missing_values("How many teeth?")
-        QT_APP.processEvents()
-        panel.user_input.setPlainText("20 teeth, module 2")
-        panel.on_send()
-        QT_APP.processEvents()
-    finally:
-        bundle.request_work.disconnect(listener)
-
-    assert answered == ["20 teeth, module 2"]
-    assert sent == [], "Enter started a second run instead of answering the question"
-    assert panel._question_card is None, "the card is still open after being answered"
-    assert panel.user_input.toPlainText() == "", "the composer kept the answer"
-
-
-def test_an_answered_card_is_spent_and_says_so(panel, monkeypatch):
-    """
-    Build is pressed once. Disabling alone changed nothing anyone could see:
-    the accent fill is written by the stylesheet, and a stylesheet rule
-    outranks the disabled palette Qt would otherwise grey the button with, so
-    the button sat there looking exactly as pressable as before. Subdued the
-    way this panel subdues anything -- an opacity effect.
-    """
-    from conftest import QtWidgets
-
-    monkeypatch.setattr(panel.ask, "answer", lambda answer: None)
-
-    panel.on_plan_gate(["Sketch the hex profile", "Pad it 6.5 mm"])
-    QT_APP.processEvents()
-    card = panel._question_card
-    build = _button(card, "Build")
-
-    def fill():
-        painted = build.grab().toImage()
-        return painted.pixelColor(build.width() // 2, 2).name()
-
-    asking = fill()
-    build.click()
-    QT_APP.processEvents()
-
-    assert not build.isEnabled(), "Build can be pressed a second time"
-    assert fill() != asking, "the answered Build is painted the same as the one still asking"
-    assert build.objectName() != "PrimaryButton", \
-        "the card is answered and still wears the screen's one accent fill"
-    effect = card.graphicsEffect()
-    assert isinstance(effect, QtWidgets.QGraphicsOpacityEffect)
-    assert effect.opacity() < 1.0
-
-
 def test_the_composers_controls_stay_narrow_under_freecads_own_theme(panel):
     """
     FreeCAD's stylesheet is `QPushButton { min-width: 80px; }`, and an id rule
@@ -2607,43 +2353,6 @@ def test_a_model_name_too_long_for_the_strip_is_elided_not_shown_whole(panel):
     panel._set_current_model("x", "GPT-4o")
     QT_APP.processEvents()
     assert panel.model_button.text() == "GPT-4o", "a short name is elided too"
-
-
-def test_stopping_releases_a_waiting_question(panel):
-    panel.on_missing_values("How many teeth?")
-    QT_APP.processEvents()
-    card = panel._question_card
-
-    panel.on_stop()
-    QT_APP.processEvents()
-
-    assert panel._question_card is None
-    assert not card.isEnabled(), "the card is still answerable after Stop"
-
-
-def test_aborting_kills_the_kernel_and_releases_a_waiting_question(panel):
-    """
-    Abort is Stop plus one more thing: the kernel dies now rather
-    than once the in-flight Step finishes on its own, so `pipeline.shutdown`
-    is what tells the two apart at the panel's own boundary.
-    """
-    killed = []
-    panel.worker._get_sdk_client()
-    original_shutdown = panel.worker.pipeline.shutdown
-    panel.worker.pipeline.shutdown = lambda: (killed.append(True), original_shutdown())
-
-    panel.on_missing_values("How many teeth?")
-    QT_APP.processEvents()
-    card = panel._question_card
-
-    panel.on_abort()
-    QT_APP.processEvents()
-
-    assert killed == [True]
-    assert panel.worker._abort.is_set()
-    assert panel.worker._stop.is_set()
-    assert panel._question_card is None
-    assert not card.isEnabled(), "the card is still answerable after Abort"
 
 
 def test_stop_does_not_build_a_fresh_worker_for_an_idle_session(panel):
@@ -2742,30 +2451,6 @@ def test_stop_and_abort_kill_the_run_provider_process_without_waiting_the_ceilin
         driver.join(timeout=1)
 
 
-def test_the_acceptance_list_is_on_the_plan_card_before_the_gate(panel):
-    """
-    A criterion the user cannot see is a criterion they cannot correct, and the
-    Plan Gate is the only place they could. The `plan` event is emitted before
-    `gate(...)` is called, so this is what the Gate is looking at.
-    """
-    from core.events import Event, PLAN, PLAN_REVISED
-
-    panel.on_event(Event(PLAN, {"steps": ["Sketch the hex profile", "Pad it 6.5 mm"],
-                                "acceptance": ["13.0 mm across the flats", "6.5 mm tall"]}))
-    QT_APP.processEvents()
-
-    said = _said_in(panel)
-    assert "13.0 mm across the flats" in said
-    assert "6.5 mm tall" in said
-
-    panel.on_event(Event(PLAN_REVISED, {"reason": "you asked for M10",
-                                        "steps": ["Sketch the hex profile"],
-                                        "acceptance": ["17.0 mm across the flats"]}))
-    QT_APP.processEvents()
-
-    assert "17.0 mm across the flats" in _said_in(panel)
-
-
 def test_an_answer_off_the_drawing_says_so_rather_than_no_values_given(panel):
     """
     A question put back to the sheet is answered without the user, and the
@@ -2862,183 +2547,12 @@ def _write_a_png(path):
     assert picture.save(path, "PNG")
 
 
-def test_the_gate_cards_the_document_rather_than_opening_it_in_the_chat(panel, tmp_path):
-    """
-    What stands above the Steps is the file the reading was written to, and the
-    description itself is in the file rather than in the chat: it is the run's
-    requirement, and a requirement is corrected where the run is planned from
-    is corrected where the run is planned from. It is carded rather than underlined, on the one file shape the
-    design has, so that what the run wrote reads the same as what the user
-    attached; the card carries the path the `part` event carries, so what a
-    user opens is that very file and not a copy of it.
-
-    The panel is shared with the tests above, so it is the last of each that
-    this one just put there.
-    """
-    from core.design.report import render
-    from core.events import DESIGN, PART, PLAN, Event
-
-    from ui.plan_widget import PlanWidget
-    from ui.upload_widget import FileChip
-
-    the_part = {
-        "envelope": {"length": {"value": "80 mm", "flag": "read"}},
-        "features": [{"id": "hole-8-left", "kind": "Ø8 through hole",
-                      "position": {"the left end face": {"value": "15 mm",
-                                                         "flag": "read"}}}],
-    }
-    document = str(tmp_path / "the-part-as-read.yaml")
-    before = len(_widgets_in(panel))
-    panel.on_event(Event(DESIGN, {"model": the_part}))
-    panel.on_event(Event(PART, {"path": document}))
-    panel.on_event(Event(PLAN, {"steps": ["Sketch the plate"], "acceptance": []}))
-    QT_APP.processEvents()
-
-    widgets = _widgets_in(panel)
-    card_at, card = max((i, chip) for i, w in enumerate(widgets)
-                        for chip in w.findChildren(FileChip))
-    plan_at = max(i for i, w in enumerate(widgets) if isinstance(w, PlanWidget))
-
-    assert card_at < plan_at, "the document carded below the Plan it was read for"
-    assert card.filepath == document, \
-        "the card opens something other than the file the run wrote"
-    assert "the-part-as-read.yaml" in _said_by([card]), "the card does not name the file"
-    said = _said_by(widgets[before:])
-    assert render(the_part) not in said
-    assert "length: 80 mm (read)" not in said, "the description is in the chat"
-
-
-def test_what_was_decided_the_questions_and_the_criteria_all_stand_open(panel):
-    """
-    The three things the Steps are read beside. Each is short, and the Gate is
-    the only place any of them is correctable, so none of them is a click away
-    so none of them is a click away.
-    """
-    from core.events import PLAN, Event
-
-    from ui.accordion_widget import AccordionWidget
-    from ui.plan_widget import PlanWidget
-
-    before = len(_widgets_in(panel))
-    panel.on_event(Event(PLAN, {
-        "steps": ["Bore the ring"],
-        "decided": ["envelope \u2192 thickness: 12 mm, off the section"],
-        "unanswered": ["what the ring is clamped to"],
-        "acceptance": ["the bore is \u00d812 through"]}))
-    QT_APP.processEvents()
-
-    beside = _widgets_in(panel)[before:]
-    assert any(isinstance(widget, PlanWidget) for widget in beside)
-    for heading in ("Decided for you", "Nobody answered these", "What it has to satisfy"):
-        row = next(widget for widget in beside if isinstance(widget, AccordionWidget)
-                   and heading in widget.toggle_button.text())
-        assert row.content_area.isVisible(), "%s is a click away" % heading
-
-
-def test_a_long_list_beside_the_steps_folds_and_says_how_many_it_holds(panel):
-    """
-    The measured session decided 22 values and set 40 acceptance criteria, each
-    a sentence long. Open, those two alone stand between the user and the Build
-    button; the count in the heading is what keeps a folded row a fact.
-    """
-    from core.events import PLAN, Event
-
-    from ui.accordion_widget import AccordionWidget
-    from ui.daedalus_panel import OPEN_AT_MOST
-
-    many = ["criterion %d" % n for n in range(OPEN_AT_MOST + 1)]
-
-    before = len(_widgets_in(panel))
-    panel.on_event(Event(PLAN, {"steps": ["Bore the ring"], "acceptance": many}))
-    QT_APP.processEvents()
-
-    row = next(widget for widget in _widgets_in(panel)[before:]
-               if isinstance(widget, AccordionWidget)
-               and "What it has to satisfy" in widget.toggle_button.text())
-    assert row.toggle_button.text().endswith("(%d)" % len(many))
-    assert not row.content_area.isVisible(), "a list this long stands open"
-
-
-def test_the_decision_card_offers_three_answers_and_returns_the_one_clicked(panel):
-    """
-    Take it, fix it, start again. The last is the one the Plan Gate has no word
-    for: REJECT stops a run and does not licence a restart.
-    """
-    from conftest import QtWidgets
-
-    from core.loop.gate import START_OVER
-
-    answered = []
-    monkeypatched = panel.ask.answer
-    panel.ask.answer = lambda value: (answered.append(value), monkeypatched(value))[0]
-
-    panel.on_revision({"why": "13.0 mm across the flats", "applied": 17})
-    QT_APP.processEvents()
-
-    labels = [b.text() for b in panel._question_card.findChildren(QtWidgets.QPushButton)]
-    assert len(labels) == 3, labels
-    assert "17 Steps were applied" in _said_in(panel)
-    assert "13.0 mm across the flats" in _said_in(panel)
-
-    _button(panel._question_card, "Start over").click()
-    QT_APP.processEvents()
-
-    assert answered == [START_OVER]
-
-
-def test_the_verdict_the_card_is_headed_by_is_not_also_said_above_it(panel, tmp_path):
-    """
-    A Review that did not pass is always followed by the card that asks what
-    to do about it, and that card is headed by the very sentence `narrate()`
-    returns for the verdict. Said in the transcript as well, the same words
-    read as two verdicts, one of them apparently already answered.
-    """
-    _review_transcript_evidence(panel, tmp_path)
-
-    assert "the flange is mirrored" not in _said_in(panel)
-
-    panel.on_revision({"why": "the flange is mirrored", "applied": 5})
-    QT_APP.processEvents()
-
-    assert _said_in(panel).count("the flange is mirrored") == 1
-
-    panel._reset_render_state()
-
-
 def test_a_review_that_passed_still_says_so_in_the_transcript(panel, tmp_path):
     """The other half: nothing asks anything after a pass, so the line is all there is."""
     _review_transcript_evidence(panel, tmp_path, verdict="pass",
                                 reason="it matches the drawing")
 
     assert "it matches the drawing" in _said_in(panel)
-
-    panel._reset_render_state()
-
-
-def test_a_suspicion_before_assertion_does_not_start_or_finish_review(panel, tmp_path):
-    """
-    `review_suspect` runs before Assertion now, so a
-    `review_suspected` event is on the real stream ahead of `assertion` on
-    every pass. Driven through `on_event` as the loop actually emits them: the
-    Queue must not read a `review_suspected` event as the Assertion-is-done,
-    Review-is-running signal that `assertion` alone still means, and the
-    verdict card's evidence must not be reset or set by it either.
-    """
-    from core.events import Event, REVIEW_SUSPECTED, REVIEW_VERDICT
-    from ui.queue_widget import DONE, REVIEW, RUNNING
-
-    panel.on_event(Event(REVIEW_SUSPECTED, {"suspected": ["envelope → width: 40 mm (suspected)"]}))
-
-    assert panel._queue_widget._states[REVIEW] != RUNNING, (
-        "review_suspected alone must not start the Review slot")
-    assert panel._last_review_verdict_event is None, (
-        "review_suspected must not touch the verdict card's evidence")
-
-    views = _review_transcript_evidence(panel, tmp_path)
-
-    assert panel._queue_widget._states[REVIEW] == DONE
-    assert panel._last_review_verdict_event.kind == REVIEW_VERDICT
-    assert panel._last_review_views == views
 
     panel._reset_render_state()
 
@@ -3067,390 +2581,6 @@ def _review_transcript_evidence(panel, tmp_path, verdict="fail",
                                        "result": {"views": views}}))
     panel.on_event(Event(REVIEW_VERDICT, {"verdict": verdict, "reason": reason}))
     return views
-
-
-def test_a_review_verdict_shows_the_confirmation_card_figma_names(panel, tmp_path):
-    """
-    Once Review has run, the three-way question is Figma's
-    Confirmation card -- its own evidence above Approve / Reject / Start
-    Over -- not the plain question the acceptance checks fall back to when
-    Review never got the chance to run at all.
-    """
-    from conftest import QtWidgets
-
-    views = _review_transcript_evidence(panel, tmp_path)
-
-    panel.on_revision({"why": "the flange is mirrored", "applied": 5})
-    QT_APP.processEvents()
-
-    card = panel._question_card
-    labels = sorted(b.text() for b in card.findChildren(QtWidgets.QPushButton))
-    assert labels == ["Approve", "Reject", "Start Over"], labels
-
-    texts = [w.text() for w in card.findChildren(QtWidgets.QLabel)]
-    assert any("passed" in text for text in texts), texts
-    assert any("mirrored" in text for text in texts), texts
-
-    pictures = [w for w in card.findChildren(QtWidgets.QLabel) if w.pixmap()]
-    assert len(pictures) == len(views)
-
-    panel._reset_render_state()
-
-
-def test_clicking_approve_reject_and_start_over_on_the_verdict_card_answer_in_kind(
-        panel, tmp_path):
-    from conftest import QtWidgets
-
-    from core.loop.gate import ACCEPT, REVISE, START_OVER
-
-    answered = []
-    monkeypatched = panel.ask.answer
-    panel.ask.answer = lambda value: (answered.append(value), monkeypatched(value))[0]
-
-    for label, expected in (("Reject", REVISE), ("Start Over", START_OVER),
-                            ("Approve", ACCEPT)):
-        _review_transcript_evidence(panel, tmp_path)
-        panel.on_revision({"why": "the flange is mirrored", "applied": 5})
-        QT_APP.processEvents()
-
-        _button(panel._question_card, label).click()
-        QT_APP.processEvents()
-
-        assert answered[-1] == expected, (label, answered)
-
-    panel.ask.answer = monkeypatched
-    panel._reset_render_state()
-
-
-def test_an_assertion_failure_before_review_keeps_the_plain_decision_card(panel, tmp_path):
-    """
-    The acceptance checks can fail before Review is ever asked anything --
-    there is no Review verdict to show, so this stays the plain question
-    the confirmation-card test above leaves alone.
-    """
-    from conftest import QtWidgets
-
-    from core.events import ASSERTION, Event
-
-    panel.on_event(Event(ASSERTION, {"ok": False, "code": "assert False",
-                                     "confirmed": [], "uncovered": [],
-                                     "traceback": "AssertionError", "unmet": ["the bore"]}))
-
-    panel.on_revision({"why": "the bore is not centred", "applied": 3})
-    QT_APP.processEvents()
-
-    labels = sorted(b.text() for b in panel._question_card.findChildren(QtWidgets.QPushButton))
-    assert "Approve" not in labels
-    assert len(labels) == 3, labels
-
-    panel._reset_render_state()
-
-
-def test_a_new_intent_clears_the_review_verdict_that_would_have_shown_the_card(
-        panel, tmp_path):
-    """
-    A follow-up Intent in the same Session starts a new run: a Review
-    verdict left over from the run before must not turn its own decision
-    card into the Confirmation card's, since nothing was reviewed yet this time.
-    """
-    from conftest import QtWidgets
-
-    from core.events import Event, INTENT
-
-    _review_transcript_evidence(panel, tmp_path)
-    panel.on_event(Event(INTENT, {"text": "a second box"}))
-
-    panel.on_revision({"why": "no acceptance list", "applied": 1})
-    QT_APP.processEvents()
-
-    labels = sorted(b.text() for b in panel._question_card.findChildren(QtWidgets.QPushButton))
-    assert "Approve" not in labels
-
-    panel._reset_render_state()
-
-
-def test_completing_assertion_with_every_check_passed_shows_the_results_card(panel):
-    """A green mark per confirmed entry, in the chat scroll."""
-    from core.events import ASSERTION, Event
-
-    from ui.accordion_widget import AccordionWidget
-    from ui.assertion_results_widget import AssertionResultsWidget
-
-    index, _ = panel.chat_sessions.add_new_chat("assertion-passed")
-    panel.switch_session(index)
-
-    panel.on_event(Event(ASSERTION, {
-        "ok": True, "code": "assert True", "traceback": "", "uncovered": [],
-        "confirmed": ["Base height is 10mm", "Hole diameter is 5mm"]}))
-    QT_APP.processEvents()
-
-    cards = [w for w in _widgets_in(panel) if isinstance(w, AssertionResultsWidget)]
-    assert len(cards) == 1, cards
-    rows = [row.toggle_button.text() for row in cards[0].findChildren(AccordionWidget)]
-    assert any("Base height is 10mm" in row for row in rows), rows
-    assert any("Hole diameter is 5mm" in row for row in rows), rows
-
-
-def test_completing_assertion_with_a_failed_check_shows_a_failed_row(panel):
-    """A red mark per `unmet` entry."""
-    from core.events import ASSERTION, Event
-
-    from ui.accordion_widget import AccordionWidget
-    from ui.assertion_results_widget import AssertionResultsWidget
-
-    index, _ = panel.chat_sessions.add_new_chat("assertion-failed")
-    panel.switch_session(index)
-
-    panel.on_event(Event(ASSERTION, {
-        "ok": False, "code": "assert False", "traceback": "AssertionError",
-        "confirmed": [], "uncovered": [], "unmet": ["Lug height is 30mm"]}))
-    QT_APP.processEvents()
-
-    cards = [w for w in _widgets_in(panel) if isinstance(w, AssertionResultsWidget)]
-    assert len(cards) == 1, cards
-    rows = [row.toggle_button.text() for row in cards[0].findChildren(AccordionWidget)]
-    assert any("Lug height is 30mm" in row for row in rows), rows
-
-
-def test_completing_assertion_with_a_mixed_result_shows_both_rows_in_one_card(panel):
-    """
-    End-to-end proof that a run measuring some entries true and some false
-    renders a mixed card: `AssertionResultsWidget` is untouched by this
-    change, and already iterates `confirmed` and `unmet` independently.
-    """
-    from core.events import ASSERTION, Event
-
-    from ui.accordion_widget import AccordionWidget
-    from ui.assertion_results_widget import AssertionResultsWidget
-
-    index, _ = panel.chat_sessions.add_new_chat("assertion-mixed")
-    panel.switch_session(index)
-
-    panel.on_event(Event(ASSERTION, {
-        "ok": False, "code": "assert not failed", "traceback": "AssertionError: "
-        "these did not hold: Lug height is 30mm",
-        "confirmed": ["Base height is 10mm"], "uncovered": [],
-        "unmet": ["Lug height is 30mm"]}))
-    QT_APP.processEvents()
-
-    cards = [w for w in _widgets_in(panel) if isinstance(w, AssertionResultsWidget)]
-    assert len(cards) == 1, cards
-    rows = [row.toggle_button.text() for row in cards[0].findChildren(AccordionWidget)]
-    assert any("Base height is 10mm" in row for row in rows), rows
-    assert any("Lug height is 30mm" in row for row in rows), rows
-
-
-def test_checks_that_could_not_be_written_keep_the_plain_narration_line(panel):
-    """
-    The assertion results' own fallback, the same shape the Confirmation card's is: `ok` is `None` when
-    the checks were never written at all, so there is no pass/fail count to
-    structure and the plain line `_assertion_said` already gives stays the
-    only thing shown, the way it did before this ticket.
-    """
-    from core.events import ASSERTION, Event
-
-    from ui.assertion_results_widget import AssertionResultsWidget
-
-    index, _ = panel.chat_sessions.add_new_chat("assertion-unwritten")
-    panel.switch_session(index)
-
-    panel.on_event(Event(ASSERTION, {
-        "ok": None, "code": "", "confirmed": [], "uncovered": [], "traceback": ""}))
-    QT_APP.processEvents()
-
-    assert not [w for w in _widgets_in(panel) if isinstance(w, AssertionResultsWidget)]
-    assert "could not be written" in _said_in(panel)
-
-
-def test_a_replayed_session_renders_the_assertion_results_card(panel, tmp_path):
-    """A restored Session never saw the checks run live, only the log."""
-    from ui.accordion_widget import AccordionWidget
-    from ui.assertion_results_widget import AssertionResultsWidget
-
-    log = str(tmp_path / "assertion-run.jsonl")
-    _a_queue_transcript(log)
-    index, _ = panel.chat_sessions.add_new_chat("assertion-run")
-    panel.chat_sessions.get_session_info(index)["log"] = log
-    panel.chat_sessions.get_session_info(index)["restored"] = False
-
-    panel.switch_session(index)
-
-    cards = [w for w in _widgets_in(panel) if isinstance(w, AssertionResultsWidget)]
-    assert len(cards) == 1, cards
-    rows = [row.toggle_button.text() for row in cards[0].findChildren(AccordionWidget)]
-    assert any("It is a box" in row for row in rows), rows
-
-
-def test_the_plan_gate_offers_exactly_one_build_button(panel):
-    """Build replaces Approve / Approve and carry on / Amend / Reject."""
-    from conftest import QtWidgets
-
-    from core.events import Event, PLAN
-
-    panel.on_event(Event(PLAN, {"steps": ["Sketch the base", "Pad it"], "acceptance": []}))
-    QT_APP.processEvents()
-    panel.on_plan_gate(["Sketch the base", "Pad it"])
-    QT_APP.processEvents()
-
-    labels = [b.text() for b in panel._question_card.findChildren(QtWidgets.QPushButton)]
-    assert labels == ["Build"], labels
-
-
-def test_the_plan_gate_shows_history_and_a_rollback_banner_on_a_revision(panel):
-    """
-    A revision's Gate carries `history` (the Steps already standing) and
-    `rollback` (`to_step`, `reason`, `upto`) apart from the continuation it
-    is asking about -- the card shows both: how many Steps already built,
-    and a banner naming the Steps a rollback undoes and why.
-    """
-    from conftest import QtWidgets
-
-    from core.events import Event, PLAN
-
-    panel.on_event(Event(PLAN, {"steps": ["Step 4 redone", "Step 5 redone"], "acceptance": []}))
-    QT_APP.processEvents()
-    panel.on_plan_gate({
-        "steps": ["Step 4 redone", "Step 5 redone"],
-        "history": [{"step": n, "text": "Step %d" % n} for n in range(1, 6)],
-        "rollback": {"to_step": 3, "reason": "the fillet direction is wrong", "upto": 5},
-    })
-    QT_APP.processEvents()
-
-    text = " ".join(label.text() for label in panel._question_card.findChildren(QtWidgets.QLabel))
-    assert "5 Steps already built" in text, text
-    assert "Steps 4\u20135 will be rolled back: the fillet direction is wrong" in text, text
-
-
-def test_clicking_build_answers_with_the_plan_as_generated_when_nothing_was_edited(
-        panel, monkeypatch):
-    from core.events import Event, PLAN
-    from core.loop.gate import APPROVE
-
-    answered = []
-    monkeypatch.setattr(panel.ask, "answer", answered.append)
-
-    panel.on_event(Event(PLAN, {"steps": ["Sketch the base", "Pad it"], "acceptance": []}))
-    QT_APP.processEvents()
-    panel.on_plan_gate(["Sketch the base", "Pad it"])
-    QT_APP.processEvents()
-
-    _button(panel._question_card, "Build").click()
-    QT_APP.processEvents()
-
-    assert len(answered) == 1
-    assert answered[0].decision == APPROVE
-    assert list(answered[0].steps) == ["Sketch the base", "Pad it"]
-
-
-def test_clicking_build_answers_with_the_plan_as_edited(panel, monkeypatch):
-    """Editing, adding, and reordering all reach the answer Build sends."""
-    from core.events import Event, PLAN
-    from core.loop.gate import APPROVE
-
-    answered = []
-    monkeypatch.setattr(panel.ask, "answer", answered.append)
-
-    panel.on_event(Event(PLAN, {"steps": ["Sketch the base", "Pad it"], "acceptance": []}))
-    QT_APP.processEvents()
-    panel._plan_widget._list.item(1).setText("Pad it to 10mm")
-    panel._plan_widget.add_step()
-    panel._plan_widget._list.item(2).setText("Fillet the top edge")
-    panel.on_plan_gate(["Sketch the base", "Pad it"])
-    QT_APP.processEvents()
-
-    _button(panel._question_card, "Build").click()
-    QT_APP.processEvents()
-
-    assert answered[0].decision == APPROVE
-    assert list(answered[0].steps) == \
-        ["Sketch the base", "Pad it to 10mm", "Fillet the top edge"]
-
-
-def test_clicking_build_locks_the_plan_widget(panel, monkeypatch):
-    from core.events import Event, PLAN
-
-    monkeypatch.setattr(panel.ask, "answer", lambda value: None)
-
-    panel.on_event(Event(PLAN, {"steps": ["Sketch the base"], "acceptance": []}))
-    QT_APP.processEvents()
-    plan_widget = panel._plan_widget
-    panel.on_plan_gate(["Sketch the base"])
-    QT_APP.processEvents()
-
-    _button(panel._question_card, "Build").click()
-    QT_APP.processEvents()
-
-    assert plan_widget.locked
-
-
-def test_stop_while_the_decision_is_open_releases_it_and_is_not_an_acceptance(panel):
-    """
-    `abandon` releases every waiting question with an Approval, which is not
-    one of the three answers, so Stop falls to the default rather than hanging
-    on an open card. Deliberately not ACCEPT: the loop asks `cancelled()`
-    before it plans anything, so the run is recorded as stopped.
-    """
-    import threading
-
-    from core.loop.gate import ACCEPT, REVISE
-
-    answers = []
-
-    def waits():
-        answers.append(panel.ask.about_the_revision({"why": "no", "applied": 3}))
-
-    waiting = threading.Thread(target=waits)
-    waiting.start()
-    for _ in range(50):
-        QT_APP.processEvents()
-
-    panel.ask.abandon()
-    waiting.join(timeout=2)
-
-    assert not waiting.is_alive(), "Stop did not release the open decision"
-    assert answers == [REVISE]
-    assert answers != [ACCEPT], "Stop was recorded as the user taking the result"
-
-
-def test_stop_disables_an_open_decision_card(panel):
-    """A card left clickable after Stop answers a run that is already over."""
-    panel.on_revision({"why": "no", "applied": 3})
-    QT_APP.processEvents()
-    card = panel._question_card
-
-    panel.on_stop()
-    QT_APP.processEvents()
-
-    assert panel._question_card is None
-    assert not card.isEnabled()
-
-
-def test_what_was_decided_for_the_user_stands_above_the_steps(panel):
-    """
-    Nothing is asked between the attachment and the Gate now, so a value the
-    model settled for itself is read here or nowhere. Above the Steps, because
-    a decision the Steps were built on is read before them or it is not read.
-    """
-    from core.events import PLAN, Event
-
-    from ui.accordion_widget import AccordionWidget
-    from ui.plan_widget import PlanWidget
-
-    panel.on_event(Event(PLAN, {
-        "steps": ["Bore the ring"], "acceptance": [],
-        "decided": ["features \u2192 clamp-bore \u2192 axis: perpendicular to the "
-                    "plane of the upper plan, not the depth"]}))
-    QT_APP.processEvents()
-
-    widgets = _widgets_in(panel)
-    decided_at, decided = max((i, w) for i, w in enumerate(widgets)
-                              if isinstance(w, AccordionWidget)
-                              and "Decided for you" in w.toggle_button.text())
-    plan_at = max(i for i, w in enumerate(widgets) if isinstance(w, PlanWidget))
-
-    assert decided_at < plan_at, "the decisions rendered below the Steps they were made for"
-    assert decided.content_area.isVisible(), "one click away is not read"
-    assert "not the depth" in _said_in(panel)
 
 
 def test_reasoning_streams_inline_and_never_pins_to_the_queue(panel):
@@ -3736,136 +2866,6 @@ def test_a_run_with_no_reasoning_shows_no_thinking_accordion(panel):
     assert not thinking
 
 
-def test_reasoning_reads_subdued_unlike_a_decision_the_plan_made(panel):
-    """
-    Figma's Chain of Thought component reads subdued next to an answer.
-    The design system forbids a colour of its own, so this is an opacity effect on the
-    reasoning accordion's text, the way `HistoryItem` dims its timestamp --
-    and it is what tells reasoning apart from an accordion that is not
-    reasoning, such as "Decided for you".
-    """
-    from core.events import Event, PLAN, THOUGHT
-    from ui.accordion_widget import AccordionWidget
-    from conftest import QtWidgets
-
-    index, _ = panel.chat_sessions.add_new_chat("subdued-reasoning-run")
-    panel.switch_session(index)
-
-    panel.on_event(Event(THOUGHT, {"phase": "plan", "text": "weighing the two options"}))
-    panel.on_event(Event(PLAN, {"steps": ["Make a box"], "acceptance": [],
-                               "decided": ["radius → 3 mm"]}))
-    QT_APP.processEvents()
-
-    accordions = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)]
-    thinking = next(w for w in accordions if "Thinking" in w.toggle_button.text())
-    decided = next(w for w in accordions if "Decided for you" in w.toggle_button.text())
-
-    effect = thinking.content_area.graphicsEffect()
-    assert isinstance(effect, QtWidgets.QGraphicsOpacityEffect)
-    assert effect.opacity() < 1.0
-
-    assert decided.content_area.graphicsEffect() is None
-
-
-def test_the_part_event_closes_design_on_the_queue_before_any_plan(panel, tmp_path):
-    """
-    The wiring: `PART` is what says Design ended, and a Plan that
-    takes half an hour to answer must not leave the Queue with no row Running.
-    """
-    from core.events import EventStream, INTENT, PART
-    from ui.queue_widget import DESIGN, DONE, PLAN as QUEUE_PLAN, RUNNING
-
-    log = str(tmp_path / "part-run.jsonl")
-    stream = EventStream()
-    stream.log_to(log)
-    stream.emit(INTENT, text="a plain box")
-    stream.emit(PART, path=str(tmp_path / "box.part.json"))
-    index, _ = panel.chat_sessions.add_new_chat("part-run")
-    panel.chat_sessions.get_session_info(index)["log"] = log
-    panel.chat_sessions.get_session_info(index)["restored"] = False
-
-    panel.switch_session(index)
-
-    queue = panel._queue_widget
-    assert queue._states[DESIGN] == DONE
-    assert queue._states[QUEUE_PLAN] == RUNNING
-
-
-
-def test_preflight_failed_is_wired_and_marks_the_step_failed(panel, tmp_path):
-    """
-    Regression guard: PREFLIGHT_FAILED was deleted from _update_queue, so
-    step_failed became unreachable dead code and a failed Step stayed painted
-    Running. The suite stayed green while this was broken.
-    """
-    from core.events import EventStream, INTENT, PLAN, GATE, STEP_STARTED, PREFLIGHT_FAILED
-    from ui.queue_widget import FAILED
-
-    log = str(tmp_path / "preflight-fail.jsonl")
-    stream = EventStream()
-    stream.log_to(log)
-    stream.emit(INTENT, text="a box")
-    stream.emit(PLAN, steps=["Make a box"], acceptance=[])
-    stream.emit(GATE, decision="approve")
-    stream.emit(STEP_STARTED, index=1, total=1, description="Make a box")
-    stream.emit(PREFLIGHT_FAILED, step=1, attempt=1, traceback="AttributeError: Support")
-
-    index, _ = panel.chat_sessions.add_new_chat("preflight-fail")
-    panel.chat_sessions.get_session_info(index)["log"] = log
-    panel.chat_sessions.get_session_info(index)["restored"] = False
-
-    panel.switch_session(index)
-
-    queue = panel._queue_widget
-    assert queue._step_states[0] == FAILED
-
-
-def test_review_duration_is_nonzero(panel, tmp_path):
-    """
-    Review starts when Assertion ends (ASSERTION event), not when the verdict
-    arrives. This test guards against calling both phase_started and
-    phase_ended on the same REVIEW_VERDICT event, which leaves Review with
-    zero duration. The panel replays a phase's start and end from the
-    event's own `at`, so the guard reads those same timestamps back rather
-    than racing them against a fresh wall-clock read.
-    """
-    from core.events import EventStream, INTENT, PLAN, GATE, STEP_DECLARED, TOOL_CALL, TOOL_RESULT, APPLIED, ASSERTION, REVIEW_VERDICT
-
-    log = str(tmp_path / "review-duration.jsonl")
-    stream = EventStream()
-    stream.log_to(log)
-
-    stream.emit(INTENT, text="a box")
-    stream.emit(PLAN, steps=["Box"], acceptance=[])
-    stream.emit(GATE, decision="approve")
-    stream.emit(STEP_DECLARED, step=1, label="Box", checkpoint="c1")
-    stream.emit(TOOL_CALL, name="apply_step", arguments={"code": "box()"})
-    stream.emit(TOOL_RESULT, name="apply_step", result={"status": "applied"})
-    stream.emit(APPLIED, step=1, label="Box", created=["Pad"])
-
-    import time
-
-    assertion_event = stream.emit(ASSERTION, ok=True, confirmed=[], uncovered=[])
-    time.sleep(0.01)
-    verdict_event = stream.emit(REVIEW_VERDICT, verdict="pass", reason="Good")
-
-    index, _ = panel.chat_sessions.add_new_chat("review-duration")
-    panel.chat_sessions.get_session_info(index)["log"] = log
-    panel.chat_sessions.get_session_info(index)["restored"] = False
-
-    panel.switch_session(index)
-
-    queue = panel._queue_widget
-    review_start = queue._phase_start_times.get("review")
-    review_end = queue._phase_end_times.get("review")
-
-    assert review_start is not None, "Review should have a start time"
-    assert review_end is not None, "Review should have an end time"
-    assert review_end > review_start, "Review duration should be non-zero"
-    assert review_start == pytest.approx(assertion_event.at)
-    assert review_end == pytest.approx(verdict_event.at)
-
-
 def test_a_tool_result_still_says_what_came_back_after_it_is_timed(panel):
     """
     The duration goes on the call's own row. What the call answered
@@ -4037,9 +3037,9 @@ def test_daedalus_panel_has_no_dead_request_work_signal():
 
 def test_no_event_kind_the_loop_emits_puts_a_warning_in_the_chat(panel):
     """
-    `on_event` and the two tables it runs first each warn in the transcript
-    about a kind they do not name, so every kind in `core.events.KINDS` must
-    be a key of all three, or a live run shows the user a warning per event.
+    `on_event` warns in the transcript about a kind its table does not name,
+    so every kind in `core.events.KINDS` must be a key of it, or a live run
+    shows the user a warning per event.
     """
     from core import events as ev
     from ui.daedalus_panel import DaedalusPanel
@@ -4048,8 +3048,6 @@ def test_no_event_kind_the_loop_emits_puts_a_warning_in_the_chat(panel):
     panel.on_event(ev.Event(ev.CHANGE_SET, {}))
     tables = {
         "_ON_EVENT_DISPATCH": set(ev.KINDS) - {ev.INTENT},
-        "_QUEUE_DISPATCH": set(ev.KINDS),
-        "_EVIDENCE_DISPATCH": set(ev.KINDS),
     }
     missing = {attr: sorted(kinds - set(getattr(DaedalusPanel, attr)))
                for attr, kinds in tables.items()}
@@ -4083,28 +3081,6 @@ def test_the_intent_shows_at_once_while_the_message_is_routed(panel, monkeypatch
     shown = _said_in(panel)
     assert shown.count("a flanged bushing") == 1
     assert "unrecognized" not in shown
-
-
-def test_no_row_widens_the_column_past_its_viewport(panel):
-    """
-    The column does not scroll sideways, so a widget wider than the viewport
-    is not scrolled to, it is unreachable: the Gate's Build button is right
-    aligned and leaves the panel with it. An open code row is what reaches
-    that width -- a line of Python is one long unbreakable word to a wrapping
-    QLabel, and 565px of it in a 360px dock took the whole transcript with it.
-    """
-    from conftest import QtWidgets
-
-    panel._render_tool_call(
-        "run_python",
-        {"code": 'doc.getObject("Countersink_inner_chamfer_reference_plane").Placement.Base.x = 12.5'},
-        0.0)
-    panel._last_tool_call_widget.toggle_content()
-    panel.on_plan_gate(["a Step"] * 8)
-    QT_APP.processEvents()
-
-    area = panel.chat_sessions.get_current_chat_history()
-    assert area.widget().minimumSizeHint().width() <= area.viewport().width()
 
 
 def test_a_step_that_faults_ends_its_own_run_and_the_gui_survives(panel, monkeypatch):

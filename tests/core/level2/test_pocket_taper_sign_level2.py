@@ -14,17 +14,6 @@ import pytest
 
 pytestmark = pytest.mark.freecad
 
-ROOT = pathlib.Path(__file__).resolve().parents[3]
-EXECUTE_MD = ROOT / "config" / "prompts" / "system" / "execute.md"
-
-NEGATIVE_NARROWS = ("A Pocket's inward draft — the profile narrowing as it "
-                    "goes deeper — takes a negative `TaperAngle`; a positive "
-                    "one widens it going in.")
-POSITIVE_NARROWS = ("A Pocket's inward draft — the profile narrowing as it "
-                    "goes deeper — takes a positive `TaperAngle`; a negative "
-                    "one widens it going in.")
-
-
 @pytest.fixture
 def doc():
     document = App.newDocument("TaperSignLevel2")
@@ -84,13 +73,3 @@ def test_a_positive_taper_angle_widens_the_pocket_going_in(doc):
     bottom = _hole_area(pocket.Shape, 10.01)
 
     assert bottom > opening, "TaperAngle +5 narrowed the pocket going in: %.3f at the opening, %.3f at the bottom" % (opening, bottom)
-
-
-def test_execute_md_states_the_sign_this_test_just_measured(doc):
-    pocket = _tapered_pocket(doc, -5)
-    negative_narrows = _hole_area(pocket.Shape, 10.01) < _hole_area(pocket.Shape, 19.99)
-    expected = NEGATIVE_NARROWS if negative_narrows else POSITIVE_NARROWS
-
-    text = " ".join(EXECUTE_MD.read_text(encoding="utf-8").split())
-
-    assert expected in text, "execute.md does not state the sign the test measured"

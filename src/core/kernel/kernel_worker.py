@@ -381,22 +381,7 @@ def sketch_at(body, label, normal, at):
     return sketch
 
 
-def _step_design(design):
-    """
-    A private `copy.deepcopy` of *design* for one Step's own namespace, with
-    `features` reshaped from the on-disk list into a dict keyed by each
-    feature's `id` -- a Step writes into its own copy, nothing reads that
-    copy back, and the model Design produced never changes underneath it.
-    """
-    design = copy.deepcopy(design)
-    features = design.get("features")
-    if isinstance(features, list):
-        design["features"] = {feature["id"]: feature for feature in features}
-    return design
-
-
-def step_namespace(doc, design=None, plan_values=None, capture_values=False, base_faces=None,
-                   intent=None, outcome=None):
+def step_namespace(doc, base_faces=None, intent=None, outcome=None):
     """
     What a Step's code runs with, built identically by the kernel and the GUI's
     replay or they run different programs. Sketch geometry lives outside
@@ -404,12 +389,7 @@ def step_namespace(doc, design=None, plan_values=None, capture_values=False, bas
     into a NameError answered by an invented Sketcher.Circle, and FreeCAD's own
     Mod/Mesh/App directory shares the name `App` on sys.path, so a Step's bare
     `import App` finds an empty namespace package unless sys.modules holds the
-    real module first. *design* is carried as a private copy alongside the
-    Document rather than through a working directory that does not survive
-    Apply or replay -- absent where no run has one; *plan_values* is Plan's own
-    frozen numbers, seeded as bare names for Plan's own code to build on when
-    *capture_values* is set, or handed over as the one reserved `plan_values`
-    dict for Execute and Apply to read by name otherwise.
+    real module first.
     """
     import FreeCAD
 
@@ -425,16 +405,6 @@ def step_namespace(doc, design=None, plan_values=None, capture_values=False, bas
                  "cylinder_face": cylinder_face,
                  "no_collateral": functools.partial(no_collateral, measures=measure),
                  "by_label": by_label, "sketch_at": sketch_at}
-    from core import surfaces
-
-    faces = surfaces.Faces(doc, measure)
-    namespace["_faces"] = faces
-    namespace["face_at"] = lambda datum: faces.face_at(namespace.get("design"), datum)
-    namespace["cylinder"] = faces.cylinder
-    namespace["distance"] = surfaces.distance
-    namespace["check_each"] = check_each(namespace)
-    if design is not None:
-        namespace["design"] = _step_design(design)
     if base_faces is not None:
         namespace["base_faces"] = dict(base_faces)
     if intent is not None:
@@ -446,68 +416,7 @@ def step_namespace(doc, design=None, plan_values=None, capture_values=False, bas
             namespace[module] = __import__(module)
         except ImportError:
             pass  # except-pass-allowed: an optional Step module not installed in this build
-    if capture_values:
-        namespace.update(plan_values or {})
-    elif plan_values is not None:
-        namespace["plan_values"] = dict(plan_values)
     return namespace
-
-
-RESERVED_STEP_NAMES = frozenset(
-    {"App", "FreeCAD", "doc", "__name__", "edges_between", "edges_by_concavity",
-     "built_ok", "pick_edges", "bbox", "by_label", "sketch_at", "design", "names", "plan_values", "base_faces",
-     "intent", "outcome",
-     "pick_faces", "plane_face", "cylinder_face", "no_collateral", "measure", "face_at", "cylinder",
-     "distance", "check_each"}
-    | set(STEP_MODULES))
-
-
-def _harvested_plan_values(namespace):
-    """
-    The top-level plain values, and lists or dicts of them, a Plan-phase call computed,
-    for `_SESSION` to remember by name. A reserved name is never captured, so
-    a Step cannot smuggle a value in under `design` or `doc`, and a
-    `_`-prefixed name is scratch.
-    """
-    kept = {}
-    for name, value in namespace.items():
-        if name in RESERVED_STEP_NAMES or name.startswith("_"):
-            continue
-        plain = _plain_data(value)
-        if plain is not None:
-            kept[name] = plain
-    return kept
-
-
-def _unharvested_plan_names(namespace):
-    """The names `_harvested_plan_values` would skip, each with the type it holds."""
-    kept = _harvested_plan_values(namespace)
-    return {name: type(value).__name__ for name, value in namespace.items()
-            if name not in kept and name not in RESERVED_STEP_NAMES and not name.startswith("_")}
-
-
-_PLAIN_DEPTH = 50
-
-
-def _plain_data(value, depth=0):
-    """
-    *value* as a number, string or boolean, or a non-empty nesting of lists and string-keyed
-    dicts of those, else None. Nesting deeper than `_PLAIN_DEPTH` is not plain, which also
-    stops a value that contains itself.
-    """
-    if isinstance(value, (bool, str, int, float)):
-        return value
-    if depth >= _PLAIN_DEPTH:
-        return None
-    if isinstance(value, (list, tuple)) and value:
-        items = [_plain_data(item, depth + 1) for item in value]
-        if all(item is not None for item in items):
-            return items
-    if isinstance(value, dict) and value and all(isinstance(key, str) for key in value):
-        items = {key: _plain_data(item, depth + 1) for key, item in value.items()}
-        if all(item is not None for item in items.values()):
-            return items
-    return None
 
 
 class _NamedDoc:
@@ -1171,57 +1080,10 @@ def _printed(said):
     return text[:STDOUT_LIMIT] + "\n...cut here, %d characters in all" % len(text)
 
 
-def _measured(namespace):
-    """
-    An assertion script's own `held`/`failed` lists, read from the
-    namespace it ran in, not parsed from a traceback.
-
-    `None`, not `[]`, for a name never defined -- absent must read
-    differently from "measured, and empty"; only a list or tuple counts.
-    """
+def _held(namespace):
+    """A script's own `held` list, read from the namespace it ran in; `None` for a name never defined, so absent reads differently from empty."""
     held = namespace.get("held")
-    failed = namespace.get("failed")
-    return (list(held) if isinstance(held, (list, tuple)) else None,
-            list(failed) if isinstance(failed, (list, tuple)) else None)
-
-
-def check_each(namespace):
-    """
-    The evaluator behind an expression check: `{entry: expression}` in, `(held, failed, defects)` out, each expression evaluated alone in *namespace*.
-    A raise, or a value that is not a bool, is a defect `[entry, error]` of that entry only.
-    When *namespace* names a `check_progress` file, each entry is written there as it starts and again as it finishes, so a call the kernel kills still leaves its finished entries and the one in flight.
-    """
-    def run(expressions):
-        held, failed, defects = [], [], []
-        path = namespace.get("check_progress")
-
-        def note(entry, **state):
-            if path:
-                with open(path, "a") as log:
-                    log.write(json.dumps(dict(state, entry=entry)) + "\n")
-
-        for entry, expression in sorted(expressions.items()):
-            note(entry, started=True)
-            try:
-                verdict = eval(expression, namespace)
-            except Exception as exc:
-                defects.append([entry, type(exc).__name__ + ": " + str(exc)])
-                note(entry, defect=defects[-1][1])
-                continue
-            if isinstance(verdict, bool):
-                (held if verdict else failed).append(entry)
-                note(entry, verdict=verdict)
-            else:
-                defects.append([entry, "the expression gave " + repr(verdict)[:80] + ", not True or False"])
-                note(entry, defect=defects[-1][1])
-        return held, failed, defects
-    return run
-
-
-def _defects(namespace):
-    """The `defects` list an expression check leaves beside `held` and `failed`: `[entry, error]` pairs for the expressions that raised; `None` where the script never defined it."""
-    defects = namespace.get("defects")
-    return [list(pair) for pair in defects] if isinstance(defects, (list, tuple)) else None
+    return list(held) if isinstance(held, (list, tuple)) else None
 
 
 def register_step_source(code):
@@ -1278,8 +1140,7 @@ def _recompute_scope(doc, touched):
 
 SCRATCH = "KERNEL_SCRATCH"
 
-_SESSION = {"doc": None, "checkpoint": None, "names": {}, "design": None,
-            "plan_values": {}, "unharvested": {}, "scratch": None}
+_SESSION = {"doc": None, "checkpoint": None, "names": {}, "scratch": None}
 
 
 def _scratch():
@@ -1407,14 +1268,9 @@ def _run_step_body(doc, namespace, touched, request):
         "volume": _volume_moved(doc, touched.created),
         "signature": signature_of(doc) if changed else {},
     }
-    held, failed = _measured(namespace)
+    held = _held(namespace)
     if held is not None:
         result["held"] = held
-    if failed is not None:
-        result["failed"] = failed
-    defects = _defects(namespace)
-    if defects is not None:
-        result["defects"] = defects
     render_path = request.get("render_path")
     if render_path:
         from core.kernel.preflight_render import render
@@ -1437,22 +1293,15 @@ def run_step(request):
     """
     ephemeral = request.get("ephemeral", False)
     exploring = request.get("exploring", False)
-    capture_values = bool(request.get("capture_values"))
     if "document" in request or _SESSION["doc"] is None:
         _SESSION["doc"] = _open_document(request.get("document"))
         _SESSION["names"] = dict(request.get("names") or {})
         if not ephemeral:
             _save_checkpoint(_SESSION["doc"])
-    if "design" in request:
-        _SESSION["design"] = request["design"]
-    if "plan_values" in request:
-        _SESSION["plan_values"] = dict(request["plan_values"])
 
     doc = _SESSION["doc"]
     names = dict(_SESSION["names"])
-    namespace = step_namespace(_NamedDoc(doc, names), design=_SESSION["design"],
-                               plan_values=_SESSION["plan_values"],
-                               capture_values=capture_values,
+    namespace = step_namespace(_NamedDoc(doc, names),
                                base_faces=request.get("base_faces"),
                                intent=request.get("intent"), outcome=request.get("outcome"))
     namespace["names"] = names
@@ -1467,14 +1316,9 @@ def run_step(request):
         response = {"ok": False,
                     "traceback": trimmed_traceback(exc) + _idle_feature_report(doc, touched.created),
                     "volume": _volume_moved(doc, touched.created)}
-        held, failed = _measured(namespace)
+        held = _held(namespace)
         if held is not None:
             response["held"] = held
-        if failed is not None:
-            response["failed"] = failed
-        defects = _defects(namespace)
-        if defects is not None:
-            response["defects"] = defects
     except BaseException as exc:
         touched.diff(doc)
         response = {"ok": False,
@@ -1494,11 +1338,6 @@ def run_step(request):
             "This Step changed nothing in the Document, so it is not a Step. Code "
             "that only looks goes without \"step\"; send the code that builds it.")}
     if response.get("ok"):
-        if capture_values:
-            _SESSION["plan_values"].update(_harvested_plan_values(namespace))
-            _SESSION["unharvested"].update(_unharvested_plan_names(namespace))
-            for name in _SESSION["plan_values"]:
-                _SESSION["unharvested"].pop(name, None)
         if exploring and touched.touched() and not ephemeral:
             _reload_checkpoint()
             response["rolled_back"] = sorted(touched.created | touched.deleted | touched.modified())
@@ -1511,8 +1350,6 @@ def run_step(request):
             _reload_checkpoint()
     response["checkpoint"] = _SESSION["checkpoint"]
     response["names"] = dict(_SESSION["names"])
-    response["plan_values"] = dict(_SESSION["plan_values"])
-    response["plan_values_unharvested"] = dict(_SESSION["unharvested"])
     return response
 
 

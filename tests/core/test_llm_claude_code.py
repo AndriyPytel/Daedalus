@@ -813,8 +813,7 @@ def test_the_subscription_is_the_credential_rather_than_a_key():
 
 
 def _design_prompt():
-    from core.prompts import read_prompt
-    return read_prompt("design.md")
+    return "A system prompt longer than a Windows command line. " * 1000
 
 
 def test_the_system_prompt_reaches_the_process_as_a_file():
@@ -830,7 +829,7 @@ def test_the_system_prompt_reaches_the_process_as_a_file():
 def test_a_design_call_fits_a_windows_command_line():
     """
     Windows caps a whole command line at 32,767 characters and
-    `config/prompts/design.md` is more than that on its own, where `ARG_MAX`
+    a long system prompt is more than that on its own, where `ARG_MAX`
     here is 1,048,576. FreeCAD ships to both.
     """
     system = _design_prompt()

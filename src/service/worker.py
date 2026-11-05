@@ -1,6 +1,6 @@
 """
 The worker process, launched as `python -m service.worker`: the only service module that reaches the engine, and only through the public names of `sdk`; it reads `send` (a prompt, base64 attachments, for its first send the `restore` of a replaced worker, `interactive`, `confirm` and the resolved settings), `cancel` and `answer` lines from stdin while a Run is in progress and writes `ready`, `event`, `question`, `blob`, `done` and `error` lines to the real stdout.
-A Run sent `interactive` asks through the channel and waits for its `answer`, any other decides alone, and an Owned Object `confirm` is refused unless the Run was sent `confirm`.
+A Run sent `interactive` asks about an Owned Object through the channel and waits for its `answer`, any other decides alone, and an Owned Object `confirm` is refused unless the Run was sent `confirm`.
 After a send, cancelled or not, the STEP when the model has a solid and the FCStd checkpoint go out as `blob` lines, and anything else the engine prints goes to stderr.
 """
 import base64
@@ -11,7 +11,7 @@ import sys
 import tempfile
 import threading
 
-from sdk import (Client, remember_model, set_api_keys, set_auto_approve_plan, set_base_urls, set_default_model, set_effort,
+from sdk import (Client, remember_model, set_api_keys, set_base_urls, set_default_model, set_effort,
                  set_naming_model, set_role_table)
 
 
@@ -67,8 +67,6 @@ def apply_settings(settings):
             remember_model(settings[key]["model"], settings[key]["provider"])
     if "effort" in settings:
         set_effort(settings["effort"])
-    if "auto_approve_plan" in settings:
-        set_auto_approve_plan(settings["auto_approve_plan"])
 
 
 def main():
@@ -146,7 +144,6 @@ def main():
                     with open(paths[-1], "wb") as out:
                         out.write(base64.b64decode(item["content"]))
                 client.send(job["prompt"], attachments=paths,
-                            ask=ask if job.get("interactive") is True else (lambda question: ""),
                             cancelled=stop_condition(cancelled, budget))
                 for kind, name, data in artifacts(client, directory):
                     put(op="blob", kind=kind, name=name, content=base64.b64encode(data).decode())

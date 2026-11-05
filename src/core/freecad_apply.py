@@ -94,15 +94,12 @@ def _direct(func, timeout=None):
     return func()
 
 
-def run_in_transaction(doc, code, label="Daedalus Step", names=None, expected_signature=None,
-                       design=None, plan_values=None):
+def run_in_transaction(doc, code, label="Daedalus Step", names=None, expected_signature=None):
     """
     Execute *code* against *doc* as one undoable unit, main thread only; the
     recompute runs inside the transaction, so one undo takes the whole Step
-    back. *names* and *design* are the allocated-name map and the Design
-    model Preflight already ran this same Step against, both carried in the
-    same way so Apply resolves them identically, and *plan_values* the
-    Plan-frozen numbers a Step reads by name the same way. *expected_signature*
+    back. *names* is the allocated-name map Preflight already ran this
+    same Step against, carried so Apply resolves names identically. *expected_signature*
     is what Preflight verified; `None` skips the check, a mismatch aborts the
     transaction.
     """
@@ -110,8 +107,7 @@ def run_in_transaction(doc, code, label="Daedalus Step", names=None, expected_si
     doc.openTransaction(label)
     try:
         register_step_source(code)
-        namespace = step_namespace(_NamedDoc(doc, names), design=design,
-                                   plan_values=plan_values)
+        namespace = step_namespace(_NamedDoc(doc, names))
         namespace["names"] = names
         exec(compile(code, "<step>", "exec"), namespace)  # noqa: S102
         doc.recompute()
@@ -278,19 +274,15 @@ class ApplyPipeline:
         return os.path.join(self._render_dir, "daedalus_step_%d.png" % self._renders)
 
     def apply(self, code, selection=None, label="Daedalus Step", op=None,
-              kernel_result=None, design=None, plan_values=None,
-              design_model=True) -> ApplyResult:
+              kernel_result=None, design_model=True) -> ApplyResult:
         """
         Lint *code* and land it on the live Document as one transaction.
         `kernel_result` is what the kernel already found running this Step
         for real -- names created/deleted/modified, its name map, its
         Document's signature -- so the kernel's run is the rehearsal, rolled
         back on a signature disagreement, with no second rehearsal here.
-        `op` is checked against what the kernel built, not this code's text,
-        and `design` and `plan_values` are the Design model and the Plan's
-        frozen numbers Preflight ran this Step against, carried into the same
-        transaction so Apply resolves them identically; *design_model* false is a
-        caller with no `design` in scope, to whom the Design-model lint rules do not apply.
+        `op` is checked against what the kernel built, not this code's text;
+        *design_model* false is a caller with no `design` in scope, to whom the Design-model lint rules do not apply.
         """
         kernel_result = kernel_result or {}
         checked = lint(code, selection, design_model)
@@ -321,8 +313,7 @@ class ApplyPipeline:
         try:
             self._dispatch(lambda: self._transaction(
                 doc, code, label, names=self._names,
-                expected_signature=kernel_result.get("signature"), design=design,
-                plan_values=plan_values))
+                expected_signature=kernel_result.get("signature")))
         except Closing:
             raise
         except SignatureMismatch as exc:
@@ -381,8 +372,7 @@ class ApplyPipeline:
         finally:
             discard(copy)
         return {"ok": bool(checked.ok), "traceback": checked.traceback or "",
-                "held": checked.held, "failed": checked.failed,
-                "defects": checked.defects,
+                "held": checked.held,
                 "geometry": checked.geometry}
 
     def review_views(self):
@@ -1923,23 +1913,11 @@ def _register_apply(registry, pipeline, selection):
                                    "lint rules about reading one are left out. Carried by the "
                                    "loop, not asked for here.",
                 },
-                "design": {
-                    "type": "object",
-                    "description": "The Design model, read-only in the Step's own namespace "
-                                   "(DAE-411). Carried by the loop, not asked for here.",
-                },
-                "plan_values": {
-                    "type": "object",
-                    "description": "The numbers Plan froze at declare time, read by name from "
-                                   "plan_values in the Step's own namespace. Carried by the "
-                                   "loop, not asked for here.",
-                },
             },
             "required": ["code"],
         },
     )
-    def apply_step(code, label="Daedalus Step", op=None, kernel_result=None, design=None,
-                   plan_values=None, design_model=True):
+    def apply_step(code, label="Daedalus Step", op=None, kernel_result=None, design_model=True):
         """
         There is no rehearsal behind this Tool any more: from here up, a
         Step was applied or it was not, and there is no third thing to know
@@ -1947,7 +1925,6 @@ def _register_apply(registry, pipeline, selection):
         """
         return pipeline.apply(code, selection=selection(), label=label,
                               op=op, kernel_result=kernel_result,
-                              design=design, plan_values=plan_values,
                               design_model=design_model).as_tool_result()
 
     @registry.tool(

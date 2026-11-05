@@ -10,7 +10,7 @@ from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 DEFAULTS_VARIABLE = "DAEDALUS_DEFAULTS"
-DEFAULTS = {"auto_approve_plan": True, "interactive": False, "confirm": False, "budget_usd": 5.0}
+DEFAULTS = {"interactive": False, "confirm": False, "budget_usd": 5.0}
 
 
 class Strict(BaseModel):
@@ -34,7 +34,6 @@ class Preferences(Strict):
     default_model: Optional[ModelChoice] = None
     naming_model: Optional[ModelChoice] = None
     effort: Optional[str] = None
-    auto_approve_plan: Optional[bool] = None
     interactive: Optional[bool] = None
     confirm: Optional[bool] = None
     budget_usd: Optional[float] = Field(None, gt=0)

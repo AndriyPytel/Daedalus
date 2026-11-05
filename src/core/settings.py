@@ -175,20 +175,6 @@ class Settings:
         self._grp().SetString("LastUsedModel", model_id)
         self._notify("last_model", model_id)
 
-    def get_auto_approve_plan(self) -> bool:
-        """
-        Whether the Plan Gate auto-approves instead of stopping the run for
-        the user, `core/loop.py :: _run` reusing the same standing-approval
-        path a user's own APPROVE-and-stand answer already takes.
-
-        Off until the user turns it on: an unattended run is opt-in, not
-        the default a run silently becomes.
-        """
-        return self._grp().GetBool("AutoApprovePlan", False)
-
-    def set_auto_approve_plan(self, enabled: bool):
-        self._grp().SetBool("AutoApprovePlan", bool(enabled))
-
     def get_effort(self) -> str:
         """
         How hard the model is asked to think, as `core.llm.EFFORTS` spells it.

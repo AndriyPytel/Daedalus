@@ -1,1 +1,0 @@
-This phase has run many turns since its last declared Step. This is your last turn before it gives up: reply with {"declare": ...} for what you have actually built and verified so far. Another turn of code ends this pass with nothing shown for it.

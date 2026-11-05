@@ -49,6 +49,15 @@ DESIGN = {"features": [
     {"id": "fillet-upper", "radius": _v("R2")},
 ]}
 
+
+def with_design(code, design):
+    """*code* preceded by the `design` name its Steps read."""
+    features = design["features"]
+    if isinstance(features, list):
+        features = {feature["id"]: feature for feature in features}
+    return "design = %r\n" % ({**design, "features": features},) + code
+
+
 STEP_1_PLATE = r"""
 import re, math
 def num(s):
@@ -471,14 +480,14 @@ assert len(body.Shape.Solids)==1, 'body left in %d solids' % len(body.Shape.Soli
 
 def _build_through_step_8(kernel):
     for step in (STEP_1_PLATE, STEP_2_BOSS, STEP_3_LUG, STEP_4_RIB, STEP_5_RIB_ROUND, STEP_6_BORE, STEP_7_LUG_BORE, STEP_8_FILLET_RIB_TO_BOSS,):
-        result = kernel.check(step, design=DESIGN)
+        result = kernel.check(with_design(step, DESIGN))
         assert result.ok, result.traceback
 
 
 def test_boss_foot_fillet_refuses_naming_the_conflicting_feature(kernel):
     _build_through_step_8(kernel)
 
-    result = kernel.check(STEP_9_FILLET_BOSS_FOOT, design=DESIGN)
+    result = kernel.check(with_design(STEP_9_FILLET_BOSS_FOOT, DESIGN))
 
     assert not result.ok
     assert "FilletRibBoss" in result.traceback, (
@@ -494,7 +503,7 @@ def test_rib_flank_fillet_refuses_at_every_radius_naming_the_conflicting_feature
         code = STEP_10_FILLET_RIB_FLANKS.replace(
             "rad = float(re.findall(r'[\\d.]+', fu['radius']['value'])[0])",
             "rad = %r" % radius)
-        result = kernel.check(code, design=DESIGN)
+        result = kernel.check(with_design(code, DESIGN))
 
         assert not result.ok, "R%s built where the recorded run found every radius refused" % radius
         assert "FilletRibBoss" in result.traceback, (

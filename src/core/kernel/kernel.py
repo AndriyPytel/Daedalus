@@ -53,8 +53,6 @@ class KernelResult:
     deleted: list = field(default_factory=list)
     modified: list = field(default_factory=list)
     held: list = None
-    failed: list = None
-    defects: list = None
     stdout: str = ""
     geometry: dict = field(default_factory=dict)
     volume: dict = field(default_factory=dict)
@@ -62,8 +60,6 @@ class KernelResult:
     names: dict = field(default_factory=dict)
     signature: dict = field(default_factory=dict)
     rolled_back: list = field(default_factory=list)
-    plan_values: dict = field(default_factory=dict)
-    plan_values_unharvested: dict = field(default_factory=dict)
 
     @classmethod
     def from_response(cls, response):
@@ -74,36 +70,31 @@ class KernelResult:
         starts sending arrives at the parent through one spelling, since the
         two halves are separate processes and nothing else links them.
 
-        `held` and `failed` are read on both branches -- an `AssertionError`
-        carries the measured lists too, not only the `ok` branch.
+        `held` is read on both branches -- an `AssertionError` carries the
+        measured list too, not only the `ok` branch.
         """
-        held, failed = response.get("held"), response.get("failed")
-        defects = response.get("defects")
+        held = response.get("held")
         checkpoint = response.get("checkpoint")
         names = response.get("names") or {}
-        plan_values = response.get("plan_values") or {}
-        unharvested = response.get("plan_values_unharvested") or {}
         if not response.get("ok"):
             return cls(ok=False, traceback=response.get("traceback", "the kernel failed"),
-                       held=held, failed=failed, defects=defects,
+                       held=held,
                        stdout=response.get("stdout", ""),
                        volume=response.get("volume") or {},
-                       checkpoint=checkpoint, names=names, plan_values=plan_values,
-                       plan_values_unharvested=unharvested)
+                       checkpoint=checkpoint, names=names)
         return cls(ok=True,
                    render=response.get("render"),
                    objects=response.get("objects", []),
                    created=response.get("created", []),
                    deleted=response.get("deleted", []),
                    modified=response.get("modified", []),
-                   held=held, failed=failed, defects=defects,
+                   held=held,
                    stdout=response.get("stdout", ""),
                    geometry=response.get("geometry") or {},
                    volume=response.get("volume") or {},
                    checkpoint=checkpoint, names=names,
                    signature=response.get("signature") or {},
-                   rolled_back=response.get("rolled_back") or [],
-                   plan_values=plan_values, plan_values_unharvested=unharvested)
+                   rolled_back=response.get("rolled_back") or [])
 
 
 def _alive(pid):
@@ -164,23 +155,10 @@ class Kernel:
         self._checkpoint = None
         self._scratch = None
         self._needs_resume = False
-        self._design = None
-        self._plan_values = {}
-        self._unharvested_plan_values = {}
 
     @property
     def alive(self):
         return self._process is not None and self._process.poll() is None
-
-    @property
-    def plan_values(self) -> dict:
-        """The name -> number Plan's kernel session currently holds."""
-        return dict(self._plan_values)
-
-    @property
-    def unharvested_plan_values(self) -> dict:
-        """The name -> type of what Plan's kernel session holds but a Step cannot use."""
-        return dict(self._unharvested_plan_values)
 
     @property
     def pid(self):
@@ -266,22 +244,17 @@ class Kernel:
         self.kill()
 
     def check(self, code, document=_CONTINUE, render_path=None, timeout=None, names=None,
-              ephemeral=False, design=None, exploring=False, plan_values=None,
-              capture_values=False, builds=False, geometry=False, base_faces=None,
+              ephemeral=False, exploring=False, builds=False, geometry=False, base_faces=None,
               intent=None, outcome=None, render_view=None):
         """
         Run *code* as one Step in the kernel. `document` not given
         continues the kernel's own session, resuming on the last
         checkpoint if the worker restarted since, or refusing if no
         checkpoint exists yet to resume onto; `document` given is a fresh
-        handoff from that path, always honoured; *design* and *plan_values*
-        are carried into the Step's namespace, both remembered and resent
-        by the kernel's own session past this call the same as *names*; and
+        handoff from that path, always honoured; and
         *exploring* marks *code* as a call no Step declares, rolled back to
         the last checkpoint with the result naming what was undone where it
-        creates, deletes or modifies an object. *capture_values* marks a
-        Plan-phase call whose own top-level numbers fold into *plan_values*
-        rather than only reading it, *base_faces* is the base part's address -> area map, and *intent* and *outcome* are the Intent and the result's description, each for this one call and not remembered, *geometry* asks for the geometry snapshot a Step that changes nothing
+        creates, deletes or modifies an object. *base_faces* is the base part's address -> area map, and *intent* and *outcome* are the Intent and the result's description, each for this one call and not remembered, *geometry* asks for the geometry snapshot a Step that changes nothing
         otherwise skips, *builds* marks a Step or a fix that fails
         where it changes nothing in the Document, and the return is always a
         KernelResult, never a raise for anything the code did; *render_view* names the
@@ -294,16 +267,6 @@ class Kernel:
                     "checkpoint to resume from. Hand check() an explicit document "
                     "to start a session."))
             document = self._checkpoint
-
-        if design is not None:
-            self._design = design
-        elif document is not _CONTINUE:
-            design = self._design
-
-        if plan_values is not None:
-            self._plan_values = dict(plan_values)
-        elif document is not _CONTINUE:
-            plan_values = self._plan_values
 
         request = {"code": code}
         if document is not _CONTINUE:
@@ -318,18 +281,12 @@ class Kernel:
             request["ephemeral"] = True
         if exploring:
             request["exploring"] = True
-        if design is not None:
-            request["design"] = design
-        if plan_values is not None:
-            request["plan_values"] = plan_values
         if base_faces is not None:
             request["base_faces"] = base_faces
         if intent is not None:
             request["intent"] = intent
         if outcome is not None:
             request["outcome"] = outcome
-        if capture_values:
-            request["capture_values"] = True
         if builds:
             request["builds"] = True
         if geometry:
@@ -339,9 +296,6 @@ class Kernel:
             return KernelResult(ok=False, traceback=why)
         self._checkpoint = response.get("checkpoint") or self._checkpoint
         self._needs_resume = False
-        if "plan_values" in response:
-            self._plan_values = dict(response.get("plan_values") or {})
-            self._unharvested_plan_values = dict(response.get("plan_values_unharvested") or {})
         return KernelResult.from_response(response)
 
     def reading(self, request, timeout=None):

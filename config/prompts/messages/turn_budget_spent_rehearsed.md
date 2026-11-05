@@ -1,1 +1,0 @@
-"Step %d of %d ran out of the phase's turn budget after %d rehearsal(s) that did not land: this reply is the forced declaration `budget_last_call.md` demands once that happens, not a verdict on whether the Step can be built. The Document keeps whatever Steps already applied; nothing about the Step in progress is settled."

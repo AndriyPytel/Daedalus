@@ -1,5 +1,5 @@
 """The routing orchestrator: the one call every user message passes through
-before Design, a run question, or the run controller ever sees it.
+before a design request, a run question, or the run controller ever sees it.
 """
 from core.events import ROUTED
 from core.llm import TEXT, Session
@@ -20,7 +20,7 @@ def classify(message: str, llm, session: Session = None) -> str:
     verbatim -- classification reads it, it does not rewrite it -- and the
     reply is read back for whichever of `ROUTES` it named, falling back to
     DESIGN when the model answers with none of them, since a design request
-    is the route every phase already exists to serve.
+    is the route the agent loop exists to serve.
     """
     session = session or Session(system=SYSTEM)
     said = "".join(chunk.text for chunk in session.turn(llm, message)

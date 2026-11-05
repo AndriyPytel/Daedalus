@@ -2,16 +2,12 @@
 Every file under `config/prompts/` is reachable from code, and every name a
 caller asks `read_prompt` for exists.
 
-`core.loop.prompt.prompt()` resolves `phase + ".md"` rather than a literal,
-so the phase names it can ask for are read off `_PHASE_VOCABULARY`'s own
-keys -- the same dict `prompt()` composes from -- rather than retyped here.
-Every other call site names its file directly and is found by walking the
-AST for `read_prompt("...")`.
+Every call site names its file directly and is found by walking the AST for
+`read_prompt("...")`.
 """
 import ast
 import os
 
-from core.loop.prompt import _PHASE_VOCABULARY
 from core.prompts import ROOT
 from source_tree import sources
 
@@ -38,6 +34,6 @@ def _files_on_disk():
 
 
 def test_every_prompt_file_is_reachable_and_every_name_asked_for_exists():
-    asked_for = _literal_read_prompt_calls() | {key + ".md" for key in _PHASE_VOCABULARY}
+    asked_for = _literal_read_prompt_calls()
     on_disk = _files_on_disk()
     assert asked_for == on_disk

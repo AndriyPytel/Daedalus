@@ -16,14 +16,14 @@ SETTINGS = {
     "role_table": [{"role": "design", "provider": "Anthropic", "model": "claude-a", "effort": "high"}],
     "default_model": {"provider": "Anthropic", "model": "claude-a"},
     "naming_model": {"provider": "OpenAI", "model": "gpt-b"},
-    "effort": "medium", "auto_approve_plan": True, "interactive": False, "confirm": False, "budget_usd": 5.0,
+    "effort": "medium", "interactive": False, "confirm": False, "budget_usd": 5.0,
 }
 
 
 @pytest.fixture
 def restored():
     before = (sdk.get_api_keys(), sdk.get_base_urls(), sdk.get_role_table(), sdk.get_default_model(),
-              sdk.get_naming_model(), sdk.get_effort(), sdk.get_auto_approve_plan())
+              sdk.get_naming_model(), sdk.get_effort())
     yield
     sdk.set_api_keys(before[0])
     sdk.set_base_urls(before[1])
@@ -31,7 +31,6 @@ def restored():
     sdk.set_default_model(before[3])
     sdk.set_naming_model(before[4])
     sdk.set_effort(before[5])
-    sdk.set_auto_approve_plan(before[6])
 
 
 def test_keys_and_base_urls_in_the_environment_reach_the_sdk_settings(restored):
@@ -51,7 +50,7 @@ def test_the_settings_of_a_send_reach_the_sdk_and_the_registry(restored):
     worker.apply_settings(SETTINGS)
     assert sdk.get_role_table() == SETTINGS["role_table"]
     assert sdk.get_default_model() == "claude-a" and sdk.get_naming_model() == "gpt-b"
-    assert sdk.get_effort() == "medium" and sdk.get_auto_approve_plan() is True
+    assert sdk.get_effort() == "medium"
     assert sdk.get_model_entry("claude-a")["provider"] == "Anthropic"
     assert sdk.get_model_entry("gpt-b")["provider"] == "OpenAI"
 

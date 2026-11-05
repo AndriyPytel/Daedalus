@@ -31,6 +31,15 @@ def kernel():
 
 DESIGN = {"features": [{"id": "rib-centre", "thickness": {"value": "4 mm"}}]}
 
+
+def with_design(code, design):
+    """*code* preceded by the `design` name its Steps read."""
+    features = design["features"]
+    if isinstance(features, list):
+        features = {feature["id"]: feature for feature in features}
+    return "design = %r\n" % ({**design, "features": features},) + code
+
+
 A_RIB_PAD = r"""
 body = doc.addObject('PartDesign::Body', 'Body')
 xz = doc.getObject('XZ_Plane')
@@ -165,10 +174,10 @@ print('solids', len(sh.Solids))
 
 
 def test_a_step_that_calls_isError_on_an_additive_pipe_raises_attributeerror(kernel):
-    setup = kernel.check(A_RIB_PAD, design=DESIGN)
+    setup = kernel.check(with_design(A_RIB_PAD, DESIGN))
     assert setup.ok, setup.traceback
 
-    result = kernel.check(STEP_4_WITH_ISERROR, design=DESIGN)
+    result = kernel.check(with_design(STEP_4_WITH_ISERROR, DESIGN))
 
     assert not result.ok
     assert "AttributeError" in result.traceback
@@ -176,9 +185,9 @@ def test_a_step_that_calls_isError_on_an_additive_pipe_raises_attributeerror(ker
 
 
 def test_the_same_step_using_built_ok_recomputes_clean(kernel):
-    setup = kernel.check(A_RIB_PAD, design=DESIGN)
+    setup = kernel.check(with_design(A_RIB_PAD, DESIGN))
     assert setup.ok, setup.traceback
 
-    result = kernel.check(STEP_4_RIB_ROUND_SWEEP, design=DESIGN)
+    result = kernel.check(with_design(STEP_4_RIB_ROUND_SWEEP, DESIGN))
 
     assert result.ok, result.traceback

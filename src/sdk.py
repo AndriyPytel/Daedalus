@@ -1,7 +1,7 @@
 """
 The one assembly the addon panel and an external caller both use. `Client`
 owns a Session, a Kernel and a Document, and turns a prompt into whichever of
-Design, a run question, or a control instruction the routing orchestrator
+a design request, a run question, or a control instruction the routing orchestrator
 names; a script drives it with no Qt application and no `FreeCADGui`, because
 `ApplyPipeline`'s own `dispatch` and `confirm` are plain callables here
 rather than the main-thread marshaller a GUI needs. `run.py` and `lane.py`,
@@ -24,11 +24,6 @@ from core.llm import (EFFORTS, ORCHESTRATOR, TEXT, ScriptedLLMClient, Session,
                       client_from_roles, effort_is_honoured, selected_model_name,
                       unusable_attachments)
 from core.llm.factory import client_from_settings
-from core.loop import (ACCEPT, APPROVE, ASSERTION_PHASE, DECISIONS, DESIGN_PHASE,
-                       EXECUTE_PHASE, PLAN_PHASE, REJECT, REVIEW_PHASE, REVISE,
-                       START_OVER, Approval, NeedsAnswer, auto_approve,
-                       nobody_to_ask, revise_by_default, run)
-from core.loop.budgets import Budgets
 from core.agent.assembly import PART_SHARE, part_summary, run_assembly, unfinished
 from core.agent.bim import run_bim
 from core.agent.domain import ASSEMBLY, BIM, PART, label as domain_label
@@ -151,14 +146,6 @@ def set_last_model(model_id):
     _settings.instance().set_last_model(model_id)
 
 
-def get_auto_approve_plan():
-    return _settings.instance().get_auto_approve_plan()
-
-
-def set_auto_approve_plan(enabled):
-    _settings.instance().set_auto_approve_plan(enabled)
-
-
 def get_effort():
     return _settings.instance().get_effort()
 
@@ -237,7 +224,7 @@ class Client:
     window off the main thread and macOS aborts FreeCAD for it.
     """
 
-    def __init__(self, document=None, llm=None, kernel=None, answer=None,
+    def __init__(self, document=None, llm=None, kernel=None,
                  confirm=None, dispatch=None):
         import FreeCAD
 
@@ -268,10 +255,7 @@ class Client:
             dispatch=self.dispatch,
             confirm=confirm or (lambda kinds: False),
             events=self.events)
-        self.answer = answer
         self._stop = False
-        self._abort = False
-        self._pending = None
 
     @property
     def llm(self):
@@ -287,44 +271,26 @@ class Client:
         """Subscribe *callback* to every event a `send` emits, as it happens."""
         self.events.subscribe(callback)
 
-    def send(self, prompt, gate=auto_approve, ask=None, decide=revise_by_default,
-             attachments=(), cancelled=None, outstanding=(), the_part_path=None,
-             route_first=True, events=None, budgets=None, arm="agent", domain=PART):
+    def send(self, prompt, attachments=(), cancelled=None, route_first=True, events=None,
+             domain=PART):
         """
         Run *prompt* to the end, blocking. *route_first* classifies it via the orchestrator (default), and *events* overrides this Client's stream for this run only.
-        *arm* `agent` builds with the loop under *domain*; `pipeline` runs the phased one, which alone reads *gate*, *ask*, *decide*, *outstanding*, *the_part_path* and *budgets*, a harness affordance the panel never passes.
+        The loop builds under *domain*.
         """
         stream = events if events is not None else self.events
         self.pipeline.events = stream
 
         self._stop = False
-        self._abort = False
         tools = build_registry(document=self.document, pipeline=self.pipeline,
                                dispatch=self.dispatch)
-
-        def _pause(question):
-            self._pending = dict(prompt=prompt, gate=gate, decide=decide,
-                                 attachments=attachments, arm=arm, domain=domain)
-            raise NeedsAnswer(question)
-
-        answered_by = ask or self.answer or _pause
 
         def is_cancelled():
             return self._stop or bool(cancelled and cancelled())
 
         def design(message, decision=None):
-            if arm == "agent":
-                return self.agent(message, attachments=attachments, cancelled=is_cancelled,
-                                  base=tools.call("base_inventory")["inventory"] is not None,
-                                  domain=domain)
-            return run(message, llm=self.llm, tools=tools, events=stream,
-                       cancelled=is_cancelled,
-                       aborted=lambda: self._abort,
-                       budget_exceeded=lambda: bool(cancelled and cancelled()),
-                       attachments=list(attachments), gate=gate, ask=answered_by,
-                       decide=decide,
-                       outstanding=list(outstanding),
-                       the_part_path=the_part_path, kernel=self.kernel, budgets=budgets)
+            return self.agent(message, attachments=attachments, cancelled=is_cancelled,
+                              base=tools.call("base_inventory")["inventory"] is not None,
+                              domain=domain)
 
         orchestrator = (self.llm.for_role(ORCHESTRATOR)
                         if hasattr(self.llm, "for_role") else self.llm)
@@ -334,8 +300,6 @@ class Client:
                            if chunk.kind == TEXT)
 
         def control(message, decision):
-            if "abort" in message.lower():
-                self._abort = True
             self._stop = True
 
         if route_first:
@@ -418,19 +382,6 @@ class Client:
                                              any(arch_type(o) for o in self.document.Objects)))
         return choose(choice, intent, types, orchestrator,
                       events if events is not None else self.events, arch=arch)
-
-    def resume(self, answer):
-        """
-        Answer the question a paused run is waiting on, and pick that same
-        run back up -- *answer* reaches only the question that paused it,
-        then the run carries on as `send` normally would.
-        """
-        pending, self._pending = self._pending, None
-        if pending is None:
-            raise RuntimeError("nothing is paused")
-        return self.send(pending["prompt"], gate=pending["gate"], decide=pending["decide"],
-                         ask=lambda question: answer, attachments=pending["attachments"],
-                         arm=pending["arm"], domain=pending["domain"])
 
     def kill_provider(self):
         """End this Client's own live provider process at once."""

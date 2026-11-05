@@ -29,8 +29,6 @@ for entry in (SRC, MOD):
     if entry not in sys.path:
         sys.path.insert(0, entry)
 
-from core.loop import execute as loop
-
 
 def _redirected_freecad_home():
     """
@@ -331,34 +329,6 @@ def the_suite_does_not_talk_to_the_network():
     mp.undo()
 
 
-@pytest.fixture(autouse=True)
-def readings_go_to_a_temporary_directory(tmp_path, monkeypatch):
-    """
-    Where a run writes the part it read, for the length of one test.
-
-    Every run with an attachment writes one, and the default is the directory a
-    user opens to find their own readings.
-    """
-    from core.design import part_file
-
-    monkeypatch.setattr(part_file, "WHERE", str(tmp_path / "parts"))
-
-
-@pytest.fixture(autouse=True)
-def the_type_cache_goes_to_a_temporary_directory(tmp_path, monkeypatch):
-    """
-    Where describe_type cache is written, for the length of one test.
-
-    The default is repo/logs/type_cache.json, which under pytest gives the
-    checkout; under FreeCAD it resolves through the symlink in Mod/ and writes
-    to the user's data directory. Redirecting it to tmp_path means tests run
-    isolated.
-    """
-    import core.loop.execute as loop_execute_module
-
-    monkeypatch.setattr(loop_execute_module, "TYPE_CACHE_PATH", str(tmp_path / "type_cache.json"))
-
-
 @dataclass
 class Reply:
     """A whole streamed reply, accumulated. Only the tests ever need one."""
@@ -426,19 +396,3 @@ def the_settings_never_reach_the_user_s_freecad():
     settings.Settings._grp = staticmethod(lambda: scratch)
     yield scratch
     settings.Settings._grp = real
-
-
-@pytest.fixture
-def clean_auto_approve(the_settings_never_reach_the_user_s_freecad):
-    """
-    The manager with `AutoApprovePlan` off, for a test that turns it on.
-
-    The store it writes to lives for the whole session, so the flag is put
-    back on the way out as well: a test that leaves it on makes every later
-    test in the same process take the auto-approved branch of the Gate.
-    """
-    from bridge import settings_manager
-
-    the_settings_never_reach_the_user_s_freecad.SetBool("AutoApprovePlan", False)
-    yield settings_manager.instance()
-    the_settings_never_reach_the_user_s_freecad.SetBool("AutoApprovePlan", False)

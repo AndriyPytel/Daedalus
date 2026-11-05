@@ -7,9 +7,7 @@ retry/`state.json` bookkeeping move to `tools/lane.py`, the one caller that
 walks more than one of these. `run_slice.py`'s `--allow-user-objects` survives
 as the same flag here, answering the Owned Object prompt yes -- safe only
 because a script pointed at a scratch Document is the only caller that
-should ever say so, and `nobody_to_ask` answers a question the loop raises,
-since nobody is watching a headless run and declining is what sends it down
-the decide-for-yourself path.
+should ever say so.
 
     .venv/bin/python src/tools/run.py --intent "Build the Phase 1 model" \
         --attach tests/modelmania/mm25-p1-1.pdf --budget-usd 20
@@ -123,13 +121,6 @@ def main():
     parser.add_argument("--save", default="")
     parser.add_argument("--allow-user-objects", action="store_true",
                         help="Answer yes to the Owned Object prompt instead of refusing")
-    parser.add_argument("--conflicts", choices=("on", "off"), default="on",
-                        help="The append-only model's own A/B toggle: 'off' drops the "
-                             "conflict record at the Gate, everything else about the run "
-                             "unchanged")
-    parser.add_argument("--arm", choices=("agent", "pipeline"), default="agent",
-                        help="agent is the reader loop the panel runs; pipeline is the phased "
-                             "pipeline, kept to compare against")
     parser.add_argument("--domain", default="part",
                         help="The Domain the agent arm builds under, part, assembly or bim; assembly builds from the STEP parts in --attach and bim from the floor plan in --attach")
     parser.add_argument("--base-document", default=None,
@@ -145,7 +136,7 @@ def main():
 
     import FreeCAD  # noqa: F401
 
-    from sdk import COST, Budgets, Client, nobody_to_ask
+    from sdk import COST, Client
 
     llm = client_for(args.provider, args.model, args.effort) if args.model else None
     seed = base_document(args.base_step) if args.base_step else args.base_document
@@ -162,20 +153,14 @@ def main():
 
     client.watch(track)
 
-    budgets = Budgets(record_conflicts=False) if args.conflicts == "off" else None
     cancelled = (lambda: spent["usd"] >= args.budget_usd) if args.budget_usd is not None else None
-    if args.arm == "agent":
-        result = client.agent(args.intent, attachments=list(args.attach), cancelled=cancelled,
-                              base=bool(seed), domain=args.domain,
-                              budget_usd=args.budget_usd)
-    else:
-        result = client.send(args.intent, attachments=list(args.attach), cancelled=cancelled,
-                             ask=nobody_to_ask, budgets=budgets, arm="pipeline")
+    result = client.agent(args.intent, attachments=list(args.attach), cancelled=cancelled,
+                          base=bool(seed), domain=args.domain,
+                          budget_usd=args.budget_usd)
 
     print("ok            :", result.ok)
-    print("verdict       :", result.verdict, "-", result.reason)
+    print("reason        :", result.reason)
     print("steps applied :", result.steps_applied)
-    print("unverified    :", ", ".join(getattr(result, "unmet", None) or ()) or "none")
     print("spent         : $%.2f" % spent["usd"])
     print("event log     :", args.log)
 

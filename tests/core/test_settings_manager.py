@@ -28,20 +28,6 @@ def test_core_settings_imports_without_pyside_or_freecad():
     assert result.returncode == 0, result.stderr
 
 
-def test_auto_approve_plan_defaults_to_off(clean_auto_approve):
-    assert clean_auto_approve.get_auto_approve_plan() is False
-
-
-def test_auto_approve_plan_round_trips(clean_auto_approve):
-    clean_auto_approve.set_auto_approve_plan(True)
-
-    assert clean_auto_approve.get_auto_approve_plan() is True
-
-    clean_auto_approve.set_auto_approve_plan(False)
-
-    assert clean_auto_approve.get_auto_approve_plan() is False
-
-
 @pytest.fixture
 def no_keys_or_addresses(the_settings_never_reach_the_user_s_freecad):
     """The store is the session's, so what a test writes is put back."""
