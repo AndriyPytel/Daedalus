@@ -12,6 +12,21 @@ def arch_type(obj):
     return getattr(proxy, "Type", None) if ARCH_MODULE.fullmatch(type(proxy).__module__) else None
 
 
+TARGET = re.compile(r"\b(?i:remove|delete|replace)\b(?:(?!\.\s).)*?(?<![\w])([A-Z][a-z]*_\w*\w)")
+
+
+def named_in(intent, document, names):
+    """Whether *names* hold only the objects *intent* removes, deletes or replaces by Label, and what only they own.
+    What a target owns is a non-Arch object below it that nothing else uses, such as its sketch; the Wall that hosts it is no such object.
+    """
+    objects = [o for o in map(document.getObject, names) if o is not None]
+    targets = set(TARGET.findall(intent))
+    named = [o for o in objects if o.Label in targets]
+    owned = {id(o) for parent in named for o in parent.OutList
+             if not arch_type(o) and all(user in named for user in o.InList)}
+    return all(o in named or id(o) in owned for o in objects)
+
+
 def export_ifc(document, path):
     """Write *document*'s Arch objects to *path* as IFC4 and hand the path back, or `None` where it holds none."""
     import importers.exportIFC as exporter

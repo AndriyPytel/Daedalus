@@ -77,3 +77,79 @@ def test_the_table_has_a_row_per_task_with_its_six_components_and_the_means_unde
                                               "hosting", "openings", "adjacency", "min", "$"))
     assert "yes" in lines[2] and "no" in lines[3]
     assert lines[4].startswith("| mean") and "50%" in lines[4] and "15.0" in lines[4] and "2.00" in lines[4]
+
+
+def _edit_task(root, label="edit_02"):
+    folder = root / "edit" / label
+    folder.mkdir(parents=True)
+    (folder / "task.json").write_text(json.dumps({"text": "Remove Window_WIN3.",
+                                                  "inputs": {"input": "input.FCStd", "edit": "remove_window"}}))
+    (folder / "input.FCStd").write_bytes(b"x")
+    return folder
+
+
+def test_an_edit_task_is_its_text_and_has_no_plan(tmp_path):
+    assert lane.bim_task(str(_edit_task(tmp_path))) == ("Remove Window_WIN3.", [])
+
+
+def test_a_bim_edit_run_opens_the_document_and_leaves_consent_to_the_intent(monkeypatch):
+    cmd = _command(monkeypatch, domain="bim", base_document="/d/edit_02/input.FCStd")
+
+    assert cmd[cmd.index("--base-document") + 1] == "/d/edit_02/input.FCStd"
+    assert "--allow-user-objects" not in cmd
+
+
+def test_labels_are_drawn_from_the_edit_split(tmp_path, monkeypatch):
+    monkeypatch.setattr(lane, "BIM_DIR", str(tmp_path / "bim"))
+    (tmp_path / "bim").mkdir()
+    (tmp_path / "bim" / "split.json").write_text(json.dumps(
+        {"edit": {"validation": ["edit_01", "edit_11"], "test": []}}))
+
+    tasks = lane.sampled_bim_tasks("validation", 2, str(tmp_path), mode="edit")
+
+    assert sorted(label for label, _ in tasks) == ["edit_01", "edit_11"]
+    assert tasks[0][1].endswith("/edit/" + tasks[0][0])
+
+
+def test_the_edit_rows_score_against_the_reference_and_the_input(monkeypatch, tmp_path):
+    folder = _edit_task(tmp_path / "bim")
+    out = tmp_path / "out"
+    out.mkdir()
+    log = out / "edit_02.jsonl"
+    log.write_text("")
+    (out / "edit_02.ifc").write_text("saved")
+    (out / "state.json").write_text(json.dumps({"runs": {"edit_02/opus": {
+        "label": "edit_02", "log": str(log), "returncode": 0}}}))
+    monkeypatch.setattr(lane, "BIM_DIR", str(tmp_path / "bim"))
+    seen = []
+    sys.path.insert(0, os.path.join(ROOT, "harness"))
+    import bim_score
+    monkeypatch.setattr(bim_score, "score_edit", lambda *paths: seen.append(paths) or {"score": 0.5})
+
+    rows = lane.bim_rows(str(out), "edit")
+
+    assert seen == [(str(out / "edit_02.ifc"), str(folder / "reference.ifc"), str(folder / "input.ifc"))]
+    assert rows[0]["kind"] == "remove_window" and rows[0]["score"] == 0.5
+
+
+def test_the_task_folder_is_never_attached_to_a_run(monkeypatch, tmp_path):
+    folder = _edit_task(tmp_path / "bim")
+    seen = []
+
+    class Done:
+        returncode = 0
+
+    def fake_run_one(label, sheet, *args, **kwargs):
+        seen.append((sheet, kwargs.get("attach")))
+        open(args[4][:-len(".jsonl")] + ".ifc", "w").write("saved")
+        open(args[4], "w").close()
+        return Done()
+
+    monkeypatch.setattr(lane, "run_one", fake_run_one)
+    monkeypatch.setattr(lane, "watch", lambda *a, **k: "exited")
+
+    lane.sweep([("edit_02", str(folder))], ["opus"], "medium", 3.0, "unused", str(tmp_path / "out"),
+               1800, 1, False, "Claude (subscription)", None, domain="bim",
+               task_folders={"edit_02": str(folder)})
+
+    assert seen == [("", [])]

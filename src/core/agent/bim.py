@@ -14,6 +14,7 @@ FURNITURE = "IfcFurnishingElement"
 KINDS = {"Wall": "IfcWall", "Slab": "IfcSlab", "Door": "IfcDoor", "Window": "IfcWindow", "Space": "IfcSpace"}
 
 FACTS_CHECK = """
+import hashlib
 import json
 import os
 import tempfile
@@ -57,10 +58,25 @@ def length(wall):
 
 doc.recompute()
 objects = [o for o in doc.Objects if arch_type(o)]
+
+
+def solid(obj):
+    return obj.Shape if not obj.Shape.isNull() else None
+
+
+def signature(obj):
+    shape = solid(obj)
+    box = shape.BoundBox if shape else None
+    return (obj.Label, round(shape.Volume) if shape else 0,
+            tuple(round(v) for v in (box.XMin, box.YMin, box.ZMin, box.XMax, box.YMax, box.ZMax)) if box else (),
+            tuple(sorted(h.Label for h in getattr(obj, "Hosts", ()))))
+
+
 openings = [o for o in objects if kind(o) == "Window"]
 facts = {
+    "signature": hashlib.sha1(repr(sorted(map(signature, objects))).encode()).hexdigest(),
     "walls": [{"label": o.Label, "length": round(length(o), 1), "height": round(o.Height.Value, 1),
-               "width": round(o.Width.Value, 1), "volume": round(o.Shape.Volume) if not o.Shape.isNull() else 0}
+               "width": round(o.Width.Value, 1), "volume": round(solid(o).Volume) if solid(o) else 0}
               for o in objects if kind(o) == "Wall"],
     "slabs": [o.Label for o in objects if kind(o) == "Slab"],
     "doors": [{"label": o.Label, "hosts": hosts(o)} for o in openings if o.IfcType == "Door"],
@@ -83,7 +99,9 @@ except Exception as exc:
     facts["ifc"] = {"error": "%%s: %%s" %% (type(exc).__name__, exc)}
 finally:
     os.remove(path)
-print("FACTS " + json.dumps(facts, separators=(",", ":")))
+with open(FACTS_PATH, "w", encoding="utf-8") as out:
+    json.dump(facts, out)
+print("FACTS @")
 """ % {"types": (*KINDS.values(), FURNITURE)}
 
 
@@ -96,9 +114,13 @@ def library_index():
     return furniture.index(furniture.CACHE, furniture.http_get)
 
 
-def refusals(facts, index=library_index):
-    """What fails of the BIM Assertion, with the numbers, in the order the agent can mend them; empty where nothing fails; *index* answers the library's files and is called only where Equipment is in the flat."""
+def refusals(facts, index=library_index, unchanged=None):
+    """What fails of the BIM Assertion, with the numbers, in the order the agent can mend them; empty where nothing fails.
+    *index* answers the library's files, called only where Equipment is in the flat; *unchanged* is the signature of the Document an edit was given.
+    """
     found = []
+    if facts["signature"] == unchanged:
+        found.append("The Document is the one you were given. Make the change the intent asks for.")
     for kind, key in (("Wall", "walls"), ("Slab", "slabs"), ("Door", "doors"), ("Window", "windows"),
                       ("Space", "spaces")):
         if not facts[key]:
@@ -138,21 +160,39 @@ def refusals(facts, index=library_index):
     return found
 
 
-def unfinished(kernel):
-    """Why the Document is not a finished flat, one line per failing condition, or `None` where the Assertion holds."""
-    return domain_unfinished(kernel, FACTS_CHECK, lambda facts: refusals(facts, library_index), "BIM",
+def unfinished(kernel, unchanged=None):
+    """Why the Document is not a finished flat, one line per failing condition, or `None` where the Assertion holds; *unchanged* is as in `refusals`."""
+    return domain_unfinished(kernel, FACTS_CHECK, lambda facts: refusals(facts, library_index, unchanged), "BIM",
                              "The flat could not be measured: the Document would not recompute or export.")
 
 
-def opening(intent, attachments):
-    """The first message: the intent, then each floor plan, image or PDF, as a picture."""
-    blocks = [{"type": "text", "text": intent}]
+def describe(facts):
+    """One line naming what the Document holds, by the labels the intent speaks in."""
+    hosted = lambda items: ", ".join("%s in %s" % (o["label"], " and ".join(o["hosts"]) or "no wall") for o in items)
+    return ("The Document already holds this flat. Walls: %s. Doors: %s. Windows: %s. Spaces: %s. Not under a Building or Level: %s."
+            % (", ".join(w["label"] for w in facts["walls"]), hosted(facts["doors"]) or "none",
+               hosted(facts["windows"]) or "none", ", ".join(facts["spaces"]) or "none",
+               ", ".join(facts["unplaced"]) or "nothing"))
+
+
+def opening(intent, attachments, held=None):
+    """The first message: the intent, what an edit's Document *held*, then each floor plan, image or PDF, as a picture."""
+    blocks = [{"type": "text", "text": intent}] + ([{"type": "text", "text": held}] if held else [])
     return blocks + [block for block in map(_as_image, attachments) if block]
 
 
-def run_bim(intent, *, llm, kernel, tools, events, attachments=(), cancelled=None):
-    """Build the flat *intent* and the floor plan in *attachments* describe, under the BIM Domain."""
-    domain = Domain(BIM, read_prompt("bim.md"), opening(intent, list(attachments)), lambda: None, unfinished,
+def run_bim(intent, *, llm, kernel, tools, events, attachments=(), cancelled=None, edit=False):
+    """Build the flat *intent* and the floor plan in *attachments* describe; *edit* says the Document already holds the flat to change."""
+    system, held, check = read_prompt("bim.md"), None, unfinished
+    if edit:
+        base = measured(kernel)
+        system += "\n\n" + read_prompt("bim_edit.md")
+        if base:
+            held = describe(base)
+            check = lambda running: unfinished(running, base["signature"])
+        else:
+            check = lambda running: "The Document you were given could not be measured: it would not recompute or export."
+    domain = Domain(BIM, system, opening(intent, list(attachments), held), lambda: None, check,
                     furniture.calls(furniture.CACHE))
     return run_solo(intent, domain=domain, llm=llm, kernel=kernel, tools=tools, events=events,
                     attachments=attachments, cancelled=cancelled, max_turns=MAX_TURNS)

@@ -53,8 +53,16 @@ doc.recompute()
 """
 
 WALL = {"label": "Wall", "length": 4000.0, "height": 2600.0, "width": 200.0, "volume": 1.0}
-HOLDS = {"walls": [WALL], "slabs": ["Slab"], "doors": [{"label": "Door", "hosts": ["Wall"]}],
+HOLDS = {"signature": "base", "walls": [WALL], "slabs": ["Slab"], "doors": [{"label": "Door", "hosts": ["Wall"]}],
          "windows": [{"label": "Window", "hosts": ["Wall"]}], "spaces": ["Space"],
          "buildings": 1, "unplaced": [], "equipment": [], "ifc": {"schema": "IFC4", "IfcWall": 1, "IfcSlab": 1, "IfcDoor": 1,
                                                 "IfcWindow": 1, "IfcSpace": 1,
                                                 "IfcFurnishingElement": 0}}
+
+SECOND_WINDOW = """
+extra = opening("Open 1-pane", "Window", walls[1], App.Vector(3900, 1000, 800), 900, 1200)
+extra.Label = "Window_W2"
+level.Group = level.Group + [extra]
+doc.recompute()
+"""
+FLAT_WITH_TWO_WINDOWS = FLAT + SECOND_WINDOW

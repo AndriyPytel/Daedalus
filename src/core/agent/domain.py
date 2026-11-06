@@ -3,6 +3,8 @@ A Domain is what one loop builds under: a system prompt, the first message, the 
 The Part Domain is the reader's wiring, the Assembly Domain is `core.agent.assembly` and the BIM Domain is `core.agent.bim`; `PART` is the default wherever a caller names none.
 """
 import json
+import os
+import tempfile
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -29,12 +31,22 @@ class Domain:
 
 
 def measured(kernel, check):
-    """The facts *check* prints as its last `FACTS ` line, run in *kernel* with the Document rolled back, or `None` where the measuring itself failed."""
-    result = kernel.check(check, exploring=True)
-    for line in reversed((result.stdout or "").splitlines()):
-        if line.startswith("FACTS "):
-            return json.loads(line[len("FACTS "):])
-    return None
+    """The facts *check* prints as its last `FACTS ` line, or `None` where the measuring itself failed.
+    A line `FACTS @` says they are in the JSON file *check* wrote to `FACTS_PATH`, which the kernel's 4000 characters of output could not hold.
+    """
+    handle, path = tempfile.mkstemp(suffix=".json")
+    os.close(handle)
+    try:
+        result = kernel.check("FACTS_PATH = %r\n" % path + check, exploring=True)
+        for line in reversed((result.stdout or "").splitlines()):
+            if line == "FACTS @":
+                with open(path, encoding="utf-8") as facts:
+                    return json.load(facts)
+            if line.startswith("FACTS "):
+                return json.loads(line[len("FACTS "):])
+        return None
+    finally:
+        os.remove(path)
 
 
 def unfinished(kernel, check, refusals, name, unmeasurable):

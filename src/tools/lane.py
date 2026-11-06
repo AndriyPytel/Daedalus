@@ -132,7 +132,7 @@ def run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
     A task with no sheet — `--task bolt-nut=` — is a run of the Intent alone.
     An editing run names *base_step* and the renders in *attach*; *domain* is `--domain`, left off for Part, and an Assembly run saves an FCStd; *base_document* is the Document an editing Assembly run opens, whose objects the run may change.
     """
-    part, _, _ = _domains()
+    part, _, bim = _domains()
     domain = domain or part
     suffix = _saved_suffix(domain)
     save = log[: -len(".jsonl")] + suffix if log.endswith(".jsonl") else log + suffix
@@ -150,7 +150,9 @@ def run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
     if domain != part:
         cmd += ["--domain", domain]
     if base_document:
-        cmd += ["--base-document", base_document, "--allow-user-objects"]
+        cmd += ["--base-document", base_document]
+        if domain != bim:
+            cmd.append("--allow-user-objects")
     return subprocess.Popen(cmd)
 
 
@@ -349,7 +351,7 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
                     document = os.path.join(task_folders[label], "input.FCStd")
                     if os.path.isfile(document):
                         kwargs["base_document"] = document
-                process = run_one(label, sheet, model, effort, budget_usd, log, run_intent, provider,
+                process = run_one(label, "" if label in task_folders else sheet, model, effort, budget_usd, log, run_intent, provider,
                                   **kwargs)
                 outcome = watch(process, log, hang_seconds, run_seconds)
                 refusal = quota_refusal(log) if outcome == "exited" else None
@@ -616,14 +618,14 @@ BIM_COMPONENTS = ("counts", "walls", "spaces", "hosting", "openings", "adjacency
 
 
 def bim_task(folder):
-    """The Intent and the absolute path of the floor plan of the BIM benchmark task in *folder*."""
+    """The Intent and the absolute path of the floor plan of the BIM benchmark task in *folder*; an edit task has none."""
     task = read_task(folder)
-    return task["text"], [os.path.join(folder, task["inputs"]["plan"])]
+    return task["text"], [os.path.join(folder, task["inputs"]["plan"])] if "plan" in task["inputs"] else []
 
 
-def sampled_bim_tasks(split, count, out, labels_file=None):
-    """The `(label, folder)` create tasks of *split* in the BIM benchmark's `split.json`, drawn or read back like `sampled_tasks`."""
-    return _sample(BIM_DIR, BIM_MODE, split, count, out, labels_file)
+def sampled_bim_tasks(split, count, out, labels_file=None, mode=BIM_MODE):
+    """The `(label, folder)` tasks of *split* under *mode* in the BIM benchmark's `split.json`, drawn or read back like `sampled_tasks`."""
+    return _sample(BIM_DIR, mode, split, count, out, labels_file)
 
 
 def bim_table(rows):
@@ -638,13 +640,19 @@ def bim_table(rows):
                                     for name in BIM_COMPONENTS), minutes, usd])
 
 
-def bim_rows(out):
-    """The `bim_table` rows of the sweep under *out*, the Score from `harness/bim_score` against the task's reference."""
+def bim_rows(out, mode=BIM_MODE):
+    """The `bim_table` rows of the sweep under *out*, scored against the task's reference.
+    An edit's score is the gain over its input, and its row names the kind of edit.
+    """
     sys.path.insert(0, os.path.join(os.path.dirname(ROOT), "harness"))
     import bim_score
 
     def scored(run, saved):
-        reference = os.path.join(BIM_DIR, BIM_MODE, run["label"], "reference.ifc")
+        folder = os.path.join(BIM_DIR, mode, run["label"])
+        reference = os.path.join(folder, "reference.ifc")
+        if mode == EDIT:
+            gain = bim_score.score_edit(saved, reference, os.path.join(folder, "input.ifc")) if saved else {"score": 0.0}
+            return {"score": gain["score"], "kind": read_task(folder)["inputs"]["edit"]}
         components = (bim_score.score(saved, reference) if saved
                       else dict.fromkeys(("score", *BIM_COMPONENTS), 0.0))
         return {"score": components["score"], "components": components}
@@ -877,7 +885,7 @@ def main():
         return 0
 
     if args.report and args.domain == bim:
-        text = bim_table(bim_rows(args.out)) + "\n"
+        text = (edit_table(bim_rows(args.out, EDIT)) if args.mode == EDIT else bim_table(bim_rows(args.out))) + "\n"
         print(text)
         if args.save:
             with open(args.save, "w", encoding="utf-8") as handle:
@@ -917,7 +925,8 @@ def main():
         tasks = baseline_tasks()
     elif args.domain == bim and (args.sample or args.labels):
         os.makedirs(args.out, exist_ok=True)
-        tasks = sampled_bim_tasks(args.split, args.sample, args.out, args.labels)
+        tasks = sampled_bim_tasks(args.split, args.sample, args.out, args.labels,
+                                  EDIT if args.mode == EDIT else BIM_MODE)
         args.task_folder = ["%s=%s" % task for task in tasks]
     elif args.domain == assembly and (args.sample or args.labels):
         os.makedirs(args.out, exist_ok=True)

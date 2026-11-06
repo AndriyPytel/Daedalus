@@ -15,7 +15,7 @@ import tempfile
 
 from core import events, freecad_apply, model_catalog
 from core import settings as _settings
-from core.arch import arch_type, export_ifc
+from core.arch import arch_type, export_ifc, named_in
 from core import furniture
 from core.equipment import write_attribution
 from core.freecad_apply import ApplyPipeline, active_document, build_registry
@@ -249,15 +249,25 @@ class Client:
             self.kernel = kernel
 
         self._llm = llm
+        self._intent = None
+        self._confirm = confirm or (lambda kinds: False)
         self.events = EventStream()
         self.session = Session()
         self.pipeline = ApplyPipeline(
             document=self.document,
             worker=self.kernel,
             dispatch=self.dispatch,
-            confirm=confirm or (lambda kinds: False),
+            confirm=self._asked,
             events=self.events)
         self._stop = False
+
+    def _asked(self, kinds):
+        """Consent to *kinds*: the confirm callable's yes, or, in an edit of a flat, a deletion of what the intent names."""
+        if self._confirm(kinds) is True:
+            return True
+        names = kinds.get("delete")
+        return bool(self._intent and names
+                    and self.dispatch(lambda: named_in(self._intent, self.document, names)))
 
     @property
     def llm(self):
@@ -357,6 +367,7 @@ class Client:
             raise ValueError("the agent works through a kernel")
         if domain not in (PART, ASSEMBLY, BIM):
             raise ValueError("no such Domain: %r" % domain)
+        self._intent = None
         self.pipeline.events = self.events
         tools = build_registry(document=lambda: self.document, pipeline=self.pipeline,
                                dispatch=self.dispatch)
@@ -371,8 +382,9 @@ class Client:
                                     build_part=self.part_builder(folder, cancelled, budget_usd),
                                     edit=base)
         if domain == BIM:
+            self._intent = prompt if base else None
             return run_bim(prompt, llm=self.llm, kernel=self.kernel, tools=tools, events=self.events,
-                           attachments=list(attachments), cancelled=cancelled)
+                           attachments=list(attachments), cancelled=cancelled, edit=base)
         return run_reader(prompt, llm=self.llm, kernel=self.kernel, tools=tools,
                           events=self.events, attachments=list(attachments),
                           cancelled=cancelled, base=base)
