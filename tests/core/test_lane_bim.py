@@ -141,8 +141,8 @@ def test_the_task_folder_is_never_attached_to_a_run(monkeypatch, tmp_path):
 
     def fake_run_one(label, sheet, *args, **kwargs):
         seen.append((sheet, kwargs.get("attach")))
-        open(args[4][:-len(".jsonl")] + ".ifc", "w").write("saved")
-        open(args[4], "w").close()
+        open(args[3][:-len(".jsonl")] + ".ifc", "w").write("saved")
+        open(args[3], "w").close()
         return Done()
 
     monkeypatch.setattr(lane, "run_one", fake_run_one)
@@ -153,3 +153,62 @@ def test_the_task_folder_is_never_attached_to_a_run(monkeypatch, tmp_path):
                task_folders={"edit_02": str(folder)})
 
     assert seen == [("", [])]
+
+
+def _storeys_task(root, label="storeys_02"):
+    folder = root / "storeys" / label
+    folder.mkdir(parents=True)
+    (folder / "plan.png").write_bytes(b"png")
+    (folder / "task.json").write_text(json.dumps({"text": "Model a building of 3 storeys of 2.60 m each.",
+                                                  "inputs": {"plan": "plan.png"}}))
+    return folder
+
+
+def test_labels_are_drawn_from_the_storeys_split(tmp_path, monkeypatch):
+    monkeypatch.setattr(lane, "BIM_DIR", str(tmp_path / "bim"))
+    (tmp_path / "bim").mkdir()
+    (tmp_path / "bim" / "split.json").write_text(json.dumps(
+        {"storeys": {"validation": ["storeys_01", "storeys_11"], "test": []}}))
+
+    tasks = lane.sampled_bim_tasks("validation", 2, str(tmp_path), mode="storeys")
+
+    assert sorted(label for label, _ in tasks) == ["storeys_01", "storeys_11"]
+    assert tasks[0][1].endswith("/storeys/" + tasks[0][0])
+
+
+def test_a_storeys_task_is_its_text_and_its_plan(tmp_path):
+    text, attach = lane.bim_task(str(_storeys_task(tmp_path)))
+
+    assert text.startswith("Model a building of 3 storeys") and attach[0].endswith("plan.png")
+
+
+def test_the_storeys_table_has_the_storeys_mean_and_the_stairs_factor_per_task():
+    rows = [{"label": "a", "passed": True, "score": 0.4, "components": {"storeys": 0.5, "stairs": 0.8}, "minutes": 10.0, "usd": 1.0},
+            {"label": "b", "passed": False, "score": 0.0, "components": {"storeys": 0.0, "stairs": 0.0}, "minutes": 20.0, "usd": 3.0}]
+
+    lines = lane.bim_table(rows, lane.STOREYS_COMPONENTS).splitlines()
+
+    assert all(name in lines[0] for name in ("task", "Assertion pass", "score", "storeys", "stairs", "min", "$"))
+    assert "0.800" in lines[2] and lines[4].startswith("| mean") and "0.400" in lines[4] and "0.2000" in lines[4]
+
+
+def test_the_storeys_rows_score_the_saved_building_against_the_reference(monkeypatch, tmp_path):
+    folder = _storeys_task(tmp_path / "bim")
+    out = tmp_path / "out"
+    out.mkdir()
+    log = out / "storeys_02.jsonl"
+    log.write_text("")
+    (out / "storeys_02.ifc").write_text("saved")
+    (out / "state.json").write_text(json.dumps({"runs": {"storeys_02/opus": {
+        "label": "storeys_02", "log": str(log), "returncode": 0}}}))
+    monkeypatch.setattr(lane, "BIM_DIR", str(tmp_path / "bim"))
+    seen = []
+    sys.path.insert(0, os.path.join(ROOT, "harness"))
+    import bim_score
+    monkeypatch.setattr(bim_score, "score_storeys",
+                        lambda *paths: seen.append(paths) or {"score": 0.3, "storeys": 0.6, "stairs": 0.5})
+
+    rows = lane.bim_rows(str(out), "storeys")
+
+    assert seen == [(str(out / "storeys_02.ifc"), str(folder / "reference.ifc"))]
+    assert rows[0]["score"] == 0.3 and rows[0]["components"] == {"storeys": 0.6, "stairs": 0.5}

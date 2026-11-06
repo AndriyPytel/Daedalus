@@ -37,6 +37,11 @@ SPLITTABLE = 14.0
 FACE_TOLERANCE = 0.03
 EDIT_ORDER = ("add_door", "remove_window", "resize_window", "move_wall", "split_room")
 PNG_DPI = 100
+STAIR_WIDTH = 1.0
+RISER = 0.19
+TREAD = 0.25
+STAIR_MARGIN = 0.1
+GRID = 0.05
 
 
 def parse_wkt(text):
@@ -518,6 +523,61 @@ def create_text(spec):
     )
 
 
+def storey_count(number):
+    return 2 + number % 3
+
+
+def _stair_site(spec, steps):
+    """(space, start, direction, length) of the straight stair in the largest space that holds one wholly, centred on the positions where it fits."""
+    length = (steps - 1) * TREAD
+    reach, half = length + STAIR_MARGIN, STAIR_WIDTH / 2 + STAIR_MARGIN
+    for space in sorted(spec["spaces"], key=lambda s: -_area(s["poly"])):
+        xs, ys = [p[0] for p in space["poly"]], [p[1] for p in space["poly"]]
+        for direction in ((1, 0), (0, 1)):
+            fits = []
+            for i in range(round(min(xs) / GRID), round(max(xs) / GRID) + 1):
+                for j in range(round(min(ys) / GRID), round(max(ys) / GRID) + 1):
+                    x, y = i * GRID, j * GRID
+                    dx, dy = direction
+                    corners = [(x - dx * STAIR_MARGIN + dy * h * k, y - dy * STAIR_MARGIN - dx * h * k) for h in (half,) for k in (-1, 1)]
+                    corners += [(a + dx * reach, b + dy * reach) for a, b in corners]
+                    if all(_inside(space["poly"], c) for c in corners):
+                        fits.append((x, y))
+            if fits:
+                cx, cy = sum(f[0] for f in fits) / len(fits), sum(f[1] for f in fits) / len(fits)
+                x, y = min(fits, key=lambda f: (f[0] - cx) ** 2 + (f[1] - cy) ** 2)
+                return space["id"], [round(x, 3), round(y, 3)], list(direction), length
+    raise ValueError("no space holds a stair")
+
+
+def storeys_spec(spec, count):
+    """*spec* repeated for *count* storeys, with one straight stair in each gap, in the same place, inside the largest space that holds one."""
+    spec = _copy(spec)
+    steps = math.ceil(spec["storey_height"] / RISER - 1e-9)
+    space, start, direction, length = _stair_site(spec, steps)
+    spec["storeys"] = count
+    spec["stairs"] = [
+        {"id": f"T{n}", "from": n, "space": space, "start": start, "dir": direction, "len": round(length, 3), "w": STAIR_WIDTH, "steps": steps}
+        for n in range(count - 1)
+    ]
+    return spec
+
+
+def storeys_text(spec):
+    stair = spec["stairs"][0]
+    space = next(s for s in spec["spaces"] if s["id"] == stair["space"])
+    axis = "x" if stair["dir"] == [1, 0] else "y"
+    return (
+        f"Model a building of {spec['storeys']} storeys of {spec['storey_height']:.2f} m each from the attached floor plan (plan.png, axes in metres), "
+        "the plan of every storey: each storey repeats the flat, wall for wall, door for door, window for window and room for room, as native FreeCAD "
+        "Arch objects (Wall, Slab, Door, Window and Space) under one Building with a Level per storey, the first at elevation 0, each door and window "
+        f"hosted in its wall, and export the building as IFC4. Walls are about {_typical_thickness(spec):.2f} m thick; the slab of each storey is 0.20 m thick "
+        f"under its walls. Between each two storeys is a straight stair in Space_{stair['space']} ({space['name']}), {stair['w']:.2f} m wide, {stair['steps']} steps, "
+        f"starting at ({stair['start'][0]:.2f}, {stair['start'][1]:.2f}) m and running {stair['len']:.2f} m along +{axis}, centred on that line; "
+        "it starts on the lower Level's floor and its top reaches the upper Level's floor."
+    )
+
+
 LICENCES = """
 ## Source and licences
 
@@ -572,13 +632,41 @@ def write_tasks(chosen, out=OUT):
     return names
 
 
+def write_storeys(out=OUT):
+    """A storeys task per create task in *out*, the same flat stacked, with the create split carried over; the create and edit tasks are left as they are."""
+    directory = out / "storeys"
+    if directory.exists():
+        shutil.rmtree(directory)
+    created = json.loads((out / "split.json").read_text())
+    jobs, names = [], {}
+    for source in sorted((out / "create").iterdir()):
+        meta = json.loads((source / "task.json").read_text())
+        number = int(source.name.split("_")[1])
+        name = f"storeys_{number:02d}"
+        spec = storeys_spec(meta["reference_spec"], storey_count(number))
+        folder = directory / name
+        folder.mkdir(parents=True)
+        shutil.copy(source / "plan.png", folder / "plan.png")
+        (folder / "task.json").write_text(json.dumps(_task("storeys", name, meta["source_id"], storeys_text(spec), {"plan": "plan.png"}, spec), indent=1))
+        jobs.append((spec, folder / "reference.FCStd"))
+        names[source.name] = name
+    bim_score.build(jobs)
+    splits = json.loads((out / "split.json").read_text())
+    splits["storeys"] = {part: [names[n] for n in created["create"][part]] for part in ("test", "validation")}
+    (out / "split.json").write_text(json.dumps(splits, indent=1))
+    return sorted(names.values())
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["candidates", "build"])
+    parser.add_argument("command", choices=["candidates", "build", "storeys"])
     parser.add_argument("--parquet", default=str(CACHE / MIRROR.rsplit("/", 1)[1]))
     args = parser.parse_args()
     if args.command == "candidates":
         select_candidates(args.parquet, CACHE / "candidates.json")
+        return
+    if args.command == "storeys":
+        print(len(write_storeys()))
         return
     chosen = assign(builds_cleanly(json.loads((CACHE / "candidates.json").read_text())))
     names = write_tasks(chosen)

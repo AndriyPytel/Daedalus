@@ -615,6 +615,8 @@ def assembly_rows(out, mode=ASSEMBLY_MODE):
 BIM_DIR = os.path.join(TEST_DATA_DIR, "bim")
 BIM_MODE = "create"
 BIM_COMPONENTS = ("counts", "walls", "spaces", "hosting", "openings", "adjacency")
+STOREYS = "storeys"
+STOREYS_COMPONENTS = ("storeys", "stairs")
 
 
 def bim_task(folder):
@@ -628,21 +630,21 @@ def sampled_bim_tasks(split, count, out, labels_file=None, mode=BIM_MODE):
     return _sample(BIM_DIR, mode, split, count, out, labels_file)
 
 
-def bim_table(rows):
-    """One row per task of *rows* (label, passed, score, its six components, minutes, usd) and the means under them."""
+def bim_table(rows, components=BIM_COMPONENTS):
+    """One row per task of *rows* (label, passed, score, its *components*, minutes, usd) and the means under them."""
     passed, score, minutes, usd = _means(rows)
     count = len(rows) or 1
-    return _table(["task", "Assertion pass", "score", *BIM_COMPONENTS, "min", "$"], rows,
+    return _table(["task", "Assertion pass", "score", *components, "min", "$"], rows,
                   lambda row: [row["label"], "yes" if row["passed"] else "no", "%.4f" % row["score"],
-                               *("%.3f" % row["components"][name] for name in BIM_COMPONENTS),
+                               *("%.3f" % row["components"][name] for name in components),
                                "%.1f" % row["minutes"], "%.2f" % row["usd"]],
                   [passed, score, *("%.3f" % (sum(r["components"][name] for r in rows) / count)
-                                    for name in BIM_COMPONENTS), minutes, usd])
+                                    for name in components), minutes, usd])
 
 
 def bim_rows(out, mode=BIM_MODE):
     """The `bim_table` rows of the sweep under *out*, scored against the task's reference.
-    An edit's score is the gain over its input, and its row names the kind of edit.
+    An edit's score is the gain over its input, and its row names the kind of edit; a storeys task's is the storeys mean times the stairs factor.
     """
     sys.path.insert(0, os.path.join(os.path.dirname(ROOT), "harness"))
     import bim_score
@@ -653,6 +655,10 @@ def bim_rows(out, mode=BIM_MODE):
         if mode == EDIT:
             gain = bim_score.score_edit(saved, reference, os.path.join(folder, "input.ifc")) if saved else {"score": 0.0}
             return {"score": gain["score"], "kind": read_task(folder)["inputs"]["edit"]}
+        if mode == STOREYS:
+            components = (bim_score.score_storeys(saved, reference) if saved
+                          else dict.fromkeys(("score", *STOREYS_COMPONENTS), 0.0))
+            return {"score": components["score"], "components": {k: components[k] for k in STOREYS_COMPONENTS}}
         components = (bim_score.score(saved, reference) if saved
                       else dict.fromkeys(("score", *BIM_COMPONENTS), 0.0))
         return {"score": components["score"], "components": components}
@@ -872,7 +878,7 @@ def main():
                         help="The Domain every run builds under; assembly takes --assembly-task or --sample/--labels over the from_parts tasks, bim --sample/--labels over the create tasks")
     parser.add_argument("--assembly-task", dest="task_folder", action="append", default=[],
                         help="label=/path/to/task-folder, repeatable; the assembly benchmark task whose text and parts the run is given")
-    parser.add_argument("--mode", choices=(FROM_PARTS, FROM_SCRATCH, EDIT), default=ASSEMBLY_MODE,
+    parser.add_argument("--mode", choices=(FROM_PARTS, FROM_SCRATCH, EDIT, STOREYS), default=ASSEMBLY_MODE,
                         help="The assembly benchmark mode --sample, --labels and --report read; from_scratch gives the text and graph and builds every part, edit opens input.FCStd and changes it")
     parser.add_argument("--sample", type=int, help="Draw this many random labels of --split from test-data/split.json")
     parser.add_argument("--split", choices=SPLITS, default="validation")
@@ -885,7 +891,12 @@ def main():
         return 0
 
     if args.report and args.domain == bim:
-        text = (edit_table(bim_rows(args.out, EDIT)) if args.mode == EDIT else bim_table(bim_rows(args.out))) + "\n"
+        if args.mode == EDIT:
+            text = edit_table(bim_rows(args.out, EDIT)) + "\n"
+        elif args.mode == STOREYS:
+            text = bim_table(bim_rows(args.out, STOREYS), STOREYS_COMPONENTS) + "\n"
+        else:
+            text = bim_table(bim_rows(args.out)) + "\n"
         print(text)
         if args.save:
             with open(args.save, "w", encoding="utf-8") as handle:
@@ -926,7 +937,7 @@ def main():
     elif args.domain == bim and (args.sample or args.labels):
         os.makedirs(args.out, exist_ok=True)
         tasks = sampled_bim_tasks(args.split, args.sample, args.out, args.labels,
-                                  EDIT if args.mode == EDIT else BIM_MODE)
+                                  args.mode if args.mode in (EDIT, STOREYS) else BIM_MODE)
         args.task_folder = ["%s=%s" % task for task in tasks]
     elif args.domain == assembly and (args.sample or args.labels):
         os.makedirs(args.out, exist_ok=True)

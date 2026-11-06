@@ -1,6 +1,6 @@
 """
 The BIM Domain: the agent writes FreeCAD Python against the Arch workbench, and `finish` is refused until the Document holds one flat as native BIM objects.
-That is at least one Wall, Slab, Door, Window and Space, every Door and Window hosted by a Wall, everything under a Building or Level, no Wall of zero length, height or width, and an export to IFC4 that ifcopenshell reopens with each of those kinds in it, and every piece of Equipment having an allowed Source and a Level.
+That is at least one Wall, Slab, Door, Window and Space, each Door and Window hosted by a Wall, everything under a Building or Level, no Wall of zero size, an IFC4 export ifcopenshell reopens, and every piece of Equipment with an allowed Source and a Level; a Document of two or more Levels also needs one Building over them, each Level holding Walls and a Slab, and a Stairs between each two inside the lower Level's walls.
 The facts are measured in the kernel and judged here.
 """
 from core import furniture
@@ -10,6 +10,8 @@ from core.loop.prompt import _as_image
 from core.prompts import read_prompt
 
 MAX_TURNS = 80
+LEVEL_APART = 1.0
+STAIRS_TOLERANCE = 20.0
 FURNITURE = "IfcFurnishingElement"
 KINDS = {"Wall": "IfcWall", "Slab": "IfcSlab", "Door": "IfcDoor", "Window": "IfcWindow", "Space": "IfcSpace"}
 
@@ -72,6 +74,29 @@ def signature(obj):
             tuple(sorted(h.Label for h in getattr(obj, "Hosts", ()))))
 
 
+def members(level):
+    found = []
+    for child in level.Group:
+        found.append(child)
+        if arch_type(child) == "BuildingPart":
+            found += members(child)
+    return found
+
+
+def box_of(shapes):
+    boxes = [shape.BoundBox for shape in shapes if shape is not None]
+    if not boxes:
+        return None
+    return [round(min(b.XMin for b in boxes), 1), round(min(b.YMin for b in boxes), 1),
+            round(max(b.XMax for b in boxes), 1), round(max(b.YMax for b in boxes), 1)]
+
+
+def top(obj):
+    shape = solid(obj)
+    return round(shape.BoundBox.ZMax + obj.RiserHeight.Value, 1) if shape else 0.0
+
+
+levels = [o for o in objects if kind(o) == "BuildingPart" and o.IfcType == "Building Storey"]
 openings = [o for o in objects if kind(o) == "Window"]
 facts = {
     "signature": hashlib.sha1(repr(sorted(map(signature, objects))).encode()).hexdigest(),
@@ -84,6 +109,14 @@ facts = {
     "spaces": [o.Label for o in objects if kind(o) == "Space"],
     "buildings": len([o for o in objects if kind(o) == "BuildingPart" and o.IfcType == "Building"]),
     "unplaced": [o.Label for o in objects if unplaced(o)],
+    "levels": [{"label": o.Label, "elevation": round(o.Placement.Base.z, 1),
+                "walls": len([m for m in members(o) if kind(m) == "Wall"]),
+                "slabs": len([m for m in members(o) if kind(m) == "Slab"]),
+                "building": placed(o, ("Building",)),
+                "box": box_of(solid(m) for m in members(o) if kind(m) == "Wall")} for o in levels],
+    "stairs": [{"label": o.Label, "bottom": round(solid(o).BoundBox.ZMin, 1) if solid(o) else 0.0, "top": top(o),
+                "level": placed(o, ("Building Storey",)), "box": box_of([solid(o)])}
+               for o in objects if kind(o) == "Stairs"],
     "equipment": [{"label": o.Label, "source": short(source(o)), "level": placed(o, ("Building Storey",))}
                   for o in objects if kind(o) == "Equipment"],
 }
@@ -114,9 +147,56 @@ def library_index():
     return furniture.index(furniture.CACHE, furniture.http_get)
 
 
+def building_refusals(facts):
+    """What fails of the multi-storey Assertion over the Levels and Stairs of *facts*."""
+    found = []
+    if facts["buildings"] > 1:
+        found.append("The Document holds %d Buildings. Put every Level under one Arch.makeBuilding()." % facts["buildings"])
+    levels = sorted(facts["levels"], key=lambda level: level["elevation"])
+    for level in levels:
+        if not level["building"]:
+            found.append("Level %s is not under the Building. Add it to the Building's Group." % level["label"])
+        for key, kind in (("walls", "Wall"), ("slabs", "Slab")):
+            if not level[key]:
+                found.append("Level %s holds no %s. Add it to the Level's Group." % (level["label"], kind))
+    for lower, upper in zip(levels, levels[1:]):
+        if upper["elevation"] - lower["elevation"] <= LEVEL_APART:
+            found.append("Level %s is at elevation %g mm, the same as Level %s. Set the Level's Placement.Base.z."
+                         % (upper["label"], upper["elevation"], lower["label"]))
+    for stair in facts["stairs"]:
+        if not stair["level"]:
+            found.append("Stairs %s is not under a Level. Add it to a Level's Group." % stair["label"])
+    matched = set()
+    for lower, upper in zip(levels, levels[1:]):
+        between = [s for s in facts["stairs"] if abs(s["bottom"] - lower["elevation"]) <= STAIRS_TOLERANCE
+                   and abs(s["top"] - upper["elevation"]) <= STAIRS_TOLERANCE]
+        matched.update(s["label"] for s in between)
+        if not between:
+            found.append("No Stairs runs from Level %s (%g mm) up to Level %s (%g mm): its bottom is at the lower Level "
+                         "and its top, the highest tread plus one riser, within %g mm of the upper one."
+                         % (lower["label"], lower["elevation"], upper["label"], upper["elevation"], STAIRS_TOLERANCE))
+        elif len(between) > 1:
+            found.append("%s run from Level %s up to Level %s. Keep one."
+                         % (" and ".join(s["label"] for s in between), lower["label"], upper["label"]))
+        for stair in between:
+            if lower["box"] is None or not _within(stair["box"], lower["box"]):
+                found.append("Stairs %s lies outside the walls of Level %s. Place its footprint inside them."
+                             % (stair["label"], lower["label"]))
+    for stair in facts["stairs"]:
+        if stair["label"] not in matched:
+            found.append("Stairs %s (bottom %g mm, top %g mm) joins no two consecutive Levels."
+                         % (stair["label"], stair["bottom"], stair["top"]))
+    return found
+
+
+def _within(inner, outer):
+    return inner[0] >= outer[0] and inner[1] >= outer[1] and inner[2] <= outer[2] and inner[3] <= outer[3]
+
+
 def refusals(facts, index=library_index, unchanged=None):
     """What fails of the BIM Assertion, with the numbers, in the order the agent can mend them; empty where nothing fails.
     *index* answers the library's files, called only where Equipment is in the flat; *unchanged* is the signature of the Document an edit was given.
+    A Document of two or more Levels also answers the multi-storey conditions.
     """
     found = []
     if facts["signature"] == unchanged:
@@ -139,6 +219,8 @@ def refusals(facts, index=library_index, unchanged=None):
         for unhosted in (o for o in facts[kind] if not o["hosts"]):
             found.append("%s %s has no host Wall. Set its Hosts to the Wall it sits in."
                          % (kind[:-1].capitalize(), unhosted["label"]))
+    if len(facts["levels"]) > 1:
+        found += building_refusals(facts)
     entries = index() if facts["equipment"] else ()
     for item in facts["equipment"]:
         if not furniture.sourced(item["source"], entries):
@@ -183,13 +265,14 @@ def opening(intent, attachments, held=None):
 
 def run_bim(intent, *, llm, kernel, tools, events, attachments=(), cancelled=None, edit=False):
     """Build the flat *intent* and the floor plan in *attachments* describe; *edit* says the Document already holds the flat to change."""
-    system, held, check = read_prompt("bim.md"), None, unfinished
+    system, held = read_prompt("bim.md"), None
+    check = unfinished
     if edit:
         base = measured(kernel)
         system += "\n\n" + read_prompt("bim_edit.md")
         if base:
             held = describe(base)
-            check = lambda running: unfinished(running, base["signature"])
+            check = lambda running: unfinished(running, unchanged=base["signature"])
         else:
             check = lambda running: "The Document you were given could not be measured: it would not recompute or export."
     domain = Domain(BIM, system, opening(intent, list(attachments), held), lambda: None, check,

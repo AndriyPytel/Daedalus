@@ -15,6 +15,8 @@ WALL_MATCH = 0.75
 WALL_SHIFT = 0.25
 SPACE_MATCH = 1.5
 OPENING_MATCH = 0.75
+LEVEL_MATCH = 0.5
+STAIR_MATCH = 0.3
 COMPONENTS = ("counts", "walls", "spaces", "hosting", "openings", "adjacency")
 
 
@@ -32,17 +34,21 @@ def _distance(one, other):
     return ((one[0] - other[0]) ** 2 + (one[1] - other[1]) ** 2) ** 0.5
 
 
-def _match(reference, candidate, limit):
-    """Greedy nearest-first pairs {reference index: candidate index} of centres within limit."""
-    pairs = sorted(
-        (_distance(r, c), i, j) for i, r in enumerate(reference) for j, c in enumerate(candidate) if _distance(r, c) <= limit
-    )
+def _nearest(pairs):
+    """Greedy nearest-first {reference index: candidate index} of the (distance, reference index, candidate index) *pairs*."""
     found, used = {}, set()
-    for _, i, j in pairs:
+    for _, i, j in sorted(pairs):
         if i not in found and j not in used:
             found[i] = j
             used.add(j)
     return found
+
+
+def _match(reference, candidate, limit):
+    """Greedy nearest-first pairs {reference index: candidate index} of centres within limit."""
+    return _nearest(
+        (_distance(r, c), i, j) for i, r in enumerate(reference) for j, c in enumerate(candidate) if _distance(r, c) <= limit
+    )
 
 
 def _ratio(candidate, reference):
@@ -127,3 +133,35 @@ def edit_combine(candidate, reference, original):
 def score_edit(candidate_path, reference_path, original_path):
     candidate, reference, original = measure([candidate_path, reference_path, original_path])
     return edit_combine(candidate, reference, original)
+
+
+def _stairs(candidate, reference):
+    """The share of stairs, matched by position within STAIR_MATCH and by the level they start at, weighted by how near their rise is."""
+    ref, cand = reference["stairs"], candidate["stairs"]
+    pairs = _nearest(
+        (_distance(r["c"], c["c"]), i, j) for i, r in enumerate(ref) for j, c in enumerate(cand)
+        if _distance(r["c"], c["c"]) <= STAIR_MATCH and abs(r["z"] - c["z"]) <= LEVEL_MATCH
+    )
+    return _share(sum(_ratio(cand[j]["rise"], ref[i]["rise"]) for i, j in pairs.items()), len(ref), len(cand))
+
+
+def combine_storeys(candidate, reference):
+    """Score a building: each reference Level is matched to the candidate Level nearest in elevation, within LEVEL_MATCH, and scored as a flat.
+    `storeys` is their mean over the larger count of Levels, `stairs` the share of reference stairs matched, and `score` their product.
+    """
+    if not candidate["opens"]:
+        return {"score": 0.0, "storeys": 0.0, "stairs": 0.0}
+    levels = candidate["storeys"] or [{"elevation": 0.0, **candidate}]
+    pairs = _nearest(
+        (abs(r["elevation"] - c["elevation"]), i, j) for i, r in enumerate(reference["storeys"]) for j, c in enumerate(levels)
+        if abs(r["elevation"] - c["elevation"]) <= LEVEL_MATCH
+    )
+    total = sum(combine(levels[j], reference["storeys"][i])["score"] for i, j in pairs.items())
+    storeys = _share(total, len(reference["storeys"]), len(levels))
+    stairs = _stairs(candidate, reference)
+    return {"score": storeys * stairs, "storeys": storeys, "stairs": stairs}
+
+
+def score_storeys(candidate_path, reference_path):
+    candidate, reference = measure([candidate_path, reference_path])
+    return combine_storeys(candidate, reference)

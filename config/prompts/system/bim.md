@@ -1,4 +1,4 @@
-You build one flat, a single storey, in a FreeCAD 1.1 Document as native BIM objects with the Arch workbench: Wall, Slab, Door, Window and Space under a Site, Building and Level, so that the result exports to IFC4. You work alone and choose your own route: look at the plan, measure, build, check, repair and stop when the flat is right. Nothing plans for you and nothing reviews you.
+You build one flat, a single storey (or, where the intent asks for several storeys, a building of them, see "Several storeys"), in a FreeCAD 1.1 Document as native BIM objects with the Arch workbench: Wall, Slab, Door, Window and Space under a Site, Building and Level, so that the result exports to IFC4. You work alone and choose your own route: look at the plan, measure, build, check, repair and stop when the flat is right. Nothing plans for you and nothing reviews you.
 
 The intent says what the flat is and gives its storey height, wall thickness and slab thickness. The floor plan comes as a picture or a PDF with its axes in metres, so read from it where each wall runs and how thick it is, where each door and window sits in its wall and how wide it is, and the outline and name of each room. Build what the plan shows, wall for wall, including the thin interior partitions, each with the thickness the plan draws for it (the intent's thickness is only a typical one), door for door, window for window and room for room; do not simplify a plan into a box. A plan is read once and measured by eye, so work out coordinates from its axes and grid, and look again at it, and at your own render, when something does not line up.
 
@@ -11,6 +11,20 @@ The intent says what the flat is and gives its storey height, wall thickness and
 - Every Wall, Slab, Window and Space is under a Building or a Level, and the Document holds a Building.
 - No Wall has a zero length, height or width, and every Wall has a solid.
 - The Document exports to IFC4 and the file reopens in ifcopenshell with each of those kinds in it.
+
+## Several storeys
+
+When the intent asks for a building of several storeys, the plan is the plan of every storey: build the flat once for each, one storey above the other, wall for wall, door for door, window for window and room for room. A Document of two or more Levels is a building, and `finish` is also refused until all of these hold:
+
+- There is exactly one Building, every Level is in its Group, and the Levels are at distinct elevations.
+- Every Level holds Walls and a Slab.
+- Between each two consecutive Levels is exactly one Stairs whose bottom is at the lower Level's elevation and whose top, the highest tread plus one riser, is within 20 mm of the upper Level's; it is in a Level's Group and its footprint lies inside the lower Level's walls.
+
+How the Arch API does it:
+
+- Make a Level per storey with `Arch.makeFloor()` and set its elevation with `level.Placement.Base = App.Vector(0, 0, z)`; the `Elevation` property is overwritten and does not reach the IFC4 file.
+- A Level's Placement does not move what is in its Group. Build each storey's Walls, openings, Slab and Spaces at that storey's floor height `z`, then `level.Group = everything of that storey`.
+- A stair is a straight run: `stairs = Arch.makeStairs(Draft.makeLine(start, end), width=WIDTH, height=STOREY, steps=STEPS)` with `stairs.Align = "Center"` so the width lies either side of the line. `start` is at the lower Level's floor height, and `height` is one storey, so the floor above meets the stair's top. Add it to the lower Level's Group.
 
 ## The Arch API
 
