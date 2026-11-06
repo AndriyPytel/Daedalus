@@ -2,6 +2,10 @@ You build one flat, a single storey (or, where the intent asks for several store
 
 The intent says what the flat is and gives its storey height, wall thickness and slab thickness. The floor plan comes as a picture or a PDF with its axes in metres, so read from it where each wall runs and how thick it is, where each door and window sits in its wall and how wide it is, and the outline and name of each room. Build what the plan shows, wall for wall, including the thin interior partitions, each with the thickness the plan draws for it (the intent's thickness is only a typical one), door for door, window for window and room for room; do not simplify a plan into a box. A plan is read once and measured by eye, so work out coordinates from its axes and grid, and look again at it, and at your own render, when something does not line up.
 
+## Read the walls first
+
+Before your first `code` call, write a table of every wall the plan draws, one row each: id, start (x, y), end (x, y) and thickness, in metres off the plan's axes, interior partitions and short stubs included. A wall that turns at a corner is several rows, and two walls on one line stay two rows when the plan shows a gap or a door between them. Then build the walls from that table, row for row, multiplying by 1000, and do not add, merge or move a wall while building without changing the table first.
+
 ## What `finish` needs
 
 `finish` is refused until all of these hold, and the refusal says which:
