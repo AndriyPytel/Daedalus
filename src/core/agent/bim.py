@@ -201,14 +201,11 @@ openings = model.by_type("IfcDoor") + model.by_type("IfcWindow")
 facts = {
     "signature": hashlib.sha1("\\n".join(body).encode()).hexdigest(),
     "schema": model.schema,
-    "storeys": len(model.by_type("IfcBuildingStorey")),
     "counts": {kind: len(model.by_type(kind)) for kind in KINDS},
     "labels": {kind: [name(e) for e in model.by_type(kind)] for kind in KINDS},
     "openings": len([o for o in model.by_type("IfcOpeningElement") if wall_of(o)]),
-    "fills": len(model.by_type("IfcRelFillsElement")),
     "unfilled": [name(e) for e in openings if host(e) is None],
     "orphans": [name(o) for o in model.by_type("IfcOpeningElement") if wall_of(o) and not o.HasFillings],
-    "unnamed": [name(o) for o in model.by_type("IfcOpeningElement") if wall_of(o) and name(o) not in map(name, openings)],
     "unplaced": [name(e) for kind in KINDS for e in model.by_type(kind) if not placed(e)],
 }
 """ % {"kinds": tuple(KINDS.values())} + FACTS_TAIL
@@ -320,15 +317,15 @@ def native_measured(kernel):
     return domain_measured(kernel, NATIVE_FACTS_CHECK)
 
 
-def native_refusals(facts, unchanged=None, intent="", storeyed=True, filled=True):
+def native_refusals(facts, unchanged=None, intent=""):
     """What fails of the Assertion over the saved IFC of an edit on native IFC, one line each; empty where nothing fails.
-    *unchanged* is the signature of the IFC the edit was given, *intent* names what the edit removes, *storeyed* says the file had storeys, which is when its elements must stay in one, and *filled* that it had fills, which is when each Door and Window must keep its own and each opening must have one; without fills an opening is matched to a Door or Window by Name.
+    *unchanged* is the signature of the IFC the edit was given and *intent* names what the edit removes; each Door and Window must fill an opening, each opening must have a filling, and each element must sit in a storey, whatever the given file held.
     """
     found = []
     held = {name for names in facts["labels"].values() for name in names}
     for name in sorted(set(arch.TARGET.findall(intent)) & held):
         found.append("%s is still in the IFC although the intent removes it. Remove its element with ifc_tools.remove_ifc_element." % name)
-    for name in facts["orphans" if filled else "unnamed"]:
+    for name in facts["orphans"]:
         found.append("The opening %s has no Door or Window filling it. Remove the opening, or fill it." % name)
     if facts["signature"] == unchanged:
         found.append("The IFC is the one you were given. Make the change the intent asks for.")
@@ -339,18 +336,18 @@ def native_refusals(facts, unchanged=None, intent="", storeyed=True, filled=True
     if facts["openings"] < wanted:
         found.append("The IFC holds %d Doors and Windows but only %d openings in Walls. Give each its opening, voiding a Wall."
                      % (wanted, facts["openings"]))
-    for name in facts["unfilled"] if filled else ():
+    for name in facts["unfilled"]:
         found.append("%s fills no opening in a Wall. Fill an opening that voids its Wall." % name)
-    for name in facts["unplaced"] if storeyed else ():
+    for name in facts["unplaced"]:
         found.append("%s is not in a storey. Assign it to the Building Storey that holds its Wall." % name)
     if facts["schema"] != "IFC4":
         found.append("The IFC is %s, not IFC4." % facts["schema"])
     return found
 
 
-def native_unfinished(kernel, unchanged=None, intent="", storeyed=True, filled=True):
+def native_unfinished(kernel, unchanged=None, intent=""):
     """Why the nativeifc project is not a finished flat, one line per failing condition, or `None` where the Assertion holds."""
-    return domain_unfinished(kernel, NATIVE_FACTS_CHECK, lambda facts: native_refusals(facts, unchanged, intent, storeyed, filled), "BIM",
+    return domain_unfinished(kernel, NATIVE_FACTS_CHECK, lambda facts: native_refusals(facts, unchanged, intent), "BIM",
                              "The IFC could not be measured: the project would not save or reopen.")
 
 
@@ -390,7 +387,7 @@ def run_bim(intent, *, llm, kernel, tools, events, attachments=(), cancelled=Non
         system += "\n\n" + read_prompt("bim_edit.md") + "\n\n" + read_prompt("bim_edit_native.md")
         if base:
             held = describe_native(base)
-            check = lambda running: native_unfinished(running, unchanged=base["signature"], intent=intent, storeyed=bool(base["storeys"]), filled=bool(base["fills"]))
+            check = lambda running: native_unfinished(running, unchanged=base["signature"], intent=intent)
         else:
             check = lambda running: "The IFC you were given could not be measured: the project would not save or reopen."
     elif edit:

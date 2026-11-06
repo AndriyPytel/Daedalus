@@ -5,7 +5,7 @@ import ifcopenshell
 import ifcopenshell.api
 
 
-def flat(path, storeys=True, fills=True):
+def flat(path):
     model = ifcopenshell.api.run("project.create_file", version="IFC4")
     run = lambda command, **kwargs: ifcopenshell.api.run(command, model, **kwargs)
     project = run("root.create_entity", ifc_class="IfcProject", name="Flat")
@@ -14,10 +14,9 @@ def flat(path, storeys=True, fills=True):
     body = run("context.add_context", context_type="Model", context_identifier="Body", target_view="MODEL_VIEW",
                parent=model_context)
     building = run("root.create_entity", ifc_class="IfcBuilding", name="Building")
-    storey = run("root.create_entity", ifc_class="IfcBuildingStorey", name="Level") if storeys else building
+    storey = run("root.create_entity", ifc_class="IfcBuildingStorey", name="Level")
     run("aggregate.assign_object", products=[building], relating_object=project)
-    if storeys:
-        run("aggregate.assign_object", products=[storey], relating_object=building)
+    run("aggregate.assign_object", products=[storey], relating_object=building)
     contained = []
 
     def make(ifc_class, name):
@@ -38,8 +37,7 @@ def flat(path, storeys=True, fills=True):
         opening = run("root.create_entity", ifc_class="IfcOpeningElement", name=name)
         run("feature.add_feature", feature=opening, element=wall)
         filler = make(ifc_class, name)
-        if fills:
-            run("feature.add_filling", opening=opening, element=filler)
+        run("feature.add_filling", opening=opening, element=filler)
     run("spatial.assign_container", products=contained, relating_structure=storey)
     model.write(path)
     return path

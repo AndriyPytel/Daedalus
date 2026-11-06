@@ -30,6 +30,11 @@ def measure(paths):
     return assembly_score.run_freecadcmd({"measure": [str(path) for path in paths]}, SCRIPT)
 
 
+def audit(paths):
+    """Per IFC: Doors and Windows filling nothing, elements outside a storey, and each Door and Window's attribute over geometry size."""
+    return assembly_score.run_freecadcmd({"audit": [str(path) for path in paths]}, SCRIPT)
+
+
 def _distance(one, other):
     return ((one[0] - other[0]) ** 2 + (one[1] - other[1]) ** 2) ** 0.5
 

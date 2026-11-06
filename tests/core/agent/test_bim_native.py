@@ -1,9 +1,13 @@
 """
 Level 1 -- the Assertion of an edit on native IFC reads the facts of the saved IFC: the five kinds present, each Door and Window filling an opening in a Wall, every element in a storey, the schema IFC4, and a file unlike the input.
 """
+import json
+from types import SimpleNamespace
+
+from core.agent import bim
 from core.agent.bim import native_refusals
 
-HOLDS = {"signature": "base", "schema": "IFC4", "storeys": 1, "fills": 3, "orphans": [], "unnamed": [], "labels": {"IfcWindow": ["Window_WIN1", "Window_WIN2"], "IfcDoor": ["Door_D1"]}, "openings": 3, "unfilled": [], "unplaced": [],
+HOLDS = {"signature": "base", "schema": "IFC4", "orphans": [], "labels": {"IfcWindow": ["Window_WIN1", "Window_WIN2"], "IfcDoor": ["Door_D1"]}, "openings": 3, "unfilled": [], "unplaced": [],
          "counts": {"IfcWall": 4, "IfcSlab": 1, "IfcDoor": 1, "IfcWindow": 2, "IfcSpace": 1}}
 
 
@@ -60,13 +64,14 @@ def test_an_opening_with_nothing_filling_it_is_named():
     assert len(found) == 1 and "opening Window_WIN2" in found[0]
 
 
-def test_a_file_that_had_no_storeys_is_not_asked_for_one():
-    assert native_refusals(HOLDS | {"unplaced": ["Wall_W3"]}, storeyed=False) == []
+def test_an_input_with_no_fills_and_no_storey_is_still_held_to_both(monkeypatch):
+    saved = HOLDS | {"signature": "edited", "unfilled": ["Window_WIN2"], "unplaced": ["Wall_W3"]}
+    answers = iter([HOLDS, saved])
+    kernel = SimpleNamespace(check=lambda code, exploring: SimpleNamespace(stdout="FACTS " + json.dumps(next(answers))))
+    seen = {}
+    monkeypatch.setattr(bim, "run_solo", lambda intent, domain, **_: seen.update(domain=domain))
 
+    bim.run_bim("Remove Window_WIN1.", llm=None, kernel=kernel, tools=None, events=None, edit=True, native=True)
+    why = seen["domain"].done_check(kernel)
 
-def test_a_file_that_had_no_fills_matches_an_opening_to_its_door_or_window_by_name():
-    facts = HOLDS | {"orphans": ["Window_WIN1"], "unfilled": ["Window_WIN1"], "unnamed": ["Opening_X"]}
-
-    found = native_refusals(facts, filled=False)
-
-    assert len(found) == 1 and "opening Opening_X" in found[0]
+    assert "Window_WIN2" in why and "Wall_W3" in why

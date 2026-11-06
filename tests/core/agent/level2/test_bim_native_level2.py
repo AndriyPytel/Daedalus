@@ -215,17 +215,8 @@ ifc_tools.api_run("attribute.edit_attributes", ifc_tools.get_ifcfile(window), pr
     assert {1.4, 1.5} <= {w.OverallWidth for w in ifcopenshell.open(saved).by_type("IfcWindow")}
 
 
-def test_a_file_without_storeys_is_not_asked_to_put_its_elements_in_one(kernel, tmp_path):
-    seed = sdk.native_document(flat(str(tmp_path / "input.ifc"), storeys=False), str(tmp_path / "work.ifc"),
-                               str(tmp_path / "input.FCStd"))
-
-    result, _, _ = _edit(kernel, seed, "Remove Window_WIN2.", [_say(code=REMOVE_WINDOW2), _say(finish="removed")])
-
-    assert result.ok, result.reason
-
-
 def test_a_door_added_with_a_shape_lands_without_the_live_document_generating_geometry(kernel, tmp_path):
-    seed = sdk.native_document(flat(str(tmp_path / "input.ifc"), fills=False), str(tmp_path / "work.ifc"),
+    seed = sdk.native_document(flat(str(tmp_path / "input.ifc")), str(tmp_path / "work.ifc"),
                                str(tmp_path / "input.FCStd"))
     llm = ScriptedLLMClient([_say(code=ADD_DOOR), _say(finish="added")])
     client = sdk.Client(document=seed, kernel=kernel, llm=llm)
@@ -254,7 +245,7 @@ def test_the_kernel_and_a_live_document_that_builds_shapes_agree_on_the_signatur
     import Part
     from core.kernel.kernel_worker import signature_of, signatures_match
 
-    seed = sdk.native_document(flat(str(tmp_path / "input.ifc"), fills=False), str(tmp_path / "work.ifc"),
+    seed = sdk.native_document(flat(str(tmp_path / "input.ifc")), str(tmp_path / "work.ifc"),
                                str(tmp_path / "input.FCStd"))
     stepped = kernel.check(ADD_DOOR, document=seed)
     live = FreeCAD.openDocument(seed)

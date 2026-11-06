@@ -106,34 +106,48 @@ def make_stairs(Arch, Draft, spec, stair):
     return obj
 
 
+def complete_ifc(path):
+    """Gives each Door and Window the opening of its name to fill and its OverallWidth and OverallHeight in the file's length unit, which the exporter writes in millimetres whatever the unit."""
+    import ifcopenshell
+    import ifcopenshell.api
+    from ifcopenshell.util.unit import calculate_unit_scale
+
+    model = ifcopenshell.open(path)
+    scale = calculate_unit_scale(model)
+    openings = {o.Name: o for o in model.by_type("IfcOpeningElement")}
+    for item in model.by_type("IfcDoor") + model.by_type("IfcWindow"):
+        item.OverallWidth *= 0.001 / scale
+        item.OverallHeight *= 0.001 / scale
+        if item.Name in openings:
+            ifcopenshell.api.run("feature.add_filling", model, opening=openings[item.Name], element=item)
+    model.write(path)
+
+
 def build(spec, path):
     import Arch
     import Draft
     import importers.exportIFC as exporter
 
     doc = App.newDocument("Flat")
-    count = spec.get("storeys", 0)
-    if count:
-        levels, objects = [], []
-        for number in range(count):
-            level = Arch.makeFloor()
-            level.Label = f"Level_{number}"
-            level.Placement.Base = App.Vector(0, 0, number * spec["storey_height"] * MM)
-            level.Group = make_storey(doc, Arch, Draft, spec, number * spec["storey_height"])
-            levels.append(level)
-            objects += level.Group
-        for stair in spec["stairs"]:
-            made = make_stairs(Arch, Draft, spec, stair)
-            levels[stair["from"]].addObject(made)
-            objects.append(made)
-        building = Arch.makeBuilding()
-        building.Group = levels
-        objects = [building, *levels, *objects]
-    else:
-        objects = make_storey(doc, Arch, Draft, spec, 0)
+    levels, objects = [], []
+    for number in range(spec.get("storeys") or 1):
+        level = Arch.makeFloor()
+        level.Label = f"Level_{number}"
+        level.Placement.Base = App.Vector(0, 0, number * spec["storey_height"] * MM)
+        level.Group = make_storey(doc, Arch, Draft, spec, number * spec["storey_height"])
+        levels.append(level)
+        objects += level.Group
+    for stair in spec.get("stairs", []):
+        made = make_stairs(Arch, Draft, spec, stair)
+        levels[stair["from"]].addObject(made)
+        objects.append(made)
+    building = Arch.makeBuilding()
+    building.Group = levels
+    objects = [building, *levels, *objects]
     doc.recompute()
     doc.saveAs(path)
     exporter.export(objects, os.path.splitext(path)[0] + ".ifc")
+    complete_ifc(os.path.splitext(path)[0] + ".ifc")
     App.closeDocument(doc.Name)
 
 
@@ -262,6 +276,34 @@ def measure_scope(model, settings, geom, scope):
     return result
 
 
+def audit(path):
+    """Per IFC: the Doors and Windows filling no opening, the elements outside a storey, and each Door and Window's OverallWidth and OverallHeight over its geometry's, both in metres."""
+    import ifcopenshell
+    import ifcopenshell.geom as geom
+    import ifcopenshell.util.element as element
+    from ifcopenshell.util.unit import calculate_unit_scale
+
+    model = ifcopenshell.open(path)
+    scale = calculate_unit_scale(model)
+    settings = geom.settings()
+    settings.set("use-world-coords", True)
+    openings = model.by_type("IfcDoor") + model.by_type("IfcWindow")
+    placed = lambda e: (element.get_container(e) or element.get_aggregate(e)) is not None and (element.get_container(e) or element.get_aggregate(e)).is_a("IfcBuildingStorey")
+    sizes = []
+    for item in openings:
+        shape = mesh(settings, geom, item)
+        if shape is None:
+            continue
+        verts, _ = shape
+        _, width, _ = rectangle_of(verts[:, :2])
+        sizes.append({"name": item.Name, "width": round(float(item.OverallWidth * scale / width), 4), "height": round(float(item.OverallHeight * scale / (verts[:, 2].max() - verts[:, 2].min())), 4)})
+    return {
+        "unfilled": [e.Name for e in openings if not e.FillsVoids],
+        "unplaced": [e.Name for kind in ("IfcWall", "IfcSlab", "IfcDoor", "IfcWindow", "IfcSpace", "IfcStair") for e in model.by_type(kind) if not placed(e)],
+        "sizes": sizes,
+    }
+
+
 def measure(path):
     import ifcopenshell
     import ifcopenshell.geom as geom
@@ -300,4 +342,4 @@ for spec, path in job.get("build", []):
     except Exception:
         App.Console.PrintError(f"{path}: build failed\n")
 with open(os.environ["DAE_RESULT"], "w") as out:
-    json.dump([measure(path) for path in job.get("measure", [])], out)
+    json.dump([audit(path) for path in job["audit"]] if "audit" in job else [measure(path) for path in job.get("measure", [])], out)

@@ -185,12 +185,12 @@ def test_built_reference_holds_every_element_type_with_hosting_and_adjacency(bui
 
 
 @needs_freecad
-def test_hosting_is_read_from_the_voids_freecad_writes_not_from_fills(built):
+def test_each_built_opening_has_its_void_and_its_fill_and_hosting_is_read_from_them(built):
     import re
 
     text = built[0]["reference"].read_text()
     assert len(re.findall(r"IFCRELVOIDSELEMENT", text)) == 4
-    assert "IFCRELFILLSELEMENT" not in text
+    assert len(re.findall(r"IFCRELFILLSELEMENT", text)) == 4
     hosts = {o["type"]: o["host"] for o in built[1]["reference"]["openings"]}
     assert hosts["IfcDoor"] is not None and hosts["IfcWindow"] is not None
 
