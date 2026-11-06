@@ -18,7 +18,19 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HARNESS_SCRIPT = os.path.join(ROOT, "harness", "score.py")
-DEFAULT_HARNESS_PYTHON = os.path.join(ROOT, "harness", ".venv", "bin", "python")
+
+
+def main_checkout(checkout):
+    """
+    The main checkout of the repository *checkout* belongs to: untracked files such as `test-data` and `harness/.venv` live there, not in a git worktree.
+    """
+    common = subprocess.run(
+        ["git", "-C", checkout, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        capture_output=True, text=True, check=True).stdout.strip()
+    return os.path.dirname(common)
+
+
+DEFAULT_HARNESS_PYTHON = os.path.join(main_checkout(ROOT), "harness", ".venv", "bin", "python")
 
 
 def harness_python():

@@ -476,7 +476,18 @@ def _reason(events, m):
 MODELMANIA_DIR = os.environ.get(
     "DAE_MODELMANIA_DIR", os.path.join(os.path.dirname(ROOT), "manual", "modelmania"))
 EXEMPLAR_DIR = os.path.join(MODELMANIA_DIR, "exemplar")
-TEST_DATA_DIR = os.environ.get("DAE_TEST_DATA_DIR", os.path.join(os.path.dirname(ROOT), "test-data"))
+
+
+def default_test_data_dir(checkout):
+    """
+    The test-data of the main checkout: untracked, so a git worktree has none of its own.
+    """
+    import score
+
+    return os.path.join(score.main_checkout(checkout), "test-data")
+
+
+TEST_DATA_DIR = os.environ.get("DAE_TEST_DATA_DIR") or default_test_data_dir(os.path.dirname(ROOT))
 SPLITS = ("validation", "test")
 
 

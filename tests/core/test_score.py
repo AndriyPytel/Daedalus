@@ -67,7 +67,7 @@ def test_harness_python_reads_the_env_var(monkeypatch):
     assert score.harness_python() == "/somewhere/python"
 
 
-def test_harness_python_defaults_beside_the_repo(monkeypatch):
+def test_harness_python_defaults_to_the_main_checkouts(monkeypatch):
     monkeypatch.delenv("CADGENBENCH_VENV", raising=False)
 
-    assert score.harness_python() == os.path.join(ROOT, "harness", ".venv", "bin", "python")
+    assert score.harness_python() == os.path.join(score.main_checkout(ROOT), "harness", ".venv", "bin", "python")
