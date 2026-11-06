@@ -16,7 +16,7 @@ import tempfile
 from core import events, freecad_apply, model_catalog
 from core import settings as _settings
 from core.arch import arch_type, export_ifc, named_in
-from core import furniture
+from core import furniture, nativeifc
 from core.equipment import write_attribution
 from core.freecad_apply import ApplyPipeline, active_document, build_registry
 from core.events import (ASSERTION, BLOCKED, COST, REVIEW_VERDICT, EventStream,
@@ -212,6 +212,17 @@ class _NoKernel:
 NO_KERNEL = _NoKernel()
 
 
+def native_document(ifc, work, path):
+    """Save to *path* a Document holding *ifc* as a nativeifc project, edited in place at *work*, and hand the path back."""
+    import FreeCAD
+
+    document = FreeCAD.newDocument("Native")
+    nativeifc.open_ifc(document, ifc, work)
+    document.saveAs(path)
+    FreeCAD.closeDocument(document.Name)
+    return path
+
+
 class Client:
     """
     *document* is a path to open, `None` for a fresh one, or an already-open
@@ -383,8 +394,11 @@ class Client:
                                     edit=base)
         if domain == BIM:
             self._intent = prompt if base else None
+            native = bool(base and self.dispatch(lambda: nativeifc.projects(self.document)))
+            if native:
+                nativeifc.without_geometry()
             return run_bim(prompt, llm=self.llm, kernel=self.kernel, tools=tools, events=self.events,
-                           attachments=list(attachments), cancelled=cancelled, edit=base)
+                           attachments=list(attachments), cancelled=cancelled, edit=base, native=native)
         return run_reader(prompt, llm=self.llm, kernel=self.kernel, tools=tools,
                           events=self.events, attachments=list(attachments),
                           cancelled=cancelled, base=base)
@@ -420,7 +434,7 @@ class Client:
 
     def export_ifc(self, path):
         """Write this Client's Arch objects to *path* as IFC4 and hand the path back, or `None` where it holds none; where library furniture is in it, `<stem>.ATTRIBUTION.md` goes beside it."""
-        written = export_ifc(self.document, path)
+        written = self.dispatch(lambda: nativeifc.export(self.document, path)) or export_ifc(self.document, path)
         if written:
             write_attribution(self.document, written, furniture.index(furniture.CACHE, furniture.http_get))
         return written

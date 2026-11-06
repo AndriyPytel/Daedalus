@@ -125,12 +125,12 @@ def quota_refusal(log):
 
 def run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
             python=sys.executable, base_step=None, attach=(),
-            domain=None, base_document=None):
+            domain=None, base_document=None, base_ifc=None):
     """
     One run of one sheet, as a subprocess of `tools/run.py`.
 
     A task with no sheet — `--task bolt-nut=` — is a run of the Intent alone.
-    An editing run names *base_step* and the renders in *attach*; *domain* is `--domain`, left off for Part, and an Assembly run saves an FCStd; *base_document* is the Document an editing Assembly run opens, whose objects the run may change.
+    An editing run names *base_step* and the renders in *attach*; *domain* is `--domain`, left off for Part, and an Assembly run saves an FCStd; *base_document* is the Document an editing Assembly run opens, whose objects the run may change, and *base_ifc* the IFC an editing BIM run opens in nativeifc.
     """
     part, _, bim = _domains()
     domain = domain or part
@@ -153,6 +153,8 @@ def run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
         cmd += ["--base-document", base_document]
         if domain != bim:
             cmd.append("--allow-user-objects")
+    if base_ifc:
+        cmd += ["--base-ifc", base_ifc]
     return subprocess.Popen(cmd)
 
 
@@ -297,14 +299,14 @@ def _has_step(log, suffix=".step"):
 
 def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
           resume, provider, run_seconds, timestamp=None, edits=None,
-          domain=None, task_folders=None):
+          domain=None, task_folders=None, native=False):
     """
     Every attempt gets its own `<stem>.<timestamp>`
     log and, from `run_one`'s own naming, STEP, so a retry's save never
     lands on the same path as any other attempt's. *timestamp* is
     injectable so a test can make attempts distinguishable without a real
     clock, and *edits* maps a label to its editing fixture folder, whose run ends in
-    `<model>/<label>/output.step`: the edit, or a copy of `input.step`; *domain* goes to every run, and *task_folders* maps a label to the task folder whose text and parts, or floor plan, it runs on.
+    `<model>/<label>/output.step`: the edit, or a copy of `input.step`; *domain* goes to every run, and *task_folders* maps a label to the task folder whose text and parts, or floor plan, it runs on; *native* hands a BIM edit its `input.ifc` instead of its `input.FCStd`.
     """
     import sdk
 
@@ -348,9 +350,10 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
                 if label in task_folders:
                     task = bim_task if domain == bim else assembly_task
                     run_intent, kwargs["attach"] = task(task_folders[label])
-                    document = os.path.join(task_folders[label], "input.FCStd")
-                    if os.path.isfile(document):
-                        kwargs["base_document"] = document
+                    if native:
+                        kwargs["base_ifc"] = os.path.join(task_folders[label], "input.ifc")
+                    elif os.path.isfile(os.path.join(task_folders[label], "input.FCStd")):
+                        kwargs["base_document"] = os.path.join(task_folders[label], "input.FCStd")
                 process = run_one(label, "" if label in task_folders else sheet, model, effort, budget_usd, log, run_intent, provider,
                                   **kwargs)
                 outcome = watch(process, log, hang_seconds, run_seconds)
@@ -880,6 +883,8 @@ def main():
                         help="label=/path/to/task-folder, repeatable; the assembly benchmark task whose text and parts the run is given")
     parser.add_argument("--mode", choices=(FROM_PARTS, FROM_SCRATCH, EDIT, STOREYS), default=ASSEMBLY_MODE,
                         help="The assembly benchmark mode --sample, --labels and --report read; from_scratch gives the text and graph and builds every part, edit opens input.FCStd and changes it")
+    parser.add_argument("--input", choices=("fcstd", "ifc"), default="fcstd",
+                        help="What a BIM edit run opens: input.FCStd as Arch objects, or input.ifc in nativeifc")
     parser.add_argument("--sample", type=int, help="Draw this many random labels of --split from test-data/split.json")
     parser.add_argument("--split", choices=SPLITS, default="validation")
     parser.add_argument("--labels", help="A labels.txt of an earlier --sample, reused as the tasks")
@@ -889,6 +894,9 @@ def main():
     if args.status:
         status(args.out)
         return 0
+
+    if args.input == "ifc" and not (args.domain == bim and args.mode == EDIT):
+        raise SystemExit("--input ifc is for --domain bim --mode edit")
 
     if args.report and args.domain == bim:
         if args.mode == EDIT:
@@ -960,7 +968,7 @@ def main():
     stopped = sweep(tasks, args.model, args.effort, args.budget_usd, args.intent,
                     args.out, args.hang_seconds, args.retries, args.resume, args.provider,
                     args.run_seconds, edits=edits,
-                    domain=args.domain, task_folders=task_folders)
+                    domain=args.domain, task_folders=task_folders, native=args.input == "ifc")
     return QUOTA_EXIT if stopped else 0
 
 

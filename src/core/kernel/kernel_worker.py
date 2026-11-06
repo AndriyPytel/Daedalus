@@ -121,6 +121,13 @@ def _comparable(obj, prop):
         return True
 
 
+def _native():
+    """The one seam into nativeifc: what a Step does to the IFC a Document holds is read and written through it."""
+    from core import nativeifc
+
+    return nativeifc
+
+
 def _properties_snapshot(doc):
     """
     Every object's own `PropertiesList`, by value, `Name`/`Label` and the
@@ -129,6 +136,7 @@ def _properties_snapshot(doc):
     reads as a modification.
     """
     snapshot = {}
+    ifc = _native().fingerprints(doc)
     for obj in doc.Objects:
         properties = getattr(obj, "PropertiesList", None) or ()
         snapshot[obj.Name] = {
@@ -136,6 +144,8 @@ def _properties_snapshot(doc):
             for prop in properties
             if prop not in _EXCLUDED_FROM_DIFF and _comparable(obj, prop)
         }
+        if obj.Name in ifc:
+            snapshot[obj.Name]["IFC"] = ifc[obj.Name]
     return snapshot
 
 
@@ -867,12 +877,17 @@ def signature_of(doc):
         target = _resolved_targets(obj)
         if target is not None:
             links[obj.Name] = target
-    return {
+    native = _native()
+    signature = {
         "count": len(doc.Objects),
         "names": sorted(o.Name for o in doc.Objects),
-        "volume": round(sum(_volume_of(o) for o in doc.Objects), 6),
+        "volume": round(sum(_volume_of(o) for o in doc.Objects if not native.is_native(o)), 6),
         "links": links,
     }
+    ifc = native.outlines(doc)
+    if ifc:
+        signature["ifc"] = ifc
+    return signature
 
 
 _VOLUME_RELATIVE_TOLERANCE = 1e-6
@@ -881,13 +896,13 @@ _VOLUME_RELATIVE_TOLERANCE = 1e-6
 def signatures_match(landed, expected):
     """
     Whether a replay's *landed* signature reproduces *expected* closely
-    enough to count as the same Step. Count, names and links must match
+    enough to count as the same Step. Count, names, links and the IFC of a nativeifc project must match
     exactly; volume is compared with a relative tolerance, since the same
     geometry computed in two OCC processes does not round to the same
     sixth decimal.
     """
-    if (landed["count"], landed["names"], landed["links"]) != (
-            expected["count"], expected["names"], expected["links"]):
+    if (landed["count"], landed["names"], landed["links"], landed.get("ifc")) != (
+            expected["count"], expected["names"], expected["links"], expected.get("ifc")):
         return False
     scale = max(abs(landed["volume"]), abs(expected["volume"]), 1.0)
     return abs(landed["volume"] - expected["volume"]) <= _VOLUME_RELATIVE_TOLERANCE * scale
@@ -1200,6 +1215,7 @@ def _save_checkpoint(doc):
     """
     path = _checkpoint_path()
     tmp_path = os.path.join(os.path.dirname(path), "saving.FCStd")
+    _native().save_projects(doc, _scratch())
     doc.saveCopy(tmp_path)
     os.replace(tmp_path, path)
 

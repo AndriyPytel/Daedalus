@@ -3,6 +3,8 @@ What the Arch workbench's objects are to Daedalus: which Document objects are Ar
 """
 import re
 
+from core import nativeifc
+
 ARCH_MODULE = re.compile(r"Arch[A-Z]\w*")
 
 
@@ -21,7 +23,7 @@ def named_in(intent, document, names):
     """
     objects = [o for o in map(document.getObject, names) if o is not None]
     targets = set(TARGET.findall(intent))
-    named = [o for o in objects if o.Label in targets]
+    named = [o for o in objects if nativeifc.name(o) in targets]
     owned = {id(o) for parent in named for o in parent.OutList
              if not arch_type(o) and all(user in named for user in o.InList)}
     return all(o in named or id(o) in owned for o in objects)

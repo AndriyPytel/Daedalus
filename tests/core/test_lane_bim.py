@@ -99,6 +99,14 @@ def test_a_bim_edit_run_opens_the_document_and_leaves_consent_to_the_intent(monk
     assert "--allow-user-objects" not in cmd
 
 
+def test_a_native_ifc_edit_run_opens_the_input_ifc_and_saves_an_ifc(monkeypatch):
+    cmd = _command(monkeypatch, domain="bim", base_ifc="/d/edit_02/input.ifc")
+
+    assert cmd[cmd.index("--base-ifc") + 1] == "/d/edit_02/input.ifc"
+    assert "--base-document" not in cmd and "--allow-user-objects" not in cmd
+    assert cmd[cmd.index("--save") + 1] == "/tmp/t.ifc"
+
+
 def test_labels_are_drawn_from_the_edit_split(tmp_path, monkeypatch):
     monkeypatch.setattr(lane, "BIM_DIR", str(tmp_path / "bim"))
     (tmp_path / "bim").mkdir()

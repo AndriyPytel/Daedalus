@@ -3,7 +3,7 @@ The BIM Domain: the agent writes FreeCAD Python against the Arch workbench, and 
 That is at least one Wall, Slab, Door, Window and Space, each Door and Window hosted by a Wall, everything under a Building or Level, no Wall of zero size, an IFC4 export ifcopenshell reopens, and every piece of Equipment with an allowed Source and a Level; a Document of two or more Levels also needs one Building over them, each Level holding Walls and a Slab, and a Stairs between each two inside the lower Level's walls.
 The facts are measured in the kernel and judged here.
 """
-from core import furniture
+from core import arch, furniture
 from core.agent.domain import BIM, Domain, measured as domain_measured, unfinished as domain_unfinished
 from core.agent.solo import run_solo
 from core.loop.prompt import _as_image
@@ -14,6 +14,12 @@ LEVEL_APART = 1.0
 STAIRS_TOLERANCE = 20.0
 FURNITURE = "IfcFurnishingElement"
 KINDS = {"Wall": "IfcWall", "Slab": "IfcSlab", "Door": "IfcDoor", "Window": "IfcWindow", "Space": "IfcSpace"}
+
+FACTS_TAIL = """
+with open(FACTS_PATH, "w", encoding="utf-8") as out:
+    json.dump(facts, out)
+print("FACTS @")
+"""
 
 FACTS_CHECK = """
 import hashlib
@@ -132,15 +138,80 @@ except Exception as exc:
     facts["ifc"] = {"error": "%%s: %%s" %% (type(exc).__name__, exc)}
 finally:
     os.remove(path)
-with open(FACTS_PATH, "w", encoding="utf-8") as out:
-    json.dump(facts, out)
-print("FACTS @")
-""" % {"types": (*KINDS.values(), FURNITURE)}
+""" % {"types": (*KINDS.values(), FURNITURE)} + FACTS_TAIL
 
 
 def measured(kernel):
     """The flat's facts as the kernel leaves them, or `None` where the measuring itself failed."""
     return domain_measured(kernel, FACTS_CHECK)
+
+
+NATIVE_FACTS_CHECK = """
+import hashlib
+import json
+import os
+import tempfile
+
+import ifcopenshell
+import ifcopenshell.util.element as element_util
+
+from core import nativeifc
+
+KINDS = %(kinds)s
+handle, path = tempfile.mkstemp(suffix=".ifc")
+os.close(handle)
+try:
+    nativeifc.export(doc, path)
+    model = ifcopenshell.open(path)
+    with open(path, encoding="utf-8") as saved:
+        body = sorted(line for line in saved.read().splitlines() if line.startswith("#"))
+finally:
+    os.remove(path)
+
+
+def name(element):
+    return element.Name or "#%%d" %% element.id()
+
+
+def wall_of(opening):
+    for void in opening.VoidsElements:
+        if void.RelatingBuildingElement.is_a("IfcWall"):
+            return void.RelatingBuildingElement
+    return None
+
+
+def host(element):
+    for fill in element.FillsVoids:
+        if wall_of(fill.RelatingOpeningElement):
+            return wall_of(fill.RelatingOpeningElement)
+    return None
+
+
+def storey_of(element):
+    found = element_util.get_container(element) or element_util.get_aggregate(element)
+    return found is not None and found.is_a("IfcBuildingStorey")
+
+
+def placed(element):
+    wall = host(element) if element.is_a() in ("IfcDoor", "IfcWindow") else None
+    return storey_of(element) or (wall is not None and storey_of(wall))
+
+
+openings = model.by_type("IfcDoor") + model.by_type("IfcWindow")
+facts = {
+    "signature": hashlib.sha1("\\n".join(body).encode()).hexdigest(),
+    "schema": model.schema,
+    "storeys": len(model.by_type("IfcBuildingStorey")),
+    "counts": {kind: len(model.by_type(kind)) for kind in KINDS},
+    "labels": {kind: [name(e) for e in model.by_type(kind)] for kind in KINDS},
+    "openings": len([o for o in model.by_type("IfcOpeningElement") if wall_of(o)]),
+    "fills": len(model.by_type("IfcRelFillsElement")),
+    "unfilled": [name(e) for e in openings if host(e) is None],
+    "orphans": [name(o) for o in model.by_type("IfcOpeningElement") if wall_of(o) and not o.HasFillings],
+    "unnamed": [name(o) for o in model.by_type("IfcOpeningElement") if wall_of(o) and name(o) not in map(name, openings)],
+    "unplaced": [name(e) for kind in KINDS for e in model.by_type(kind) if not placed(e)],
+}
+""" % {"kinds": tuple(KINDS.values())} + FACTS_TAIL
 
 
 def library_index():
@@ -242,6 +313,47 @@ def refusals(facts, index=library_index, unchanged=None):
     return found
 
 
+def native_measured(kernel):
+    """The facts of the IFC the Document's nativeifc project holds, or `None` where the measuring itself failed.
+    It reads the IFC with ifcopenshell here because `harness/bim_freecad.py`, which reads the same relations to score, is outside `src` and may not be imported from it.
+    """
+    return domain_measured(kernel, NATIVE_FACTS_CHECK)
+
+
+def native_refusals(facts, unchanged=None, intent="", storeyed=True, filled=True):
+    """What fails of the Assertion over the saved IFC of an edit on native IFC, one line each; empty where nothing fails.
+    *unchanged* is the signature of the IFC the edit was given, *intent* names what the edit removes, *storeyed* says the file had storeys, which is when its elements must stay in one, and *filled* that it had fills, which is when each Door and Window must keep its own and each opening must have one; without fills an opening is matched to a Door or Window by Name.
+    """
+    found = []
+    held = {name for names in facts["labels"].values() for name in names}
+    for name in sorted(set(arch.TARGET.findall(intent)) & held):
+        found.append("%s is still in the IFC although the intent removes it. Remove its element with ifc_tools.remove_ifc_element." % name)
+    for name in facts["orphans" if filled else "unnamed"]:
+        found.append("The opening %s has no Door or Window filling it. Remove the opening, or fill it." % name)
+    if facts["signature"] == unchanged:
+        found.append("The IFC is the one you were given. Make the change the intent asks for.")
+    for kind, count in facts["counts"].items():
+        if not count:
+            found.append("The IFC holds no %s. Add at least one." % kind)
+    wanted = facts["counts"]["IfcDoor"] + facts["counts"]["IfcWindow"]
+    if facts["openings"] < wanted:
+        found.append("The IFC holds %d Doors and Windows but only %d openings in Walls. Give each its opening, voiding a Wall."
+                     % (wanted, facts["openings"]))
+    for name in facts["unfilled"] if filled else ():
+        found.append("%s fills no opening in a Wall. Fill an opening that voids its Wall." % name)
+    for name in facts["unplaced"] if storeyed else ():
+        found.append("%s is not in a storey. Assign it to the Building Storey that holds its Wall." % name)
+    if facts["schema"] != "IFC4":
+        found.append("The IFC is %s, not IFC4." % facts["schema"])
+    return found
+
+
+def native_unfinished(kernel, unchanged=None, intent="", storeyed=True, filled=True):
+    """Why the nativeifc project is not a finished flat, one line per failing condition, or `None` where the Assertion holds."""
+    return domain_unfinished(kernel, NATIVE_FACTS_CHECK, lambda facts: native_refusals(facts, unchanged, intent, storeyed, filled), "BIM",
+                             "The IFC could not be measured: the project would not save or reopen.")
+
+
 def unfinished(kernel, unchanged=None):
     """Why the Document is not a finished flat, one line per failing condition, or `None` where the Assertion holds; *unchanged* is as in `refusals`."""
     return domain_unfinished(kernel, FACTS_CHECK, lambda facts: refusals(facts, library_index, unchanged), "BIM",
@@ -257,17 +369,31 @@ def describe(facts):
                ", ".join(facts["unplaced"]) or "nothing"))
 
 
+def describe_native(facts):
+    """One line naming what the IFC holds, by the labels the intent speaks in."""
+    return "The Document holds this IFC as nativeifc objects. " + " ".join(
+        "%s: %s." % (kind, ", ".join(labels) or "none") for kind, labels in facts["labels"].items())
+
+
 def opening(intent, attachments, held=None):
     """The first message: the intent, what an edit's Document *held*, then each floor plan, image or PDF, as a picture."""
     blocks = [{"type": "text", "text": intent}] + ([{"type": "text", "text": held}] if held else [])
     return blocks + [block for block in map(_as_image, attachments) if block]
 
 
-def run_bim(intent, *, llm, kernel, tools, events, attachments=(), cancelled=None, edit=False):
-    """Build the flat *intent* and the floor plan in *attachments* describe; *edit* says the Document already holds the flat to change."""
+def run_bim(intent, *, llm, kernel, tools, events, attachments=(), cancelled=None, edit=False, native=False):
+    """Build the flat *intent* and the floor plan in *attachments* describe; *edit* says the Document already holds the flat to change, and *native* that it holds it as the nativeifc project of an IFC."""
     system, held = read_prompt("bim.md"), None
     check = unfinished
-    if edit:
+    if edit and native:
+        base = native_measured(kernel)
+        system += "\n\n" + read_prompt("bim_edit.md") + "\n\n" + read_prompt("bim_edit_native.md")
+        if base:
+            held = describe_native(base)
+            check = lambda running: native_unfinished(running, unchanged=base["signature"], intent=intent, storeyed=bool(base["storeys"]), filled=bool(base["fills"]))
+        else:
+            check = lambda running: "The IFC you were given could not be measured: the project would not save or reopen."
+    elif edit:
         base = measured(kernel)
         system += "\n\n" + read_prompt("bim_edit.md")
         if base:

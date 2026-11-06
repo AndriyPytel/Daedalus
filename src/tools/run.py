@@ -15,6 +15,7 @@ should ever say so.
 import argparse
 import os
 import sys
+import tempfile
 
 _SRC = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _SRC)
@@ -125,6 +126,8 @@ def main():
                         help="The Domain the agent arm builds under, part, assembly or bim; assembly builds from the STEP parts in --attach and bim from the floor plan in --attach")
     parser.add_argument("--base-document", default=None,
                         help="An editing run under the Assembly Domain: the saved Document the agent opens and changes")
+    parser.add_argument("--base-ifc", default=None,
+                        help="An editing run under the BIM Domain: the native IFC the agent opens in nativeifc and changes")
     parser.add_argument("--base-step", default=None,
                         help="An editing run: the part to edit, the BaseFeature of the Document's Body")
     args = parser.parse_args()
@@ -140,6 +143,11 @@ def main():
 
     llm = client_for(args.provider, args.model, args.effort) if args.model else None
     seed = base_document(args.base_step) if args.base_step else args.base_document
+    if args.base_ifc:
+        import sdk
+
+        scratch = tempfile.mkdtemp(prefix="fcc-native-")
+        seed = sdk.native_document(args.base_ifc, os.path.join(scratch, "work.ifc"), os.path.join(scratch, "seed.FCStd"))
     client = Client(document=seed, llm=llm, confirm=lambda kinds: args.allow_user_objects is True)
     client.events.log_to(args.log)
     if seed:

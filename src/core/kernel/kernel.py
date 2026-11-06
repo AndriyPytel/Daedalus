@@ -23,6 +23,7 @@ import tempfile
 import threading
 from dataclasses import dataclass, field
 
+from core import nativeifc
 from core.kernel.kernel_worker import SCRATCH, SENTINEL
 
 DEFAULT_TIMEOUT = 30.0
@@ -406,5 +407,6 @@ def copy_of(document):
     handle, path = tempfile.mkstemp(prefix="kernel_", suffix=".FCStd")
     os.close(handle)
     os.remove(path)
+    nativeifc.save_projects(document)
     document.saveCopy(path)
     return path
