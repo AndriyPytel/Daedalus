@@ -456,3 +456,11 @@ def the_settings_never_reach_the_user_s_freecad():
     settings.Settings._grp = staticmethod(lambda: scratch)
     yield scratch
     settings.Settings._grp = real
+
+
+@pytest.fixture(autouse=True)
+def a_test_leaves_the_settings_as_it_found_them(the_settings_never_reach_the_user_s_freecad):
+    """Puts the scratch settings back after each test, so one that writes a setting cannot decide the next one's."""
+    before = dict(the_settings_never_reach_the_user_s_freecad._values)
+    yield
+    the_settings_never_reach_the_user_s_freecad._values = before
