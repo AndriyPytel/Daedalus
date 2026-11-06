@@ -378,7 +378,7 @@ class Client:
             raise ValueError("the agent works through a kernel")
         if domain not in (PART, ASSEMBLY, BIM):
             raise ValueError("no such Domain: %r" % domain)
-        self._intent = None
+        self._intent = prompt if base and domain != PART else None
         self.pipeline.events = self.events
         tools = build_registry(document=lambda: self.document, pipeline=self.pipeline,
                                dispatch=self.dispatch)
@@ -393,7 +393,6 @@ class Client:
                                     build_part=self.part_builder(folder, cancelled, budget_usd),
                                     edit=base)
         if domain == BIM:
-            self._intent = prompt if base else None
             native = bool(base and self.dispatch(lambda: nativeifc.projects(self.document)))
             if native:
                 nativeifc.without_geometry()

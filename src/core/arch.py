@@ -14,18 +14,23 @@ def arch_type(obj):
     return getattr(proxy, "Type", None) if ARCH_MODULE.fullmatch(type(proxy).__module__) else None
 
 
-TARGET = re.compile(r"\b(?i:remove|delete|replace)\b(?:(?!\.\s).)*?(?<![\w])([A-Z][a-z]*_\w*\w)")
+TARGET = re.compile(r"\b(?i:remove|delete|replace)\b(?:(?!\.\s).)*?(?<![\w])([A-Z][a-z]*(?:_\w*\w|\d+))")
+
+
+def _joint(obj):
+    return hasattr(obj, "Reference1") or hasattr(obj, "ObjectToGround")
 
 
 def named_in(intent, document, names):
     """Whether *names* hold only the objects *intent* removes, deletes or replaces by Label, and what only they own.
-    What a target owns is a non-Arch object below it that nothing else uses, such as its sketch; the Wall that hosts it is no such object.
+    What a target owns is a non-Arch object below it that nothing else uses, such as its sketch, and a joint attached to it; the Wall that hosts it is no such object.
     """
     objects = [o for o in map(document.getObject, names) if o is not None]
     targets = set(TARGET.findall(intent))
     named = [o for o in objects if nativeifc.name(o) in targets]
     owned = {id(o) for parent in named for o in parent.OutList
              if not arch_type(o) and all(user in named for user in o.InList)}
+    owned |= {id(o) for parent in named for o in parent.InList if _joint(o)}
     return all(o in named or id(o) in owned for o in objects)
 
 

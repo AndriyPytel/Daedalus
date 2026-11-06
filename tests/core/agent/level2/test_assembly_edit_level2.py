@@ -85,3 +85,42 @@ def test_the_assertion_command_says_which_saved_documents_fail_it(kernel, saved,
 
     assert verdicts[saved] is None
     assert "no joint" in verdicts[jointless]
+
+
+NAMED = SOLVED.replace("'A'", "'Part1'").replace("'B'", "'Part2'")
+REMOVE_PART2 = """
+doc.removeObject('Joint')
+doc.removeObject('Part2')
+doc.recompute()
+"""
+
+
+@pytest.fixture
+def named(kernel, tmp_path):
+    client = sdk.Client(kernel=kernel, llm=ScriptedLLMClient([_say(code=NAMED), _say(finish="built")]))
+    assert client.agent("Assemble the two boxes.", domain=ASSEMBLY).ok
+    path = client.save(str(tmp_path / "named.FCStd"))
+    client.close()
+    return path
+
+
+def test_a_part_the_intent_names_goes_with_its_joint_without_anyone_confirming(kernel, named):
+    llm = ScriptedLLMClient([_say(code=REMOVE_PART2), _say(finish="removed Part2")])
+    client = sdk.Client(document=named, kernel=kernel, llm=llm)
+
+    result = client.agent("Remove Part2 and its joint from the assembly.", domain=ASSEMBLY, base=True)
+
+    assert result.ok, result.reason
+    assert [o.Label for o in client.document.Objects if o.TypeId == "Part::Feature"] == ["Part1"]
+    client.close()
+
+
+def test_a_deletion_the_intent_does_not_name_is_refused_in_an_unattended_run(kernel, named):
+    llm = ScriptedLLMClient([_say(code=REMOVE_PART2), _say(finish="removed it")])
+    client = sdk.Client(document=named, kernel=kernel, llm=llm)
+
+    client.agent("Remove the top bracket and its joint from the assembly.", domain=ASSEMBLY, base=True,
+                 cancelled=lambda: len(llm.calls) >= 2)
+
+    assert "Part2" in [o.Label for o in client.document.Objects]
+    client.close()

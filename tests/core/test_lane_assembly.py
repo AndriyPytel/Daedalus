@@ -204,13 +204,12 @@ def test_an_assembly_run_names_the_document_it_edits(monkeypatch):
     cmd = _command(monkeypatch, domain="assembly", base_document="/d/edit_02/input.FCStd")
 
     assert cmd[cmd.index("--base-document") + 1] == "/d/edit_02/input.FCStd"
-    assert "--allow-user-objects" in cmd
 
 
 def test_a_run_without_a_document_to_edit_names_none(monkeypatch):
     cmd = _command(monkeypatch, domain="assembly")
 
-    assert "--base-document" not in cmd and "--allow-user-objects" not in cmd
+    assert "--base-document" not in cmd
 
 
 def test_sweep_opens_the_input_of_an_edit_task_as_the_runs_document(monkeypatch, tmp_path):

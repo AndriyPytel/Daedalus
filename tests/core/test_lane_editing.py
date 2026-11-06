@@ -224,7 +224,6 @@ def test_run_one_hands_the_base_step_to_run_py(monkeypatch):
 
     assert seen["cmd"][seen["cmd"].index("--base-step") + 1] == "/d/input.step"
     assert seen["cmd"][seen["cmd"].index("--attach") + 1:][:2] == ["/d/front.png", "/d/iso.png"]
-    assert "--allow-user-objects" not in seen["cmd"]
 
 
 def test_the_input_check_names_a_shape_the_official_gate_would_refuse(tmp_path):

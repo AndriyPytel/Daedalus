@@ -4,10 +4,8 @@ One run of one sheet, through `sdk.Client`.
 
 The useful half of the old `tools/ab_run.py`: the RLM_AGENTIC arm and its
 retry/`state.json` bookkeeping move to `tools/lane.py`, the one caller that
-walks more than one of these. `run_slice.py`'s `--allow-user-objects` survives
-as the same flag here, answering the Owned Object prompt yes -- safe only
-because a script pointed at a scratch Document is the only caller that
-should ever say so.
+walks more than one of these. A deletion of a user object is approved only
+where the Intent names it.
 
     .venv/bin/python src/tools/run.py --intent "Build the Phase 1 model" \
         --attach tests/modelmania/mm25-p1-1.pdf --budget-usd 20
@@ -120,8 +118,6 @@ def main():
                         help="Ceiling on what this run may spend; unset runs to completion")
     parser.add_argument("--log", default="/tmp/run_events.jsonl")
     parser.add_argument("--save", default="")
-    parser.add_argument("--allow-user-objects", action="store_true",
-                        help="Answer yes to the Owned Object prompt instead of refusing")
     parser.add_argument("--domain", default="part",
                         help="The Domain the agent arm builds under, part, assembly or bim; assembly builds from the STEP parts in --attach and bim from the floor plan in --attach")
     parser.add_argument("--base-document", default=None,
@@ -148,7 +144,7 @@ def main():
 
         scratch = tempfile.mkdtemp(prefix="fcc-native-")
         seed = sdk.native_document(args.base_ifc, os.path.join(scratch, "work.ifc"), os.path.join(scratch, "seed.FCStd"))
-    client = Client(document=seed, llm=llm, confirm=lambda kinds: args.allow_user_objects is True)
+    client = Client(document=seed, llm=llm)
     client.events.log_to(args.log)
     if seed:
         client.kernel.check("pass", document=seed)

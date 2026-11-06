@@ -130,9 +130,9 @@ def run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
     One run of one sheet, as a subprocess of `tools/run.py`.
 
     A task with no sheet — `--task bolt-nut=` — is a run of the Intent alone.
-    An editing run names *base_step* and the renders in *attach*; *domain* is `--domain`, left off for Part, and an Assembly run saves an FCStd; *base_document* is the Document an editing Assembly run opens, whose objects the run may change, and *base_ifc* the IFC an editing BIM run opens in nativeifc.
+    An editing run names *base_step* and the renders in *attach*; *domain* is `--domain`, left off for Part, and an Assembly run saves an FCStd; *base_document* is the Document an editing Assembly run opens, which the run may change where its Intent names what goes, and *base_ifc* the IFC an editing BIM run opens in nativeifc.
     """
-    part, _, bim = _domains()
+    part = _domains()[0]
     domain = domain or part
     suffix = _saved_suffix(domain)
     save = log[: -len(".jsonl")] + suffix if log.endswith(".jsonl") else log + suffix
@@ -151,8 +151,6 @@ def run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
         cmd += ["--domain", domain]
     if base_document:
         cmd += ["--base-document", base_document]
-        if domain != bim:
-            cmd.append("--allow-user-objects")
     if base_ifc:
         cmd += ["--base-ifc", base_ifc]
     return subprocess.Popen(cmd)
