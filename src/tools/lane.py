@@ -782,13 +782,15 @@ def _fmt_score(value):
 
 
 def _detail_table(rows):
-    header = ["model", "sheet", "verdict", "reason", "confirmed/unmet",
+    header = ["model", "resolved model", "sheet", "verdict", "reason", "confirmed/unmet",
              "steps started/applied", "preflight fails", "cost (USD)",
              "working (s)", "questions", "truncated", "score"]
     lines = [_row(header), _row(["---"] * len(header))]
     for model, label, events, m in rows:
         confirmed, unmet = _assertion_counts(events)
-        cells = [model, label, _verdict(events, m), _reason(events, m),
+        answered = sorted({e.data["resolved_model"] for e in events
+                           if e.kind == "cost" and e.data.get("resolved_model")})
+        cells = [model, ", ".join(answered) or "-", label, _verdict(events, m), _reason(events, m),
                 "%d/%d" % (confirmed, unmet),
                 "%d/%d" % (m.steps_started, m.steps_applied),
                 str(m.preflight_failures), "{:.4f}".format(m.cost_usd),

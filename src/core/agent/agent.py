@@ -59,7 +59,8 @@ def _one_turn(session, llm, content, phase=None, stream=None):
             paid = {"phase": phase, "seconds": time.time() - start,
                     "model": spent.get("model", model)}
             for key in ("usd", "prompt_tokens", "completion_tokens", "cached_tokens",
-                        "cache_creation_tokens", "reasoning_tokens", "usage_unavailable"):
+                        "cache_creation_tokens", "reasoning_tokens", "usage_unavailable",
+                        "resolved_model"):
                 if key in spent:
                     paid[key] = spent[key]
             stream.emit(COST, **paid)

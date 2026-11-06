@@ -141,3 +141,23 @@ def test_a_value_that_is_not_a_choice_is_not_inferred():
 
     assert choose("teapot", "Make a bracket.", [], ScriptedLLMClient([]), events) == "teapot"
     assert [e.data for e in events if e.kind == DOMAIN] == [{"domain": "teapot", "inferred": False}]
+
+
+def test_a_cost_event_carries_the_resolved_model():
+    from core.agent.agent import _say
+    from core.events import COST
+    from core.llm import TEXT, Chunk, Session
+
+    class Llm:
+        last_cost = None
+
+        def stream(self, messages, **overrides):
+            self.last_cost = {"model": "opus", "resolved_model": "claude-opus-5-5", "usd": 0.1}
+            return iter([Chunk(TEXT, "{}")])
+
+    events = EventStream()
+
+    _say(Session(system=""), Llm(), "hi", phase="agent", stream=events)
+
+    (paid,) = [e.data for e in events if e.kind == COST]
+    assert paid["resolved_model"] == "claude-opus-5-5"

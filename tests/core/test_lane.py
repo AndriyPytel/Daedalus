@@ -682,3 +682,15 @@ def test_a_run_stopped_by_the_dollar_ceiling_is_not_retried(monkeypatch, tmp_pat
 def test_a_crash_and_a_hang_are_still_retried(monkeypatch, tmp_path):
     assert _sweep_once(monkeypatch, tmp_path / "a", "exited", [], 1)[0] == ["126"] * 3
     assert _sweep_once(monkeypatch, tmp_path / "b", "hung", [], -9)[0] == ["126"] * 3
+
+
+def test_report_detail_names_the_model_each_run_was_answered_by(tmp_path):
+    _write_events(str(tmp_path / "opus" / "mm25.jsonl"), [
+        (1, "cost", {"model": "opus", "resolved_model": "claude-opus-5-5", "usd": 0.1}),
+        (2, "cost", {"model": "opus", "resolved_model": "claude-opus-5-5", "usd": 0.1}),
+    ])
+
+    detail = lane.report(str(tmp_path)).split("## Detail")[1]
+
+    assert "resolved model" in detail
+    assert "claude-opus-5-5" in detail

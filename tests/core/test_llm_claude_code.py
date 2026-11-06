@@ -312,6 +312,7 @@ def test_what_the_call_spent_is_carried_off_the_result_event():
         "prompt_tokens": usage["input_tokens"],
         "completion_tokens": usage["output_tokens"],
         "cached_tokens": usage["cache_read_input_tokens"],
+        "resolved_model": next(iter(_result(MINIMAL)["modelUsage"])),
     }
 
 
@@ -436,6 +437,7 @@ def test_a_truncated_call_still_records_what_the_result_event_reported():
         "prompt_tokens": usage["input_tokens"],
         "completion_tokens": usage["output_tokens"],
         "cached_tokens": usage["cache_read_input_tokens"],
+        "resolved_model": next(iter(_result(MINIMAL)["modelUsage"])),
     }
 
 
@@ -1066,3 +1068,13 @@ def test_no_claude_at_all_is_reported_rather_than_raised(monkeypatch):
 
     assert ok is False
     assert "CLAUDE_CMD" in said
+
+
+def test_the_model_the_cli_answered_with_is_recorded_beside_the_alias_asked_for():
+    client, _ = client_over(_Process(_changed(
+        MINIMAL, modelUsage={"claude-opus-5-5": {"costUSD": 0.1}})))
+
+    collect(client.stream(a_turn()))
+
+    assert client.last_cost["model"] == MODEL
+    assert client.last_cost["resolved_model"] == "claude-opus-5-5"

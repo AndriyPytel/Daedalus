@@ -238,6 +238,9 @@ class ClaudeCodeClient:
                     continue
                 if event.get("total_cost_usd") is not None:
                     self.last_cost = {"usd": event["total_cost_usd"], "model": self.model}
+                    answered = next(iter(event.get("modelUsage") or {}), None)
+                    if answered:
+                        self.last_cost["resolved_model"] = answered
                     self.last_cost.update(_tokens_of(event.get("usage") or {}))
                 refusal = _refusal_in(event, self.model)
                 if refusal is not None:
