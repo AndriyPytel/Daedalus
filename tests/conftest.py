@@ -17,6 +17,7 @@ import atexit
 import glob
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -210,6 +211,46 @@ def no_module_leaves_a_qthread_running():
         "into a lock one of these still holds, deadlocking the whole run"
         % (len(leaked), [type(t).__name__ for t in leaked])
     )
+
+
+def _untracked(root):
+    """
+    The paths git reports as untracked under `root`, honouring `.gitignore`;
+    `None` when `root` is not a git checkout.
+    """
+    result = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        cwd=root, capture_output=True, text=True)
+    if result.returncode != 0:
+        return None
+    return {line[3:] for line in result.stdout.splitlines() if line.startswith("?? ")}
+
+
+def pytest_sessionstart(session):
+    """
+    On the xdist controller only, remember which untracked files exist
+    before the first test, so `pytest_sessionfinish` can tell the run's own
+    from the developer's.
+    """
+    if not hasattr(session.config, "workerinput"):
+        session.config._untracked_at_start = _untracked(session.config.rootpath)
+
+
+def pytest_sessionfinish(session):
+    """
+    Fails the run, naming each file, when a test left a new untracked file
+    in the checkout. The files are kept, so the offending test can be found.
+    """
+    config = session.config
+    before = getattr(config, "_untracked_at_start", None)
+    if hasattr(config, "workerinput") or before is None:
+        return
+    stray = sorted(_untracked(config.rootpath) - before)
+    if stray:
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+        sys.stderr.write(
+            "\nthese tests left files in the repository:\n"
+            + "".join("  %s\n" % path for path in stray))
 
 
 def pytest_collection_modifyitems(config, items):
