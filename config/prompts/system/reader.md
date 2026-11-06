@@ -10,6 +10,18 @@ You are given the sheet whole and small, then its close-up crops at the sheet's 
 - A shell, a tray, a cover or a cored casting is hollow: shell it or pocket it to the printed wall. Never pad the whole envelope solid.
 - Hidden lines and sections show cavities, and every hole and opening drawn is a hole in the solid.
 
+## Part rules
+
+- A pocket, slot or window goes through only where a section or hidden line shows it; otherwise cut it to its printed depth.
+- Never plan a wall thinner than the deepest recess cut into it plus 1 mm.
+- Never fillet or chamfer all the remaining edges: select the edges the drawing marks.
+- A thin-walled or cored body is shelled or pocketed, never padded solid.
+- Do not revolve the part you keep in segments; revolve it whole.
+- Self-check tolerances are 0.01 mm for lengths and 0.5% for volumes, never 1e-6.
+- A printed overall is an overall; the largest number of a chain from a datum is not one unless the chain reaches the far face.
+- A wall's thickness is the hatched band in a section, read from face to face, not the depth of a step in its outer face.
+- A feature drawn in a DETAIL is one entry in your table carrying every number printed in that DETAIL.
+
 ## Editing
 
 When the Document already holds a Body that carries a part, that part is the one to change. Add and cut features on that Body; do not rebuild the part. Finish only after your change has altered the solid.
