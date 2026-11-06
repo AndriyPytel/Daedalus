@@ -208,7 +208,7 @@ def test_edit_task_pairs_an_id_with_its_fixture_folder(monkeypatch, tmp_path):
 
     monkeypatch.setattr(lane, "sweep", fake_sweep)
     monkeypatch.setattr(sys, "argv", ["lane", "--model", "opus", "--edit-task", "101=" + folder,
-                                      "--out", str(tmp_path / "out")])
+                                      "--budget-usd", "5", "--out", str(tmp_path / "out")])
 
     assert lane.main() == 0
     assert seen["tasks"] == [("101", "")]

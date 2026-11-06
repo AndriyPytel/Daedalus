@@ -158,6 +158,21 @@ def run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
     return subprocess.Popen(cmd)
 
 
+def _attempts(text):
+    value = int(text)
+    if value < 1:
+        raise argparse.ArgumentTypeError("%d attempts is none; at least 1" % value)
+    return value
+
+
+def ceiling_reached(log):
+    """True when the run in *log* ended on its dollar or turn ceiling."""
+    import sdk
+
+    events, _truncated = sdk.replay(log)
+    return any(event.kind == "budget_exhausted" for event in events)
+
+
 def baseline_tasks():
     """
     The 8 sheets pinned in `manual/modelmania/baseline_sheets.json`, each
@@ -331,6 +346,7 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
             stem = os.path.join(model_dir, label)
             outcome = "hung"
             refusal = None
+            ceiling = False
             attempts = []
             log = None
             fixture = edits.get(label)
@@ -360,6 +376,9 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
                 refusal = quota_refusal(log) if outcome == "exited" else None
                 if refusal:
                     break
+                ceiling = outcome == "over time" or (outcome == "exited" and ceiling_reached(log))
+                if ceiling:
+                    break
                 if outcome == "exited" and process.returncode == 0 and _has_step(log, saved):
                     break
                 print("%s attempt %d: %s (exit %s)"
@@ -369,6 +388,7 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
             state["runs"][key] = {"label": label, "model": model, "log": log,
                                   "attempts": attempts, "returncode": process.returncode,
                                   "status": "quota" if refusal
+                                  else "ceiling" if ceiling and not succeeded
                                   else "done" if succeeded else "failed"}
             if fixture and not refusal:
                 output = os.path.join(model_dir, label, "output.step")
@@ -857,11 +877,15 @@ def main():
     parser.add_argument("--provider", default="Claude (subscription)",
                         help="Which provider sells every --model of this sweep")
     parser.add_argument("--effort", default="medium")
-    parser.add_argument("--budget-usd", type=float, default=None)
+    parser.add_argument("--budget-usd", type=float, default=None,
+                        help="Dollar ceiling per run, required for a paid run. Checked between "
+                             "calls, so a run can exceed it by one call")
     parser.add_argument("--hang-seconds", type=float, default=HANG_SECONDS)
     parser.add_argument("--run-seconds", type=float, default=None,
                         help="Wall-clock ceiling on one run, whatever it is doing")
-    parser.add_argument("--retries", type=int, default=3)
+    parser.add_argument("--retries", type=_attempts, default=3,
+                        help="At most this many attempts per task, at least 1; only a crash or "
+                             "a hang is retried, never a run that hit a ceiling")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--status", action="store_true",
                         help="Print the comparison table for --out and exit")
@@ -960,6 +984,9 @@ def main():
         tasks = [t.split("=", 1) for t in args.task]
         if not tasks and not args.edit_task or not args.model:
             raise SystemExit("--status, --report, or --model and --task, each at least once")
+
+    if args.budget_usd is None:
+        parser.error("--budget-usd is required: a paid run needs a dollar ceiling")
 
     edits = dict(t.split("=", 1) for t in args.edit_task)
     task_folders = dict(t.split("=", 1) for t in args.task_folder)

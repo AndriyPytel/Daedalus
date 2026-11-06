@@ -343,7 +343,7 @@ def test_smoke_tasks_takes_a_sheet_argument():
 def test_smoke_cli_selects_mm2024_phase1(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "argv", [
         "lane.py", "--smoke", "--smoke-sheet", "mm2024-phase1.pdf",
-        "--model", "sonnet", "--out", str(tmp_path),
+        "--model", "sonnet", "--budget-usd", "5", "--out", str(tmp_path),
     ])
     called = {}
 
@@ -608,3 +608,77 @@ def test_a_disputed_end_is_reported_unverified_and_is_not_a_blocked_run(tmp_path
     assert "unverified" in detail
     assert "blocked" not in detail
     assert "bore through-count" in detail
+
+
+def _main_with(monkeypatch, tmp_path, *flags):
+    monkeypatch.setattr(lane, "sweep", lambda *a, **k: pytest.fail("sweep must not start"))
+    monkeypatch.setattr(sys, "argv", ["lane.py", "--model", "opus", "--task", "a=a.pdf",
+                                      "--out", str(tmp_path), *flags])
+    return lane.main
+
+
+def test_a_paid_run_without_a_budget_refuses_to_start(monkeypatch, tmp_path, capsys):
+    with pytest.raises(SystemExit) as stopped:
+        _main_with(monkeypatch, tmp_path)()
+
+    assert stopped.value.code == 2
+    assert "--budget-usd" in capsys.readouterr().err
+
+
+def test_retries_below_1_is_rejected_with_a_message(monkeypatch, tmp_path, capsys):
+    with pytest.raises(SystemExit) as stopped:
+        _main_with(monkeypatch, tmp_path, "--budget-usd", "5", "--retries", "0")()
+
+    assert stopped.value.code == 2
+    assert "--retries" in capsys.readouterr().err
+
+
+def test_help_says_the_budget_is_checked_between_calls(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(sys, "argv", ["lane.py", "--help"])
+
+    with pytest.raises(SystemExit):
+        lane.main()
+
+    assert "between calls" in " ".join(capsys.readouterr().out.split())
+
+
+def _sweep_once(monkeypatch, tmp_path, outcome, events, returncode):
+    spawned = []
+
+    class FakeProcess:
+        pass
+
+    FakeProcess.returncode = returncode
+
+    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider):
+        spawned.append(label)
+        _write_events(log, events)
+        return FakeProcess()
+
+    monkeypatch.setattr(lane, "run_one", fake_run_one)
+    monkeypatch.setattr(lane, "watch", lambda *a, **k: outcome)
+    lane.sweep([("126", "a.pdf")], ["opus"], "medium", 3.0, "Build it.", str(tmp_path), 1800,
+               3, False, "Claude (subscription)", 60.0)
+    with open(os.path.join(str(tmp_path), "state.json"), encoding="utf-8") as handle:
+        return spawned, json.load(handle)["runs"]["126/opus"]
+
+
+def test_a_run_stopped_by_the_time_ceiling_is_not_retried(monkeypatch, tmp_path):
+    spawned, run = _sweep_once(monkeypatch, tmp_path, "over time", [], -9)
+
+    assert spawned == ["126"]
+    assert run["status"] == "ceiling"
+
+
+def test_a_run_stopped_by_the_dollar_ceiling_is_not_retried(monkeypatch, tmp_path):
+    ceiling = [(1.0, "budget_exhausted", {"reason": "the dollar ceiling was reached", "tried": []})]
+
+    spawned, run = _sweep_once(monkeypatch, tmp_path, "exited", ceiling, 1)
+
+    assert spawned == ["126"]
+    assert run["status"] == "ceiling"
+
+
+def test_a_crash_and_a_hang_are_still_retried(monkeypatch, tmp_path):
+    assert _sweep_once(monkeypatch, tmp_path / "a", "exited", [], 1)[0] == ["126"] * 3
+    assert _sweep_once(monkeypatch, tmp_path / "b", "hung", [], -9)[0] == ["126"] * 3

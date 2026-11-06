@@ -101,7 +101,7 @@ def test_the_parser_reads_the_domain_and_the_assembly_tasks(monkeypatch, tmp_pat
     monkeypatch.setattr(lane, "sweep", lambda *a, **k: captured.update(k=k, a=a))
     monkeypatch.setattr(sys, "argv", ["lane.py", "--model", "opus", "--domain", "assembly",
                                       "--assembly-task", "from_parts_01=/d/from_parts_01",
-                                      "--out", str(tmp_path)])
+                                      "--budget-usd", "5", "--out", str(tmp_path)])
 
     lane.main()
 
@@ -256,7 +256,7 @@ def test_the_parser_accepts_the_edit_mode(monkeypatch, tmp_path):
     monkeypatch.setattr(lane, "sweep", lambda *a, **k: captured.update(k=k))
     monkeypatch.setattr(sys, "argv", ["lane.py", "--model", "opus", "--domain", "assembly",
                                       "--mode", "edit", "--assembly-task", "edit_02=/d/edit_02",
-                                      "--out", str(tmp_path)])
+                                      "--budget-usd", "5", "--out", str(tmp_path)])
 
     lane.main()
 
