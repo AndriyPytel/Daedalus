@@ -8,11 +8,14 @@ built and measured in `freecadcmd` through assembly_score.
 """
 import argparse
 import io
+import itertools
 import json
 import math
+import os
 import re
 import shutil
 import struct
+import subprocess
 import tempfile
 import time
 import zlib
@@ -40,6 +43,7 @@ BLOCK = 256 << 10
 RETRIES = 15
 WORKERS = 6
 EDITS = ("remove", "add", "retype")
+ASSERT_TOOL = Path(__file__).resolve().parents[1] / "src" / "tools" / "assert_assembly.py"
 
 
 def matrix_pose(flat, scale=1.0):
@@ -109,16 +113,36 @@ def _without(spec, label):
     }
 
 
+def _reached(spec, start, skip=None):
+    """Labels joined to *start* by a chain of joints, leaving out the joint at index *skip*."""
+    reached, spread = {start}, True
+    while spread:
+        spread = False
+        for index, joint in enumerate(spec["joints"]):
+            if index != skip and (joint["a"] in reached) != (joint["b"] in reached):
+                reached |= {joint["a"], joint["b"]}
+                spread = True
+    return reached
+
+
+def joined_to_ground(spec):
+    return _reached(spec, spec["ground"]) == {p["label"] for p in spec["parts"]}
+
+
 def _leaf(spec):
+    """The last part that hangs off the assembly by one joint, in an assembly whose parts all reach the ground and which stays so without it."""
+    if not joined_to_ground(spec):
+        return None
     leaves = [
         p["label"] for p in spec["parts"]
         if p["label"] != spec["ground"] and sum(p["label"] in (j["a"], j["b"]) for j in spec["joints"]) == 1
+        and joined_to_ground(_without(spec, p["label"]))
     ]
     return leaves[-1] if leaves else None
 
 
 def edit_remove(spec):
-    """(before, after, text) removing the last part that hangs off the assembly by one joint."""
+    """(before, after, text) removing the last part that hangs off the assembly by one joint; a part whose removal strands another is never offered."""
     label = _leaf(spec)
     if label is None:
         return None
@@ -135,15 +159,49 @@ def edit_add(spec):
     return _without(spec, label), spec, text
 
 
+def _multiply(one, other):
+    x1, y1, z1, a1, b1, c1, d1 = one
+    x2, y2, z2, a2, b2, c2, d2 = other
+    return [
+        x1 + (1 - 2 * (b1 * b1 + c1 * c1)) * x2 + 2 * (a1 * b1 - c1 * d1) * y2 + 2 * (a1 * c1 + b1 * d1) * z2,
+        y1 + 2 * (a1 * b1 + c1 * d1) * x2 + (1 - 2 * (a1 * a1 + c1 * c1)) * y2 + 2 * (b1 * c1 - a1 * d1) * z2,
+        z1 + 2 * (a1 * c1 - b1 * d1) * x2 + 2 * (b1 * c1 + a1 * d1) * y2 + (1 - 2 * (a1 * a1 + b1 * b1)) * z2,
+        d1 * a2 + a1 * d2 + b1 * c2 - c1 * b2,
+        d1 * b2 - a1 * c2 + b1 * d2 + c1 * a2,
+        d1 * c2 + a1 * b2 - b1 * a2 + c1 * d2,
+        d1 * d2 - a1 * a2 - b1 * b2 - c1 * c2,
+    ]
+
+
+def _inverse(pose):
+    x, y, z, a, b, c, d = pose
+    turned = _multiply([0, 0, 0, -a, -b, -c, d], [-x, -y, -z, 0, 0, 0, 1])
+    return [*turned[:3], -a, -b, -c, d]
+
+
 def edit_retype(spec):
-    """(before, after, text) turning the first joint that is not Fixed into a Fixed one."""
-    index = next((i for i, j in enumerate(spec["joints"]) if j["type"] != "Fixed"), None)
-    if index is None:
+    """(before, after, text) turning the first joint that is not Fixed into a Fixed one that can be re-solved.
+
+    The part on the far side of the joint from the ground, and every part hanging off it, move together so that the two connector frames meet and keep their own joints; a joint on a loop cannot be re-solved and is skipped.
+    """
+    if not joined_to_ground(spec):
         return None
-    joint = spec["joints"][index]
-    after = {**spec, "joints": [{**j, "type": "Fixed"} if i == index else j for i, j in enumerate(spec["joints"])]}
-    text = f"Change the {joint['type']} joint between {joint['a']} and {joint['b']} to a Fixed joint."
-    return spec, after, text
+    for index, joint in enumerate(spec["joints"]):
+        if joint["type"] == "Fixed":
+            continue
+        near = _reached(spec, spec["ground"], skip=index)
+        if joint["a"] in near and joint["b"] in near:
+            continue
+        anchor, mover = ("a", "b") if joint["a"] in near else ("b", "a")
+        placements = {p["label"]: p["placement"] for p in spec["parts"]}
+        target = _multiply(_multiply(placements[joint[anchor]], joint["frame_" + anchor]), _inverse(joint["frame_" + mover]))
+        delta = _multiply(target, _inverse(placements[joint[mover]]))
+        moving = _reached(spec, joint[mover], skip=index)
+        parts = [{**p, "placement": _multiply(delta, p["placement"]) if p["label"] in moving else p["placement"]} for p in spec["parts"]]
+        joints = [{**j, "type": "Fixed"} if i == index else j for i, j in enumerate(spec["joints"])]
+        text = f"Change the {joint['type']} joint between {joint['a']} and {joint['b']} to a Fixed joint."
+        return spec, {**spec, "parts": parts, "joints": joints}, text
+    return None
 
 
 EDIT_FUNCTIONS = {"remove": edit_remove, "add": edit_add, "retype": edit_retype}
@@ -163,6 +221,79 @@ def graph(spec, info):
 
 def split(names):
     return make_sheets.split(names, make_sheets.test_count(len(names)), SEED)
+
+
+def split_edits(kinds):
+    """(test, validation) of the edit tasks in *kinds* (name to kind): the 70:30 split is made inside each kind, so every kind has tasks in test; the largest remainders take the rounding."""
+    groups = {kind: sorted(n for n, k in kinds.items() if k == kind) for kind in EDITS}
+    shares = {kind: make_sheets.TEST_SHARE * len(names) for kind, names in groups.items()}
+    counts = {kind: int(share) for kind, share in shares.items()}
+    spare = make_sheets.test_count(len(kinds)) - sum(counts.values())
+    for kind in sorted(EDITS, key=lambda k: shares[k] - counts[k], reverse=True)[:spare]:
+        counts[kind] += 1
+    test = {n for kind, names in groups.items() for n in make_sheets.split(names, counts[kind], SEED)[0]}
+    return sorted(test), sorted(set(kinds) - test)
+
+
+def project_python(root=None):
+    """The interpreter that has the engine: DAE_PYTHON, else the .venv of the main checkout of the repository at *root*, which a git worktree does not carry; FileNotFoundError names DAE_PYTHON where there is none."""
+    if os.environ.get("DAE_PYTHON"):
+        return Path(os.environ["DAE_PYTHON"])
+    root = Path(root or Path(__file__).resolve().parents[1])
+    common = subprocess.run(["git", "-C", str(root), "rev-parse", "--path-format=absolute", "--git-common-dir"], capture_output=True, text=True, check=True).stdout.strip()
+    python = Path(common).parent / ".venv" / "bin" / "python"
+    if not python.exists():
+        raise FileNotFoundError(f"{python} does not exist: set DAE_PYTHON to the interpreter that runs the engine")
+    return python
+
+
+def assertion(paths):
+    """Why each saved Document in *paths* fails the Assembly Assertion, or None where it holds; run by the project interpreter DAE_PYTHON, which has the engine."""
+    run = subprocess.run([str(project_python()), str(ASSERT_TOOL), *map(str, paths)], capture_output=True, text=True)
+    verdicts = {}
+    for line in run.stdout.splitlines():
+        path, _, verdict = line.partition(": ")
+        verdicts[path] = None if verdict == "pass" else verdict
+    return {str(path): verdicts[str(path)] for path in paths}
+
+
+def assertion_passes(options):
+    """The (assembly id, kind) of the *options* (id, kind, before, after) whose input and reference both hold the Assertion."""
+    work = Path(tempfile.mkdtemp(prefix="assembly-assert-"))
+    jobs, names = [], []
+    for number, (assembly_id, kind, before, after) in enumerate(options):
+        for role, spec in (("input", before), ("reference", after)):
+            jobs.append((spec, work / f"{number}_{role}.FCStd"))
+        names.append((assembly_id, kind, jobs[-2][1], jobs[-1][1]))
+    assembly_score.build(jobs)
+    verdicts = assertion([path for _, _, one, other in names for path in (one, other)])
+    shutil.rmtree(work)
+    return {(i, k) for i, k, one, other in names if verdicts[str(one)] is None and verdicts[str(other)] is None}
+
+
+def _substantial(kind, spec):
+    """Whether the edit leaves more than a lone part: a remove keeps two parts and a joint."""
+    edit = EDIT_FUNCTIONS[kind](spec)
+    return kind != "remove" or (edit is not None and len(edit[1]["parts"]) >= 2 and bool(edit[1]["joints"]))
+
+
+def pick_edits(pool, validate=None):
+    """About TASKS_PER_MODE (kind, entry) edits from distinct assemblies of *pool*, kinds balanced, retype first because it needs a joint that is not Fixed; ValueError where a kind falls short."""
+    options = [
+        (entry[0], kind, *EDIT_FUNCTIONS[kind](entry[1])[:2])
+        for entry in pool for kind in EDITS if EDIT_FUNCTIONS[kind](entry[1])
+    ]
+    allowed = validate(options) if validate else {(i, k) for i, k, _, _ in options}
+    quota = {kind: TASKS_PER_MODE // 3 + (index < TASKS_PER_MODE % 3) for index, kind in enumerate(("retype", "remove", "add"))}
+    taken, chosen = set(), {kind: [] for kind in EDITS}
+    for kind in ("retype", "remove", "add"):
+        for entry in sorted(pool, key=lambda e: not _substantial(kind, e[1])):
+            if len(chosen[kind]) < quota[kind] and entry[0] not in taken and (entry[0], kind) in allowed:
+                chosen[kind].append((kind, entry))
+                taken.add(entry[0])
+        if len(chosen[kind]) < quota[kind]:
+            raise ValueError(f"{len(chosen[kind])} valid {kind} edit tasks in the pool, {quota[kind]} wanted")
+    return [item for group in itertools.zip_longest(*chosen.values()) for item in group if item]
 
 
 class RangeFile(io.RawIOBase):
@@ -354,8 +485,8 @@ def _moves(entry):
     return any(j["type"] != "Fixed" for j in entry[1]["joints"])
 
 
-def assign(found):
-    """Distinct usable assemblies per mode, those with a joint that is not Fixed first: simple parts to from_scratch, then the rest dealt alternately to edit and from_parts."""
+def assign(found, validate=None):
+    """Distinct usable assemblies per mode, those with a joint that is not Fixed first: simple parts to from_scratch, the rest dealt alternately to a reserve and from_parts, and the edit tasks drawn from the reserve and what is left over with `pick_edits`."""
     found = sorted(found, key=lambda entry: not _moves(entry))
     scratch = [f for f in found if _faces(f[2]) <= MAX_FACES["from_scratch"] and len(f[1]["parts"]) <= 3][:TASKS_PER_MODE]
     taken = {f[0] for f in scratch}
@@ -368,7 +499,8 @@ def assign(found):
             edits.append((kind, entry))
         elif len(parts) < TASKS_PER_MODE:
             parts.append(entry)
-    return {"from_scratch": scratch, "edit": edits, "from_parts": parts}
+    used = taken | {f[0] for f in parts}
+    return {"from_scratch": scratch, "edit": pick_edits([f for f in found if f[0] not in used], validate), "from_parts": parts}
 
 
 def _size(part):
@@ -419,6 +551,33 @@ def write_credits(out, names):
     (out / "CREDITS.md").write_text("# Credits\n\n" + "\n".join(rows) + "\n" + NOT_USED)
 
 
+def write_edits(edits, out):
+    """Write the edit tasks of *edits* ((kind, entry) pairs) in *out*/edit and return their names."""
+    names = []
+    for number, (kind, (assembly_id, spec, measured)) in enumerate(edits, 1):
+        name = f"edit_{number:02d}"
+        before, after, text = EDIT_FUNCTIONS[kind](spec)
+        added = {p["label"]: p["step"] for p in spec["parts"] if kind == "add" and p["label"] not in {q["label"] for q in before["parts"]}}
+        meta = _meta("edit", name, assembly_id, text, {"input": "input.FCStd", "edit": kind}, after)
+        _write_task(out / "edit" / name, meta, {"input.FCStd": before, "reference.FCStd": after}, added)
+        names.append(name)
+    return names
+
+
+def write_edits_only(edits, out=OUT):
+    """Replace the edit tasks, their split and the credits in the benchmark under *out*, leaving the other modes as they are."""
+    if (out / "edit").exists():
+        shutil.rmtree(out / "edit")
+    names = {mode: sorted(p.name for p in (out / mode).iterdir()) for mode in MODES if mode != "edit"}
+    names["edit"] = write_edits(edits, out)
+    kinds = {n: json.loads((out / "edit" / n / "task.json").read_text())["inputs"]["edit"] for n in names["edit"]}
+    test, validation = split_edits(kinds)
+    splits = json.loads((out / "split.json").read_text())
+    splits["edit"] = {"test": test, "validation": validation}
+    (out / "split.json").write_text(json.dumps(splits, indent=1))
+    write_credits(out, names)
+
+
 def write_tasks(chosen, out=OUT):
     if out.exists():
         shutil.rmtree(out)
@@ -446,16 +605,13 @@ def write_tasks(chosen, out=OUT):
         )
         _write_task(out / "from_scratch" / name, _meta("from_scratch", name, assembly_id, text, {"graph": nodes}, spec), {"reference.FCStd": spec}, {})
         names["from_scratch"].append(name)
-    for number, (kind, (assembly_id, spec, measured)) in enumerate(chosen["edit"], 1):
-        name = f"edit_{number:02d}"
-        before, after, text = EDIT_FUNCTIONS[kind](spec)
-        added = {p["label"]: p["step"] for p in spec["parts"] if kind == "add" and p["label"] not in {q["label"] for q in before["parts"]}}
-        meta = _meta("edit", name, assembly_id, text, {"input": "input.FCStd", "edit": kind}, after)
-        _write_task(out / "edit" / name, meta, {"input.FCStd": before, "reference.FCStd": after}, added)
-        names["edit"].append(name)
+    names["edit"] = write_edits(chosen["edit"], out)
     splits = {}
     for mode, listed in names.items():
-        test, validation = split(listed)
+        if mode == "edit":
+            test, validation = split_edits({n: json.loads((out / mode / n / "task.json").read_text())["inputs"]["edit"] for n in listed})
+        else:
+            test, validation = split(listed)
         splits[mode] = {"test": test, "validation": validation}
     (out / "split.json").write_text(json.dumps({"seed": SEED, **splits}, indent=1))
     write_credits(out, names)
@@ -464,7 +620,7 @@ def write_tasks(chosen, out=OUT):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["candidates", "build"])
+    parser.add_argument("command", choices=["candidates", "build", "edits"])
     parser.add_argument("--parquet", default=str(OUT / "_src" / "assemblies.parquet"))
     parser.add_argument("--cached", action="store_true")
     parser.add_argument("--wanted", type=int, default=4 * TASKS_PER_MODE)
@@ -472,10 +628,15 @@ def main():
     if args.command == "candidates":
         select_candidates(args.parquet, CACHE / "candidates.json")
         return
+    if args.command == "edits":
+        taken = {json.loads(p.read_text())["source_id"] for mode in ("from_parts", "from_scratch") for p in (OUT / mode).glob("*/task.json")}
+        found = gather(args.wanted, cached_only=args.cached)
+        write_edits_only(pick_edits([f for f in found if f[0] not in taken], assertion_passes))
+        return
     src = OUT / "_src"
     kept = src.exists()
     found = gather(args.wanted, cached_only=args.cached)
-    chosen = assign(found)
+    chosen = assign(found, assertion_passes)
     if kept:
         shutil.move(src, CACHE / "_src_keep")
     write_tasks(chosen)

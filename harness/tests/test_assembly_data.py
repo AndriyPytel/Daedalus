@@ -75,3 +75,15 @@ def test_task_directories_are_self_contained(mode):
             assert (task / part["step"]).exists()
         for part in meta["inputs"].get("parts", []):
             assert (task / part["file"]).exists()
+
+
+def test_every_edit_task_input_and_reference_pass_the_assertion():
+    paths = [str(t / name) for t in tasks("edit") for name in ("input.FCStd", "reference.FCStd")]
+    assert assembly_tasks.assertion(paths) == {path: None for path in paths}
+
+
+def test_the_edit_test_split_has_at_least_four_retypes():
+    split = json.loads((ROOT / "split.json").read_text())["edit"]["test"]
+    kinds = [json.loads((ROOT / "edit" / name / "task.json").read_text())["inputs"]["edit"] for name in split]
+    assert kinds.count("retype") >= 4
+
