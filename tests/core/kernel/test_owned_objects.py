@@ -417,3 +417,60 @@ def test_refusing_the_first_question_never_reaches_the_second():
     assert not result.ok
     assert asked.asks == [{"delete": ["UserPad"]}]
     assert "you created rather than I did" in result.traceback
+
+
+def unattended(objects, owned, confirm=None):
+    doc = Tree(objects)
+
+    def transaction(document, code, label, **_):
+        pass
+
+    return ApplyPipeline(document=doc, worker=FakeWorker(),
+                         dispatch=lambda func, timeout=None: func(),
+                         transaction=transaction, confirm=confirm,
+                         owned=owned, unattended=True)
+
+
+def test_an_unattended_run_rebuilds_what_it_created_without_asking():
+    asked = Asked(answer=False)
+
+    result = unattended(THE_TREE, OURS, confirm=asked).apply(
+        "wipe()", kernel_result=touching(deleted=EVERYTHING))
+
+    assert result.ok
+    assert asked.asks == []
+
+
+def only_deleting(kinds):
+    return "delete" in kinds
+
+
+def test_an_unattended_run_still_refuses_to_rebuild_what_was_there_before_it():
+    result = unattended(THE_TREE, set(), confirm=only_deleting).apply(
+        "wipe()", kernel_result=touching(deleted=EVERYTHING))
+
+    assert not result.ok
+    assert result.gate == "ownership"
+    assert "rebuild of a model that is already there" in result.traceback
+
+
+def test_an_unattended_rebuild_counts_only_the_features_it_did_not_create():
+    one_before = OURS - {"PadOuterProfile"}
+    two_before = OURS - {"PadOuterProfile", "PocketBoreLeft"}
+
+    corrected = unattended(THE_TREE, one_before, confirm=only_deleting).apply(
+        "wipe()", kernel_result=touching(deleted=EVERYTHING))
+    rebuilt = unattended(THE_TREE, two_before, confirm=only_deleting).apply(
+        "wipe()", kernel_result=touching(deleted=EVERYTHING))
+
+    assert corrected.ok
+    assert not rebuilt.ok
+
+
+def test_with_a_panel_a_rebuild_of_its_own_features_still_asks_once():
+    asked = Asked(answer=True)
+
+    modelled(THE_TREE, confirm=asked, owned=OURS).apply(
+        "wipe()", kernel_result=touching(deleted=EVERYTHING))
+
+    assert len(asked.asks) == 1

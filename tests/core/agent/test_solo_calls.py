@@ -47,3 +47,24 @@ def test_a_call_that_answers_without_code_is_answered_as_it_was_and_runs_nothing
     kernel, llm, _ = _run(lambda argument: summary)
 
     assert kernel.ran == [] and json.loads(llm.calls[1][-1]["content"]) == summary
+
+
+class RefusingTools:
+    def call(self, name, arguments=None):
+        if name == "apply_step":
+            return {"status": "failed", "gate": "ownership", "traceback": "a rebuild, not approved"}
+        return {"path": "/nowhere"}
+
+
+def test_the_same_deletion_refused_twice_ends_the_run_with_a_reason():
+    kernel = Kernel()
+    domain = Domain("part", "", [{"type": "text", "text": "go"}], lambda: None, lambda k: None, {})
+    code = json.dumps({"code": "wipe()"})
+    llm = ScriptedLLMClient([code, code, code, json.dumps({"finish": "done"})])
+
+    result = run_solo("go", domain=domain, llm=llm, kernel=kernel, tools=RefusingTools(),
+                      events=EventStream(), max_turns=6)
+
+    assert len(llm.calls) == 2
+    assert not result.ok
+    assert "refused" in result.reason and "rebuild, not approved" in result.reason

@@ -269,7 +269,8 @@ class Client:
             worker=self.kernel,
             dispatch=self.dispatch,
             confirm=self._asked,
-            events=self.events)
+            events=self.events,
+            unattended=confirm is None)
         self._stop = False
 
     def _asked(self, kinds):

@@ -46,7 +46,8 @@ def run_solo(intent, *, domain, llm, kernel, tools, events, attachments=(), canc
     session = Session(system=with_traps(domain.system))
     content = domain.opening
     renders = tempfile.mkdtemp(prefix="fcc-solo-")
-    state = {"applied": 0, "failures": 0, "renders": 0, "asserted": False}
+    state = {"applied": 0, "failures": 0, "renders": 0, "asserted": False, "stopped": None}
+    ownership_refusals = {}
 
     def built(reason, ok=True):
         missing = domain.done_check(kernel) if ok and state["applied"] else None
@@ -93,6 +94,11 @@ def run_solo(intent, *, domain, llm, kernel, tools, events, attachments=(), canc
                                 created=result.created)
                 else:
                     resync()
+                    if landed.get("gate") == "ownership":
+                        seen = landed.get("traceback")
+                        ownership_refusals[seen] = ownership_refusals.get(seen, 0) + 1
+                        if ownership_refusals[seen] == 2:
+                            state["stopped"] = "the same deletion was refused twice: %s" % seen
                     answer = refused(landed.get("traceback") or "The Document refused the call.",
                                      landed.get("gate"))
         events.emit(TOOL_RESULT, name="code", result=answer)
@@ -168,6 +174,9 @@ def run_solo(intent, *, domain, llm, kernel, tools, events, attachments=(), canc
                 return built(str(message["finish"]))
             if "code" in message:
                 content = code_turn(str(message["code"]))
+                if state["stopped"]:
+                    events.emit(FAILED, message=state["stopped"])
+                    return built(state["stopped"], ok=False)
             elif "probe" in message:
                 content = probe_turn(str(message["probe"]))
             elif "inspect" in message:

@@ -187,7 +187,7 @@ class ApplyPipeline:
 
     def __init__(self, document=None, worker=None, dispatch=None,
                  transaction=None, render_dir=None, confirm=None, owned=None,
-                 events=None, main_window=None):
+                 events=None, main_window=None, unattended=False):
         self._document = document
         self._worker = worker
         self._dispatch = dispatch or _direct
@@ -196,6 +196,7 @@ class ApplyPipeline:
         self._renders = 0
         self._confirm = confirm or refuse_without_asking
         self.owned = set(owned or ())
+        self._unattended = unattended
         self.events = events
         self._main_window = main_window
         self.locked = False
@@ -420,12 +421,14 @@ class ApplyPipeline:
 
     def _a_rebuild(self, deleted, doc):
         """
-        Ask before deleting the feature tree, whoever built it.
+        Ask before deleting several features of the model at once.
 
-        Ownership is not the question; how much of the model goes is.
-        Deleting one feature is a correction; deleting several is a rebuild.
+        One feature is a correction, several are a rebuild. A run with nobody
+        to ask is held only on what the Document held before it.
         """
         modelling = self._modelling(doc, deleted)
+        if self._unattended:
+            modelling = [name for name in modelling if name not in self.owned]
         if len(modelling) <= _A_CORRECTION:
             return None
 
