@@ -314,7 +314,7 @@ class Client:
         def design(message, decision=None):
             return self.agent(message, attachments=attachments, cancelled=is_cancelled,
                               base=tools.call("base_inventory")["inventory"] is not None,
-                              domain=domain)
+                              domain=domain, events=stream)
 
         orchestrator = (self.llm.for_role(ORCHESTRATOR)
                         if hasattr(self.llm, "for_role") else self.llm)
@@ -333,10 +333,10 @@ class Client:
         else:
             return design(prompt)
 
-    def part_builder(self, folder, cancelled, budget_usd):
+    def part_builder(self, folder, cancelled, budget_usd, events):
         """
         The `build_part` of the Assembly Domain: each call runs the Part Domain in a Client of its own, with its own kernel, Document and Session, and saves its Body in *folder*.
-        Only its cost reaches this Client's events, and the call ends once it has spent `PART_SHARE` of *budget_usd*.
+        Only its cost reaches *events*, and the call ends once it has spent `PART_SHARE` of *budget_usd*.
         """
         def build(name, intent, attachments):
             spent = {"usd": 0.0}
@@ -348,7 +348,7 @@ class Client:
             def forward(event):
                 if event.kind == COST:
                     spent["usd"] += event.data.get("usd") or 0.0
-                    self.events.emit(COST, **event.data)
+                    events.emit(COST, **event.data)
 
             sub = Client(llm=self.llm, dispatch=self.dispatch)
             sub.events.subscribe(forward)
@@ -368,19 +368,21 @@ class Client:
         return build
 
     def agent(self, prompt, attachments=(), cancelled=None, base=False, domain=PART,
-              budget_usd=None):
+              budget_usd=None, events=None):
         """
         The loop under *domain*: for the Part Domain the drawing is read into a table, then one model
         builds over this Client's kernel and lands each code call on this
         Client's Document, so `save` and `export_step` write what it built.
         *base* says the Document already holds the part to edit; under the Assembly Domain it is the Assembly the intent changes, and *budget_usd* is the cap its parts' shares are taken from.
+        *events* overrides this Client's stream for this run only.
         """
         if self.kernel is None:
             raise ValueError("the agent works through a kernel")
         if domain not in (PART, ASSEMBLY, BIM):
             raise ValueError("no such Domain: %r" % domain)
         self._intent = prompt if base and domain != PART else None
-        self.pipeline.events = self.events
+        stream = events if events is not None else self.events
+        self.pipeline.events = stream
         tools = build_registry(document=lambda: self.document, pipeline=self.pipeline,
                                dispatch=self.dispatch)
         seed = tools.call("document_copy")["path"]
@@ -389,18 +391,18 @@ class Client:
         if domain == ASSEMBLY:
             with tempfile.TemporaryDirectory(prefix="fcc-parts-") as folder:
                 return run_assembly(prompt, llm=self.llm, kernel=self.kernel, tools=tools,
-                                    events=self.events, attachments=list(attachments),
+                                    events=stream, attachments=list(attachments),
                                     cancelled=cancelled,
-                                    build_part=self.part_builder(folder, cancelled, budget_usd),
+                                    build_part=self.part_builder(folder, cancelled, budget_usd, stream),
                                     edit=base)
         if domain == BIM:
             native = bool(base and self.dispatch(lambda: nativeifc.projects(self.document)))
             if native:
                 nativeifc.without_geometry()
-            return run_bim(prompt, llm=self.llm, kernel=self.kernel, tools=tools, events=self.events,
+            return run_bim(prompt, llm=self.llm, kernel=self.kernel, tools=tools, events=stream,
                            attachments=list(attachments), cancelled=cancelled, edit=base, native=native)
         return run_reader(prompt, llm=self.llm, kernel=self.kernel, tools=tools,
-                          events=self.events, attachments=list(attachments),
+                          events=stream, attachments=list(attachments),
                           cancelled=cancelled, base=base)
 
     def domain_for(self, intent, choice=AUTO, events=None):

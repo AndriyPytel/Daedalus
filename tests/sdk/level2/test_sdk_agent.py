@@ -250,3 +250,18 @@ def test_a_design_intent_goes_to_the_agent_unless_the_pipeline_is_asked_for(kern
     assert result.ok
     assert not {DESIGN, PLAN, GATE, REVIEW_VERDICT} & set(_kinds(client))
     client.close()
+
+
+def test_a_run_given_its_own_stream_emits_every_event_into_it(kernel):
+    from core.events import EventStream
+
+    llm = ScriptedLLMClient([_say(code=BOX), _say(finish="done")])
+    client = _client(llm, kernel)
+    run = []
+
+    client.send("Make a cube", route_first=False, events=EventStream([run.append]))
+
+    kinds = [event.kind for event in run]
+    assert APPLIED in kinds and COMPLETED in kinds
+    assert client.seen == []
+    client.close()
