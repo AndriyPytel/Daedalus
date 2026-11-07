@@ -885,15 +885,11 @@ def test_a_model_litellm_does_not_know_is_given_the_benefit_of_the_doubt(tmp_pat
     assert unusable_attachments([_an_image(tmp_path)], "openai/some-local-build") == []
 
 
-def test_a_file_that_is_not_an_image_or_a_pdf_is_named(tmp_path):
+def test_a_file_that_is_not_an_image_or_a_pdf_goes_by_its_path_even_to_a_model_that_cannot_see(tmp_path):
     drawing = tmp_path / "bracket.step"
     drawing.write_text("ISO-10303-21;")
 
-    reasons = unusable_attachments([str(drawing)], "openai/gpt-4o")
-
-    assert len(reasons) == 1
-    assert "bracket.step" in reasons[0]
-    assert "PNG" in reasons[0]
+    assert unusable_attachments([str(drawing)], "openai/gpt-3.5-turbo") == []
 
 
 def _a_pdf(tmp_path, name="bracket.pdf"):
@@ -952,10 +948,10 @@ def test_every_unusable_attachment_gets_its_own_reason(tmp_path):
     drawing.write_text("ISO-10303-21;")
 
     reasons = unusable_attachments(
-        [_an_image(tmp_path), str(drawing), str(tmp_path / "gone.png")],
+        [_an_image(tmp_path), str(tmp_path / "gone.png")],
         "openai/gpt-3.5-turbo")
 
-    assert len(reasons) == 3, reasons
+    assert len(reasons) == 2, reasons
 
 
 def test_no_attachment_never_complains_about_the_model():

@@ -8,7 +8,7 @@ import os
 
 from core.agent.domain import ASSEMBLY, Domain, measured as domain_measured, unfinished as domain_unfinished
 from core.agent.solo import run_solo
-from core.loop.prompt import _as_image
+from core.loop.prompt import _attached
 from core.prompts import read_prompt
 
 MAX_TURNS = 60
@@ -127,13 +127,13 @@ def unfinished(kernel):
 
 
 def opening(intent, attachments):
-    """The first message: the intent, the STEP files named by path, and any drawing as a picture."""
+    """The first message: the intent, the STEP files named by path with their part names, and the other attachments."""
     steps = [path for path in attachments if path.lower().endswith(STEP_SUFFIXES)]
     blocks = [{"type": "text", "text": intent}]
     if steps:
         blocks.append({"type": "text", "text": "The part files:\n" + "\n".join(
             "- %s (%s)" % (path, os.path.splitext(os.path.basename(path))[0]) for path in steps)})
-    blocks += [block for block in map(_as_image, (p for p in attachments if p not in steps)) if block]
+    blocks += _attached([p for p in attachments if p not in steps])
     return blocks
 
 

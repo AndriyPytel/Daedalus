@@ -6,7 +6,7 @@ The facts are measured in the kernel and judged here.
 from core import arch, furniture
 from core.agent.domain import BIM, Domain, measured as domain_measured, unfinished as domain_unfinished
 from core.agent.solo import run_solo
-from core.loop.prompt import _as_image
+from core.loop.prompt import _attached
 from core.prompts import read_prompt
 
 MAX_TURNS = 80
@@ -373,9 +373,9 @@ def describe_native(facts):
 
 
 def opening(intent, attachments, held=None):
-    """The first message: the intent, what an edit's Document *held*, then each floor plan, image or PDF, as a picture."""
+    """The first message: the intent, what an edit's Document *held*, then the attachments."""
     blocks = [{"type": "text", "text": intent}] + ([{"type": "text", "text": held}] if held else [])
-    return blocks + [block for block in map(_as_image, attachments) if block]
+    return blocks + _attached(attachments)
 
 
 def run_bim(intent, *, llm, kernel, tools, events, attachments=(), cancelled=None, edit=False, native=False):

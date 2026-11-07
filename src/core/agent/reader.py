@@ -11,8 +11,8 @@ from core.agent.agent import _say
 from core.agent.domain import PART, Domain
 from core.agent.solo import run_solo
 from core.events import ERROR
-from core.llm import Session
-from core.loop.prompt import _as_image, _object_of
+from core.llm import IMAGE_SUFFIXES, PDF_SUFFIXES, Session
+from core.loop.prompt import _as_image, _attached, _object_of
 from core.prompts import read_prompt
 from core.sheets import sheet_reader
 
@@ -156,9 +156,10 @@ def opening(intent, sheet, table, attachments, base):
         blocks.append({"type": "text", "text": "The Document already holds the part to edit as the "
                                                "BaseFeature of its Body; edit it in place."})
     if sheet is not None:
-        blocks += _blocks(sheet)
+        blocks += _blocks(sheet) + _attached([p for p in attachments
+                                              if not p.lower().endswith(IMAGE_SUFFIXES + PDF_SUFFIXES)])
     else:
-        blocks += [block for block in map(_as_image, attachments) if block]
+        blocks += _attached(attachments)
     if table is not None:
         blocks.append({"type": "text", "text": "A first reading of the sheet:\n"
                                                + json.dumps(table, indent=1)})

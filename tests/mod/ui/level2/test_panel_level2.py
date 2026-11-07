@@ -826,8 +826,8 @@ def test_an_unusable_attachment_stops_the_run_before_it_starts(panel, tmp_path, 
     import sdk
 
     monkeypatch.setattr(sdk, "selected_model_name", lambda _=None: "openai/gpt-3.5-turbo")
-    drawing = tmp_path / "bracket.step"
-    drawing.write_text("ISO-10303-21;")
+    drawing = tmp_path / "bracket.png"
+    drawing.write_bytes(b"png")
     panel.chip_bar.add_file(str(drawing))
 
     bundle = panel._worker_for(panel._current_log())
@@ -843,9 +843,7 @@ def test_an_unusable_attachment_stops_the_run_before_it_starts(panel, tmp_path, 
     assert sent == [], "the run started with an attachment it could not use"
     assert panel.chip_bar.files() == [str(drawing)], "the user cannot take the chip off"
     assert panel.user_input.toPlainText() == "Build this bracket"
-    said = _said_in(panel)
-    assert "bracket.step" in said and "PNG" in said
-    assert "cannot accept images" in said, "the model's own limit went unmentioned"
+    assert "cannot accept images" in _said_in(panel), "the model's own limit went unmentioned"
 
     panel.chip_bar.remove_file(str(drawing))
 

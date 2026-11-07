@@ -86,7 +86,8 @@ def accepts_pdf(model: str):
 def unusable_attachments(paths, model: str) -> list:
     """
     One sentence per attachment this run would not be able to use, before it
-    starts. Empty means send it.
+    starts. Empty means send it; a file that is neither an image nor a PDF
+    goes to the model by its path, so any model can use it.
     """
     reasons = []
     pdfs, pictures = [], []
@@ -100,13 +101,8 @@ def unusable_attachments(paths, model: str) -> list:
             pdfs.append(name)
         elif suffix in IMAGE_SUFFIXES:
             pictures.append(name)
-        else:
-            reasons.append(
-                "%s is not something the provider will take. Attach a PNG, JPEG, GIF, "
-                "WebP or PDF instead." % name)
 
-    nothing_but_pdfs = bool(pdfs) and not pictures
-    if paths and not nothing_but_pdfs and accepts_images(model) is False:
+    if pictures and accepts_images(model) is False:
         reasons.append(
             "%s cannot accept images. Send the Intent without the attachment, or pick a "
             "model with image support." % model)

@@ -5,6 +5,8 @@ import mimetypes
 import os
 import re
 
+from core.llm.attachments import IMAGE_SUFFIXES, PDF_SUFFIXES
+
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
 
@@ -34,6 +36,21 @@ def _as_image(path):
                 "file": {"file_data": "data:%s;base64,%s" % (mime, encoded)}}
     return {"type": "image_url",
             "image_url": {"url": "data:%s;base64,%s" % (mime, encoded)}}
+
+
+def _attached(paths):
+    """
+    The content blocks of *paths*: an image or PDF as itself, and every other
+    file in one text block by its absolute path, which the provider would not
+    take but the kernel the model's code runs in can open.
+    """
+    shown = [p for p in paths if p.lower().endswith(IMAGE_SUFFIXES + PDF_SUFFIXES)]
+    named = [os.path.abspath(p) for p in paths if p not in shown]
+    blocks = [block for block in map(_as_image, shown) if block]
+    if named:
+        blocks.append({"type": "text", "text": "Files attached by path, for the code you run to open:\n"
+                                               + "\n".join("- " + path for path in named)})
+    return blocks
 
 
 def _object_of(text):
