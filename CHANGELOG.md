@@ -1,5 +1,47 @@
 # Changelog
 
+## 1.3.0 — 2026-11-07
+
+### Agent loop
+- A Part Intent runs through the A4h agent loop in the addon and gives a PartDesign feature tree.
+- The phased pipeline is deleted after an A/B test of its mechanisms; its Part rules go into the Part Domain prompt.
+- An unattended run may rebuild what it created itself; the same refused deletion twice ends the run.
+- A run records the model the provider answered with, beside the alias it asked for.
+- An attachment the provider does not take reaches the model by its path.
+
+### Assembly
+- An Assembly Domain builds an Assembly with joints from parts in the Document or a STEP plus text.
+- From text or a drawing set only, each part is built by a Part-Domain sub-agent and the parts are joined.
+- An edit request changes an existing Assembly and the Assertion still passes; it deletes only what the Intent names, through the same approval BIM edit uses.
+
+### BIM
+- A floor plan (image/PDF) plus text gives native BIM objects (Wall, Slab, Door, Window, Space) for one flat, exported to IFC4.
+- A floor plan plus text gives a multi-storey building with stairs.
+- The BIM agent reads the walls off the plan into a table before it builds.
+- A BIM edit request changes a Document with Arch objects, an IFC imported through `importIFC`, or native IFC through `nativeifc`.
+- Generated IFCs carry fills, a storey and attributes in the file's unit.
+- Furniture and equipment come from a whitelist of checked sources, else parametric Arch Equipment; generated only on explicit request.
+
+### Panel and providers
+- The panel shows the Domain inferred from the Intent and the Document; the user can override it.
+- A run the panel gives its own stream emits every loop event, so the chat and the session log see the model work.
+- A provider added by name on the Providers page lists its models and runs them.
+- A model's output ceiling comes from its provider's own model list.
+
+### Benchmark tooling
+- Assembly benchmark: three modes (from parts, from scratch, edit), ~20 tasks, 70/30 split, deterministic scoring.
+- BIM benchmark: two modes (create, edit), ~20 tasks, 70/30 split, deterministic scoring.
+- Every Assembly edit task's input and reference pass the Assertion.
+- `lane.py` never runs a paid task without a ceiling and runs each task at most the attempts it was given.
+- From a git worktree, the lane and the scorer use the main checkout's test data and harness venv.
+
+### Tests
+- A crashed pytest-xdist worker fails the run instead of hanging it.
+- No test writes files into the repository root; each test leaves the scratch settings as it found them.
+
+### Docs
+- The project documentation lives in the YouTrack knowledge base; the README keeps install, tests and scope.
+
 ## 1.2.0 — 2026-10-25
 
 ### Building from a drawing
