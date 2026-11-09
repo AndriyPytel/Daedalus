@@ -25,6 +25,7 @@ NOT_READ = "drawing not read"
 DRAWING_VIEWS = ("front", "top", "right", "left", "iso")
 THIN_FAMILIES = ("cover/tray", "cored casting")
 NO_CHANGE = 1e-4
+MESH_CHECK_TIMEOUT = 90
 
 FACTS_CHECK = """
 import json
@@ -85,6 +86,32 @@ def without_feature_tree(kernel):
         elif not entry["tip"] or not entry["tip"].startswith("PartDesign::") or not entry["features"]:
             faults.append("Body %s has no PartDesign feature as its Tip" % entry["name"])
     return NO_TREE % "; ".join(faults) if faults else None
+
+
+MESH_CHECK = """
+import json
+from core.manifold import unmeshable_fc
+
+solids = [o.Shape for o in doc.Objects
+          if not o.InList and getattr(o, "Shape", None) is not None
+          and not o.Shape.isNull() and o.Shape.Solids]
+shape = solids[0] if len(solids) == 1 else Part.Compound(solids)
+print("MESH " + json.dumps(unmeshable_fc(shape) if solids else None))
+"""
+
+def unmeshable(kernel):
+    """Why the grader's mesher would not get through the kernel's solid, or `None` where it would or where the check could not run."""
+    result = kernel.check(MESH_CHECK, exploring=True, timeout=MESH_CHECK_TIMEOUT)
+    for line in reversed((result.stdout or "").splitlines()):
+        if line.startswith("MESH "):
+            found = json.loads(line[len("MESH "):])
+            return "The grader could not tessellate this solid: %s. Fix this, then finish." % found if found else None
+    return None
+
+
+def unfinished_part(kernel):
+    """Why the Part Domain is not finished: the feature tree first, then the grader's mesher, or `None`."""
+    return without_feature_tree(kernel) or unmeshable(kernel)
 
 
 def _number(value):
@@ -300,6 +327,6 @@ def run_reader(intent, *, llm, kernel, tools, events, attachments=(), cancelled=
         return LoopResult(ok=False, reason=NOT_READ)
     with tempfile.TemporaryDirectory(prefix="fcc-assertion-") as renders:
         domain = Domain(PART, read_prompt("reader.md"), opening(intent, sheet, table, attachments, base),
-                        lambda: assert_part(kernel, sheet, table, renders, events), without_feature_tree)
+                        lambda: assert_part(kernel, sheet, table, renders, events), unfinished_part)
         return run_solo(intent, domain=domain, llm=llm, kernel=kernel, tools=tools, events=events,
                         attachments=attachments, cancelled=cancelled, max_turns=MAX_TURNS)
