@@ -694,3 +694,65 @@ def test_report_detail_names_the_model_each_run_was_answered_by(tmp_path):
 
     assert "resolved model" in detail
     assert "claude-opus-5-5" in detail
+
+
+def _attempt_log(applied, completed, saved):
+    from core.events import APPLIED, COMPLETED, FAILED, EventStream
+
+    stream = EventStream()
+    for index in range(applied):
+        stream.emit(APPLIED, step=index + 1)
+    stream.emit(COMPLETED, summary="done") if completed else stream.emit(FAILED, message="stalled")
+    return stream, saved
+
+
+def _sweep_of_attempts(tmp_path, attempts):
+    out = str(tmp_path)
+    stamps = iter("20260101-00000%d" % n for n in range(1, len(attempts) + 1))
+    todo = iter(attempts)
+
+    class FakeProcess:
+        returncode = 1
+
+    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider, **kwargs):
+        stream, saved = next(todo)
+        with open(log, "w", encoding="utf-8") as handle:
+            handle.write("\n".join(event.as_json() for event in stream) + "\n")
+        if saved:
+            open(log[: -len(".jsonl")] + ".step", "w").close()
+        return FakeProcess()
+
+    lane.run_one, real_run_one = fake_run_one, lane.run_one
+    lane.watch, real_watch = lambda *a, **k: "exited", lane.watch
+    try:
+        lane.sweep([("t", "sheet.pdf")], ["opus"], "medium", None, "Build it.", out, 1800,
+                   len(attempts), False, "Claude (subscription)", None, timestamp=lambda: next(stamps))
+    finally:
+        lane.run_one, lane.watch = real_run_one, real_watch
+    with open(os.path.join(out, "state.json"), encoding="utf-8") as handle:
+        return json.load(handle)["runs"]["t/opus"]
+
+
+def test_a_retry_that_saved_nothing_does_not_replace_an_earlier_attempt_that_saved_a_step(tmp_path):
+    run = _sweep_of_attempts(tmp_path, [_attempt_log(2, False, True), _attempt_log(0, False, False)])
+
+    assert run["log"] == run["attempts"][0]
+
+
+def test_a_retry_that_applied_fewer_steps_does_not_replace_an_earlier_attempt(tmp_path):
+    run = _sweep_of_attempts(tmp_path, [_attempt_log(3, False, True), _attempt_log(1, False, True)])
+
+    assert run["log"] == run["attempts"][0]
+
+
+def test_a_retry_that_applied_more_steps_replaces_an_earlier_attempt(tmp_path):
+    run = _sweep_of_attempts(tmp_path, [_attempt_log(1, False, True), _attempt_log(3, False, True)])
+
+    assert run["log"] == run["attempts"][1]
+
+
+def test_an_attempt_the_agent_called_ok_beats_one_with_more_steps(tmp_path):
+    run = _sweep_of_attempts(tmp_path, [_attempt_log(5, False, True), _attempt_log(1, True, True),
+                                        _attempt_log(4, False, True)])
+
+    assert run["log"] == run["attempts"][1]
