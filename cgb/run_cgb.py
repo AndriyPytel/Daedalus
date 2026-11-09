@@ -72,7 +72,8 @@ def find_freecad(explicit):
 
 def run_env(bin_dir, lib, claude, extra=()):
     env = dict(os.environ, FREECAD_CMD=os.path.join(bin_dir, "freecadcmd"), FREECAD_LIB=lib,
-               CLAUDE_CMD=claude, QT_QPA_PLATFORM="offscreen", PYTHONDONTWRITEBYTECODE="1")
+               CLAUDE_CMD=claude, QT_QPA_PLATFORM="offscreen", PYTHONDONTWRITEBYTECODE="1",
+               DISABLE_AUTOUPDATER="1")
     env["PYTHONPATH"] = os.pathsep.join(filter(None, [os.path.join(HERE, ".deps"), lib, os.environ.get("PYTHONPATH")]))
     if sys.platform != "darwin":
         env["LD_LIBRARY_PATH"] = os.pathsep.join(filter(None, [lib, os.environ.get("LD_LIBRARY_PATH")]))

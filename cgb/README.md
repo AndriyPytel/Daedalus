@@ -2,19 +2,26 @@
 
 Re-runs four Daedalus arms (p17, p17-whole, a4h, a4h-whole) on the CADGenBench tasks, 3 reps each, and packs the logs into one zip.
 
-## Prerequisites (WSL2 Ubuntu or Linux)
+## Prerequisites (Windows: WSL2 Ubuntu; or plain Linux)
 
-1. `git`, `python3` (>= 3.10).
-2. FreeCAD 1.1 Linux AppImage, extracted:
+Everything below runs inside the Ubuntu terminal, not in Windows.
+
+1. WSL2: in PowerShell as admin `wsl --install -d Ubuntu`, reboot, open "Ubuntu".
+2. `sudo apt update && sudo apt install -y git python3 curl`
+3. GitHub access to the private repo: accept the collaborator invite, then `sudo apt install -y gh && gh auth login`.
+4. FreeCAD 1.1 Linux AppImage (py311), extracted to `~/freecad`:
    ```
-   chmod +x FreeCAD*.AppImage && ./FreeCAD*.AppImage --appimage-extract && mv squashfs-root ~/freecad
+   curl -fLO https://github.com/FreeCAD/FreeCAD/releases/download/1.1.4/FreeCAD_1.1.4-Linux-x86_64-py311.AppImage
+   chmod +x FreeCAD_*.AppImage && ./FreeCAD_*.AppImage --appimage-extract >/dev/null && mv squashfs-root ~/freecad
    ```
-3. The `claude` CLI, then `claude auth login` (a Claude subscription; the run spends its quota).
+5. The `claude` CLI inside WSL (a Windows install does not count): `curl -fsSL https://claude.ai/install.sh | bash`, then `claude auth login` with the Claude Max account. The run spends that subscription's quota.
+
+The full run takes days. Keep the computer awake (Windows power settings: never sleep) and the Ubuntu window open.
 
 ## Run
 
 ```
-git clone -b cgb-repro https://github.com/AndriyPytel/Daedalus.git && cd Daedalus
+gh repo clone AndriyPytel/Daedalus -- -b cgb-repro && cd Daedalus
 python3 cgb/run_cgb.py --smoke     # 1 gen + 1 edit task per arm: check the setup first
 python3 cgb/run_cgb.py             # the full run
 ```
