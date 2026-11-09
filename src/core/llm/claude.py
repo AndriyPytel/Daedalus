@@ -18,7 +18,7 @@ import time
 from typing import Callable, Iterator
 
 from core.llm.types import REASONING, TEXT, Chunk
-from core.llm.exceptions import ProviderRefused
+from core.llm.exceptions import CallStalled, ProviderRefused
 from core.llm.effort_policy import _CEILING, _resolved_effort
 from core.llm.claude_stream import (
     _system_of,
@@ -165,10 +165,12 @@ class ClaudeCodeClient:
     """
 
     def __init__(self, model: str, spawn: Callable = None,
-                 timeout: float = None, effort: str = None, run: Run = None):
+                 timeout: float = None, effort: str = None, run: Run = None,
+                 stall: float = None):
         self.model = model
         self.effort = _resolved_effort(effort)
         self.timeout = _CEILING[self.effort] if timeout is None else timeout
+        self.stall = stall
         self.last_cost = None
         self._spawn = spawn
         self.run = run if run is not None else Run()
@@ -213,10 +215,13 @@ class ClaudeCodeClient:
 
         finished = threading.Event()
         deadline = time.time() + self.timeout
+        heard = [time.time()]
+        stall = self.stall
 
         def watch():
             while not finished.wait(_WATCH_SECONDS):
-                if time.time() >= deadline:
+                now = time.time()
+                if now >= deadline or (stall and now - heard[0] >= stall):
                     overdue.set()
                     process.kill()
                     return
@@ -231,6 +236,7 @@ class ClaudeCodeClient:
             said_it_was_thinking = False
             noise = collections.deque(maxlen=20)
             for line in process.stdout:
+                heard[0] = time.time()
                 event = _parsed(line)
                 if event is None:
                     if line.strip():
@@ -255,7 +261,7 @@ class ClaudeCodeClient:
 
             code = process.wait()
             if overdue.is_set():
-                raise ProviderRefused(
+                raise CallStalled(
                     "%s refused the request: the provider did not answer in time. Try "
                     "again, or ask for a smaller Step." % self.model,
                     "no reply in %g seconds" % self.timeout)

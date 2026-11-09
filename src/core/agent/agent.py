@@ -8,27 +8,47 @@ import time
 
 from core.events import CALL_STARTED, COST, INVOKE_MARKUP, THOUGHT, WRITING
 from core.llm import REASONING, TEXT
-from core.llm.exceptions import StreamCutOff
+from core.llm.effort_policy import STALL_LIMIT, STALL_WAIT
+from core.llm.exceptions import CallStalled, StreamCutOff
 from core.agent.invoke_guard import first_invoke_in, recovered_message
 from core.loop.prompt import _CUT_OFF_ATTEMPTS, _object_of
 from core.prompts import read_prompt
 
 
+_STALL_ATTEMPTS = 3
+
+
 def _say(session, llm, content, phase=None, stream=None):
-    for attempt in range(_CUT_OFF_ATTEMPTS):
+    """
+    One turn, sent again where the stream was cut off or the provider went silent.
+
+    A stalled call is reissued at once, a second one in a row waits `STALL_WAIT` first, and a third fails the turn.
+    """
+    cut = stalled = 0
+    while True:
         try:
             return _one_turn(session, llm, content, phase, stream)
         except StreamCutOff:
-            if attempt == _CUT_OFF_ATTEMPTS - 1:
+            cut += 1
+            if cut == _CUT_OFF_ATTEMPTS:
                 raise
             session.messages.pop()
-            time.sleep(2 ** attempt)
+            time.sleep(2 ** (cut - 1))
+        except CallStalled:
+            stalled += 1
+            if stalled == _STALL_ATTEMPTS:
+                raise
+            session.messages.pop()
+            if stalled == 2:
+                time.sleep(STALL_WAIT)
 
 
 def _one_turn(session, llm, content, phase=None, stream=None):
     llm = llm.for_phase(phase) if hasattr(llm, "for_phase") else llm
     model = getattr(llm, "model", None)
     ceiling = getattr(llm, "timeout", None)
+    if hasattr(llm, "stall"):
+        llm.stall = None if any(m["role"] == "assistant" for m in session.messages) else STALL_LIMIT
 
     if stream is not None:
         started = {"phase": phase, "model": model}

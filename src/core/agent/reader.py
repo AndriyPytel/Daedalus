@@ -10,8 +10,9 @@ import tempfile
 from core.agent.agent import _say
 from core.agent.domain import PART, Domain
 from core.agent.solo import run_solo
-from core.events import ERROR
+from core.events import ERROR, FAILED
 from core.llm import IMAGE_SUFFIXES, PDF_SUFFIXES, Session
+from core.loop.results import LoopResult
 from core.loop.prompt import _as_image, _attached, _object_of
 from core.prompts import read_prompt
 from core.sheets import sheet_reader
@@ -20,6 +21,7 @@ EXTENT_TOLERANCE = (0.02, 0.5)
 HOLLOW_FILL = 0.6
 FLAT_BLANK_ASPECT = 0.05
 MAX_TURNS = 60
+NOT_READ = "drawing not read"
 DRAWING_VIEWS = ("front", "top", "right", "left", "iso")
 THIN_FAMILIES = ("cover/tray", "cored casting")
 NO_CHANGE = 1e-4
@@ -260,10 +262,14 @@ def assert_part(kernel, sheet, table, renders):
 def run_reader(intent, *, llm, kernel, tools, events, attachments=(), cancelled=None, base=False):
     """
     Read the drawing once, then build with `run_solo` under the table and the Assertion; an edit (*base*) has no drawing to read and is asserted on changing the part.
+    A drawing that two reads could not turn into a table ends the run, since a build without it has nothing to be measured against.
     """
     sheet = None if base else next(
         (found for found in map(sheet_reader.read, attachments) if found), None)
     table = read_table(sheet, llm, events) if sheet is not None else None
+    if sheet is not None and table is None:
+        events.emit(FAILED, message=NOT_READ)
+        return LoopResult(ok=False, reason=NOT_READ)
     with tempfile.TemporaryDirectory(prefix="fcc-assertion-") as renders:
         domain = Domain(PART, read_prompt("reader.md"), opening(intent, sheet, table, attachments, base),
                         lambda: assert_part(kernel, sheet, table, renders), without_feature_tree)

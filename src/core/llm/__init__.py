@@ -7,7 +7,7 @@ more.
 """
 
 from core.llm.types import REASONING, TEXT, Chunk
-from core.llm.exceptions import ProviderRefused, StreamCutOff
+from core.llm.exceptions import CallStalled, ProviderRefused, StreamCutOff
 from core.llm.effort_policy import EFFORTS, CALL_TIMEOUT
 from core.role_defaults import ORCHESTRATOR, ROLES, DEFAULT_ROLE_TABLE
 from core.llm.session import Session

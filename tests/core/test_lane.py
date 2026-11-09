@@ -719,7 +719,8 @@ def _sweep_of_attempts(tmp_path, attempts):
         with open(log, "w", encoding="utf-8") as handle:
             handle.write("\n".join(event.as_json() for event in stream) + "\n")
         if saved:
-            open(log[: -len(".jsonl")] + ".step", "w").close()
+            with open(log[: -len(".jsonl")] + ".step", "w") as handle:
+                handle.write("ISO-10303-21;")
         return FakeProcess()
 
     lane.run_one, real_run_one = fake_run_one, lane.run_one

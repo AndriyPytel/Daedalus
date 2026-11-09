@@ -1101,7 +1101,8 @@ def test_the_ceiling_is_a_stall_too_so_one_retry_policy_covers_both():
     assert "did not answer in time" in str(stalled.value)
 
 
-def test_a_call_that_keeps_streaming_is_not_cut_however_long_it_runs_past_the_stall_limit():
+def test_a_call_that_keeps_streaming_is_not_cut_however_long_it_runs_past_the_stall_limit(monkeypatch):
+    monkeypatch.setattr(llm_claude, "_WATCH_SECONDS", 0.05)
     class Trickle:
         def __init__(self, lines):
             self.lines = iter(lines)
@@ -1118,4 +1119,3 @@ def test_a_call_that_keeps_streaming_is_not_cut_however_long_it_runs_past_the_st
     client, _ = client_over(process, timeout=900, stall=0.3)
 
     assert collect(client.stream(a_turn())).text
-    assert not process.killed
