@@ -32,8 +32,8 @@ def test_the_refusal_names_the_sub_millimetre_features():
 
     message = unmeshable_fc(_read("149"), limit=10)
 
-    assert "radius 0.50" in message
-    assert "mm" in message
+    assert "sub-millimetre fillets and chamfers" in message
+    assert "mm wide at (" in message
 
 
 @pytest.mark.parametrize("name", SCORED_WELL)

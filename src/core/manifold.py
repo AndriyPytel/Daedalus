@@ -6,6 +6,8 @@ FreeCAD `Part.Shape`s.
 """
 import os
 import shutil
+import subprocess
+import sys
 import tempfile
 
 import numpy as np
@@ -41,6 +43,8 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 
 DEFLECTION_LADDER = (1, 4, 16, 32)
+MESH_LIMIT = 60
+SMALL_FEATURE = 1.0
 CONTACT_TOLERANCE = 0.02
 CLEARANCE = 0.01
 MAX_VOLUME_CHANGE = 0.005
@@ -80,8 +84,14 @@ def _mesh(shape, deflection):
     BRep edge by index and at each BRep vertex, zero-area triangles and mirrored pairs dropped.
     Raises `ValueError` where the official mesher would raise.
     """
-    breptools.Clean(shape)
-    BRepMesh_IncrementalMesh(shape, deflection, False, 0.5, False)
+    mesher = BRepMesh_IncrementalMesh()
+    mesher.SetShape(shape)
+    parameters = mesher.ChangeParameters()
+    parameters.Deflection = deflection
+    parameters.Angle = 0.5
+    parameters.Relative = False
+    parameters.InParallel = True
+    mesher.Perform()
     faces = _indexed(shape, TopAbs_FACE)
     vertices_map = _indexed(shape, TopAbs_VERTEX)
     nodes, triangles, first = [], [], {}
@@ -241,6 +251,7 @@ def check(shape):
     None when *shape* meshes to a closed manifold at any rung of the official deflection ladder,
     else the `Finding` of the finest rung. A shape the official mesher would refuse is a `Finding` too.
     """
+    breptools.Clean(shape)
     base = _deflection(shape)
     finding = None
     for divisor in DEFLECTION_LADDER:
@@ -388,6 +399,54 @@ def check_fc(fc_shape):
     if finding is None:
         return None
     return "; ".join([finding.message] + contacts(shape, finding)[:5])
+
+
+def _finished_within(shape, limit):
+    """Whether the official deflection ladder gets through *shape* in *limit* seconds; the mesher is native, so only a killed child process stops it, and a forked FreeCAD process hangs."""
+    handle, path = tempfile.mkstemp(suffix=".brep")
+    os.close(handle)
+    try:
+        breptools.Write(shape, path)
+        program = ("import sys; sys.path.insert(0, %r)\nfrom core import manifold\n"
+                   "from OCC.Core.BRep import BRep_Builder\nshape = manifold.TopoDS_Shape()\n"
+                   "manifold.breptools.Read(shape, %r, BRep_Builder())\nmanifold.check(shape)\n"
+                   % (os.path.dirname(os.path.dirname(os.path.abspath(__file__))), path))
+        child = subprocess.Popen([sys.executable, "-c", program], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            child.wait(limit)
+        except subprocess.TimeoutExpired:
+            child.kill()
+            child.wait()
+            return False
+        return True
+    finally:
+        os.remove(path)
+
+
+def _small_features(fc_shape):
+    """One line per fillet or chamfer face of *fc_shape* under SMALL_FEATURE mm, smallest first."""
+    found = []
+    for face in fc_shape.Faces:
+        kind = type(face.Surface).__name__
+        if kind in ("Cylinder", "Torus", "Cone") and face.Surface.Radius < SMALL_FEATURE:
+            size, label = face.Surface.Radius, "%s radius %.2f mm" % (kind.lower(), face.Surface.Radius)
+        elif kind == "Plane" and face.Length and 2 * face.Area / face.Length < SMALL_FEATURE:
+            size, label = 2 * face.Area / face.Length, "strip %.2f mm wide" % (2 * face.Area / face.Length)
+        else:
+            continue
+        centre = face.CenterOfMass
+        found.append((size, "%s at (%.1f, %.1f, %.1f)" % (label, centre.x, centre.y, centre.z)))
+    return [line for _size, line in sorted(found)]
+
+
+def unmeshable_fc(fc_shape, limit=MESH_LIMIT):
+    """The sentence naming the smallest fillets and chamfers to enlarge or remove where the grader's mesher would not get through *fc_shape* in *limit* seconds, or None."""
+    if not fc_shape.Solids or _finished_within(from_freecad(fc_shape), limit):
+        return None
+    features = _small_features(fc_shape)
+    return ("the grader's mesher does not finish on this solid within %g s, so it would score 0; the "
+            "sub-millimetre fillets and chamfers make it, enlarge or remove the smallest: %s"
+            % (limit, "; ".join(features[:5]) or "none under %g mm found, simplify the smallest curved faces" % SMALL_FEATURE))
 
 
 def _read(path):
