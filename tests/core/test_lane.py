@@ -757,3 +757,15 @@ def test_an_attempt_the_agent_called_ok_beats_one_with_more_steps(tmp_path):
                                         _attempt_log(4, False, True)])
 
     assert run["log"] == run["attempts"][1]
+
+
+def test_an_effort_the_dial_does_not_offer_is_an_argument_error(monkeypatch, tmp_path):
+    monkeypatch.setattr(lane, "sweep", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sys, "argv", [
+        "lane.py", "--pinned", "--model", "opus", "--effort", "ultra", "--out", str(tmp_path),
+    ])
+
+    with pytest.raises(SystemExit) as stopped:
+        lane.main()
+
+    assert stopped.value.code == 2

@@ -119,3 +119,13 @@ def test_an_ifc_run_exits_with_its_verdict(tmp_path):
 
     assert run.finish(_FlatClient(path), _Result(ok=True), path) == 0
     assert run.finish(_FlatClient(path), _Result(ok=False), path) == 1
+
+
+def test_an_effort_the_dial_does_not_offer_is_an_argument_error(monkeypatch):
+    monkeypatch.setattr(run, "client_for", lambda *args: pytest.fail("a client was built"))
+    monkeypatch.setattr(sys, "argv", ["run.py", "--intent", "x", "--effort", "ultra"])
+
+    with pytest.raises(SystemExit) as stopped:
+        run.main()
+
+    assert stopped.value.code == 2

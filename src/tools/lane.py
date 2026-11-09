@@ -886,6 +886,7 @@ def report(out):
 
 def main():
     from tests import modelmania_harness
+    from sdk import EFFORTS
 
     part, assembly, bim = _domains()
 
@@ -900,7 +901,7 @@ def main():
     parser.add_argument("--intent", default="Build the Phase 1 model from this drawing.")
     parser.add_argument("--provider", default="Claude (subscription)",
                         help="Which provider sells every --model of this sweep")
-    parser.add_argument("--effort", default="medium")
+    parser.add_argument("--effort", default="medium", choices=EFFORTS)
     parser.add_argument("--budget-usd", type=float, default=None,
                         help="Dollar ceiling per run, required for a paid run. Checked between "
                              "calls, so a run can exceed it by one call")

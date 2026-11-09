@@ -37,6 +37,23 @@ def test_xhigh_reaches_the_cli_flag_and_is_not_swapped_for_the_dial(monkeypatch)
     assert spawn.argv[spawn.argv.index("--effort") + 1] == "xhigh"
 
 
+def test_max_reaches_the_cli_flag_and_is_not_swapped_for_the_dial(monkeypatch):
+    import os
+    import sys
+
+    from core import settings
+
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from test_llm_claude_code import client_replaying, a_turn
+    from conftest import collect
+
+    monkeypatch.setattr(settings.instance(), "get_effort", lambda: "medium")
+    client, spawn = client_replaying(effort="max")
+    collect(client.stream(a_turn()))
+
+    assert spawn.argv[spawn.argv.index("--effort") + 1] == "max"
+
+
 def test_an_explicit_effort_wins_over_whatever_the_dial_is_set_to(monkeypatch):
     from core import settings
 
@@ -51,3 +68,15 @@ def test_no_explicit_effort_still_reads_the_global_dial(monkeypatch):
     monkeypatch.setattr(settings.instance(), "get_effort", lambda: "high")
 
     assert ClaudeCodeClient(MODEL).timeout == _CEILING["high"]
+
+
+def test_an_effort_the_dial_does_not_offer_is_refused_and_not_swapped_for_the_dial(monkeypatch):
+    import pytest
+    from core import settings
+    from core.llm.effort_policy import _resolved_effort
+
+    monkeypatch.setattr(settings.instance(), "get_effort", lambda: "medium")
+
+    with pytest.raises(ValueError):
+        _resolved_effort("ultra")
+    assert _resolved_effort(None) == "medium"
