@@ -18,7 +18,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 
-from core.events import ANSWER, QUESTION
+from core.events import ANSWER, QUESTION, WARNING
 from core.freecad_traps import Trap
 from core.kernel import Kernel, KernelResult, copy_of
 from core.kernel.kernel_worker import (_NamedDoc, register_step_source, signature_of,
@@ -68,7 +68,7 @@ class ApplyResult:
     by a `SignatureMismatch`, the GUI Document disagreeing with what the
     kernel verified. `gate` names which refusal branch built this result --
     "lint", "op_mismatch", "changed_nothing", "no_document", "ownership",
-    "rollback", "too_slow" or "drift".
+    "rollback" or "drift".
     """
 
     ok: bool
@@ -90,8 +90,6 @@ class ApplyResult:
 _CHANGED_NOTHING = read_prompt("changed_nothing.md")
 
 STEP_LIMIT = 120
-_TOO_SLOW = ("this step took over %d s; build it with fewer elements or a pattern. "
-             "It was rolled back." % STEP_LIMIT)
 
 
 def _direct(func, timeout=None):
@@ -334,9 +332,9 @@ class ApplyPipeline:
                 gate="rollback",
             )
 
-        if self._clock() - started > STEP_LIMIT:
-            self._dispatch(doc.undo)
-            return ApplyResult(ok=False, traceback=_TOO_SLOW, gate="too_slow")
+        took = self._clock() - started
+        if took > STEP_LIMIT:
+            self._narrate(WARNING, message="step took %d s on the live Document" % took)
 
         self._names = dict(kernel_result.get("names") or {})
         self._dispatch(lambda: _show_tip(doc))
