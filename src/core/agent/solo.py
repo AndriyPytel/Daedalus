@@ -22,6 +22,10 @@ from core.tools import ToolError
 READ_TOOLS = ("snapshot", "overall_size", "describe_object", "describe_type", "supported_types",
               "materials", "dependencies")
 
+DECLINED_AFTER = 3
+DECLINED = "model declined or could not start"
+
+
 def with_traps(body):
     """*body* with the traps this FreeCAD build has filled in."""
     return body.replace(_TRAPS_PLACEHOLDER, "\n".join("- " + t for t in TRAPS))
@@ -46,7 +50,8 @@ def run_solo(intent, *, domain, llm, kernel, tools, events, attachments=(), canc
     session = Session(system=with_traps(domain.system))
     content = domain.opening
     renders = tempfile.mkdtemp(prefix="fcc-solo-")
-    state = {"applied": 0, "failures": 0, "renders": 0, "asserted": False, "stopped": None}
+    state = {"applied": 0, "failures": 0, "renders": 0, "asserted": False, "stopped": None,
+             "refused_finishes": 0}
     ownership_refusals = {}
 
     def built(reason, ok=True):
@@ -155,10 +160,16 @@ def run_solo(intent, *, domain, llm, kernel, tools, events, attachments=(), canc
                 return built("the turn budget was spent")
             turns += 1
             message = _parsed(_say(session, llm, content, phase="agent", stream=events))
+            if "finish" not in message:
+                state["refused_finishes"] = 0
             if "finish" in message:
                 missing = domain.done_check(kernel)
                 if missing:
                     events.emit(TOOL_RESULT, name="finish_refused", result={"text": missing})
+                    state["refused_finishes"] += 1
+                    if state["refused_finishes"] >= DECLINED_AFTER and not state["applied"]:
+                        events.emit(FAILED, message=DECLINED)
+                        return built(DECLINED, ok=False)
                     content = missing
                     continue
                 if not state["asserted"]:

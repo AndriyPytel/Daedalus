@@ -22,7 +22,7 @@ from core.events import (
     OUTSTANDING, PART, PLAN, DESIGN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION,
     REVIEW_SUSPECTED, REVIEW_VERDICT, ROUTED, STEP_DECLARED, STEP_STARTED, STOPPED,
     SUB_AGENT_ANSWERED, SUB_AGENT_REFUSED, SUB_AGENT_SPAWNED, THOUGHT,
-    TOOL_CALL, TOOL_RESULT, TURN_BUDGET_EXHAUSTED, UNBUILT, WRITING, Event,
+    TOOL_CALL, TOOL_RESULT, TURN_BUDGET_EXHAUSTED, UNBUILT, WARNING, WRITING, Event,
 )
 from core.narrate import Narration, narrate
 
@@ -63,6 +63,7 @@ SAMPLES = {
     CALL_STARTED: {"phase": "plan", "model": "sonnet", "ceiling": 900.0},
     COST: {"phase": "design", "usd": 0.0049255, "model": "sonnet", "seconds": 12.3},
     ERROR: {"message": "ValueError: no key"},
+    WARNING: {"message": "the table lost unusable fields: through_count"},
     CHANGE_SET: {"changes": [{"section": "datums", "kind": "added", "id": "d1",
                               "now": {"name": "d1", "is": "20 mm from the left end"}}]},
     ROUTED: {"route": "design"},

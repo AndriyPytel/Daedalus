@@ -15,9 +15,10 @@ script disproved, with why.
 import math
 import os
 import threading
+import time
 from dataclasses import dataclass, field
 
-from core.events import ANSWER, QUESTION
+from core.events import ANSWER, QUESTION, WARNING
 from core.freecad_traps import Trap
 from core.kernel import Kernel, KernelResult, copy_of
 from core.kernel.kernel_worker import (_NamedDoc, register_step_source, signature_of,
@@ -87,6 +88,8 @@ class ApplyResult:
 
 
 _CHANGED_NOTHING = read_prompt("changed_nothing.md")
+
+STEP_LIMIT = 120
 
 
 def _direct(func, timeout=None):
@@ -187,7 +190,8 @@ class ApplyPipeline:
 
     def __init__(self, document=None, worker=None, dispatch=None,
                  transaction=None, render_dir=None, confirm=None, owned=None,
-                 events=None, main_window=None, unattended=False):
+                 events=None, main_window=None, unattended=False, clock=time.monotonic):
+        self._clock = clock
         self._document = document
         self._worker = worker
         self._dispatch = dispatch or _direct
@@ -311,6 +315,7 @@ class ApplyPipeline:
         if declined:
             return ApplyResult(ok=False, traceback=declined, gate="ownership")
 
+        started = self._clock()
         try:
             self._dispatch(lambda: self._transaction(
                 doc, code, label, names=self._names,
@@ -326,6 +331,10 @@ class ApplyPipeline:
                           "so it was rolled back:\n\n" + trimmed_traceback(exc),
                 gate="rollback",
             )
+
+        took = self._clock() - started
+        if took > STEP_LIMIT:
+            self._narrate(WARNING, message="step took %d s on the live Document" % took)
 
         self._names = dict(kernel_result.get("names") or {})
         self._dispatch(lambda: _show_tip(doc))
