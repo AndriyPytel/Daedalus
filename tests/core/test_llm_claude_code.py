@@ -1085,9 +1085,10 @@ def test_a_call_silent_for_the_stall_limit_is_cut_with_a_stall_not_left_to_the_c
     client, spawn = client_over(_ProcessThatNeverAnswers(), timeout=900, stall=0.05)
 
     started = time.monotonic()
-    with pytest.raises(CallStalled):
+    with pytest.raises(CallStalled) as stalled:
         collect(client.stream(a_turn()))
 
+    assert stalled.value.said == "no stream line for 0.05 seconds"
     assert time.monotonic() - started < 5
     assert spawn.process.killed.is_set()
 

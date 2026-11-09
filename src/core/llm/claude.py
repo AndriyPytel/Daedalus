@@ -212,6 +212,7 @@ class ClaudeCodeClient:
         Measured: 1506 per-delta chunks once buried a session in an unusable count.
         """
         overdue = threading.Event()
+        silent = threading.Event()
 
         finished = threading.Event()
         deadline = time.time() + self.timeout
@@ -222,7 +223,7 @@ class ClaudeCodeClient:
             while not finished.wait(_WATCH_SECONDS):
                 now = time.time()
                 if now >= deadline or (stall and now - heard[0] >= stall):
-                    overdue.set()
+                    silent.set() if now < deadline else overdue.set()
                     process.kill()
                     return
 
@@ -260,6 +261,11 @@ class ClaudeCodeClient:
                     yield chunk
 
             code = process.wait()
+            if silent.is_set():
+                raise CallStalled(
+                    "%s refused the request: the provider did not answer in time. Try "
+                    "again, or ask for a smaller Step." % self.model,
+                    "no stream line for %g seconds" % stall)
             if overdue.is_set():
                 raise CallStalled(
                     "%s refused the request: the provider did not answer in time. Try "
