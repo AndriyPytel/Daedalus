@@ -161,7 +161,7 @@ def main():
     """
     args = parser().parse_args()
 
-    for lib in ("/Applications/FreeCAD.app/Contents/Resources/lib",):
+    for lib in (os.environ.get("FREECAD_LIB", ""), "/Applications/FreeCAD.app/Contents/Resources/lib", "/usr/lib/freecad/lib"):
         if os.path.isdir(lib) and lib not in sys.path:
             sys.path.insert(0, lib)
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")

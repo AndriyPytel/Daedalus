@@ -236,6 +236,21 @@ def _the_evidence(attachments, views=None, keep_printed=False, pictures=True):
     return shown
 
 
+def the_whole_sheet(attachments):
+    """
+    Each attachment as the one picture it was cut from, with the text layer's lists beside it in words: the cutting into views is what goes, the evidence stays.
+    """
+    shown = []
+    for path in attachments:
+        picture = _as_image(path)
+        if picture:
+            shown.append(picture)
+        sheet = sheet_reader.read(path)
+        if sheet is not None:
+            shown.extend({"type": "text", "text": text} for text in _words_only(sheet))
+    return shown
+
+
 def with_the_drawing(task, attachments, llm, beside=()):
     """
     *task* (the request's text) as content blocks led by the drawing, the cache breakpoint on the last block of it, then any *beside* blocks; the text alone where nothing is attached.

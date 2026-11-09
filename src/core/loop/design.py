@@ -18,6 +18,7 @@ from core.loop.prompt import (
     _CHARS_PER_TOKEN,
     _pieces_of,
     _the_evidence,
+    the_whole_sheet,
     a_raster_picture,
     prompt,
 )
@@ -25,6 +26,8 @@ from core.loop.results import Stopped
 
 from core.agent.agent import run_declaring
 from core.agent import phase_contract as pc
+
+WHOLE_SHEET = "DAEDALUS_DESIGN_WHOLE_SHEET"
 
 
 def design(body, llm, events, attachments=(), views=None, phase=DESIGN_PHASE,
@@ -37,7 +40,10 @@ def design(body, llm, events, attachments=(), views=None, phase=DESIGN_PHASE,
     value not because the model saw badly, but because it needed
     something to plan with.
     """
-    evidence = _the_evidence(attachments, views, keep_printed, pictures)
+    if os.environ.get(WHOLE_SHEET) and pictures:
+        evidence = the_whole_sheet(attachments)
+    else:
+        evidence = _the_evidence(attachments, views, keep_printed, pictures)
     if evidence and cache_control_supported(getattr(llm, "model", None)):
         evidence = evidence[:-1] + [dict(evidence[-1], cache_control={"type": "ephemeral"})]
 
@@ -112,7 +118,7 @@ def _the_groups(attachments):
     """
     prompt_tokens = len(prompt(DESIGN_PHASE, raster=a_raster_picture(attachments))) // _CHARS_PER_TOKEN
     groups = []
-    for path in attachments:
+    for path in () if os.environ.get(WHOLE_SHEET) else attachments:
         sheet = sheet_reader.read(path)
         if sheet is None:
             continue
