@@ -36,6 +36,7 @@ from core.llm import (
     TEXT,
     Chunk,
     ClaudeCodeClient,
+    CallStalled,
     ProviderRefused,
     find_claude,
     litellm_model_name,
@@ -1078,3 +1079,44 @@ def test_the_model_the_cli_answered_with_is_recorded_beside_the_alias_asked_for(
 
     assert client.last_cost["model"] == MODEL
     assert client.last_cost["resolved_model"] == "claude-opus-5-5"
+
+
+def test_a_call_silent_for_the_stall_limit_is_cut_with_a_stall_not_left_to_the_ceiling():
+    client, spawn = client_over(_ProcessThatNeverAnswers(), timeout=900, stall=0.05)
+
+    started = time.monotonic()
+    with pytest.raises(CallStalled) as stalled:
+        collect(client.stream(a_turn()))
+
+    assert stalled.value.said == "no stream line for 0.05 seconds"
+    assert time.monotonic() - started < 5
+    assert spawn.process.killed.is_set()
+
+
+def test_the_ceiling_is_a_stall_too_so_one_retry_policy_covers_both():
+    client, _ = client_over(_ProcessThatNeverAnswers(), timeout=0.05)
+
+    with pytest.raises(CallStalled) as stalled:
+        collect(client.stream(a_turn()))
+
+    assert "did not answer in time" in str(stalled.value)
+
+
+def test_a_call_that_keeps_streaming_is_not_cut_however_long_it_runs_past_the_stall_limit(monkeypatch):
+    monkeypatch.setattr(llm_claude, "_WATCH_SECONDS", 0.05)
+    class Trickle:
+        def __init__(self, lines):
+            self.lines = iter(lines)
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            time.sleep(0.04)
+            return next(self.lines)
+
+    process = _Process(_lines(MINIMAL))
+    process.stdout = Trickle(_lines(MINIMAL))
+    client, _ = client_over(process, timeout=900, stall=0.3)
+
+    assert collect(client.stream(a_turn())).text

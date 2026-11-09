@@ -10,6 +10,10 @@ _SUBSCRIPTION_EFFORT = "medium"
 
 _CEILING = {"low": 300.0, "medium": 900.0, "high": 1500.0, "xhigh": 2400.0}
 
+STALL_LIMIT = 300.0
+
+STALL_WAIT = 600.0
+
 CALL_TIMEOUT = _CEILING[_SUBSCRIPTION_EFFORT]
 
 _THINKING_BUDGET = {"low": 1024, "medium": 2048, "high": 4096}

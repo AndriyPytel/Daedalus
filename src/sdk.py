@@ -19,8 +19,8 @@ from core.arch import arch_type, export_ifc, named_in
 from core import furniture, nativeifc
 from core.equipment import write_attribution
 from core.freecad_apply import ApplyPipeline, active_document, build_registry
-from core.events import (ASSERTION, BLOCKED, COST, REVIEW_VERDICT, EventStream,
-                         replay)
+from core.events import (APPLIED, ASSERTION, BLOCKED, COMPLETED, COST, REVIEW_VERDICT,
+                         EventStream, replay)
 from core.kernel import Kernel
 from core.llm import (EFFORTS, ORCHESTRATOR, TEXT, ScriptedLLMClient, Session,
                       client_from_roles, effort_is_honoured, selected_model_name,

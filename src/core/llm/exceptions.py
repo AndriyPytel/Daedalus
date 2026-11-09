@@ -28,3 +28,11 @@ class StreamCutOff(ProviderRefused):
     sent again usually lands, and retrying is what opencode's own client
     does with it.
     """
+
+
+class CallStalled(ProviderRefused):
+    """
+    A call the client cut because the provider went silent: no stream line for the stall limit, or no answer by the ceiling.
+
+    Retryable, which is the only reason it is not a plain `ProviderRefused`: the same call sent again usually lands.
+    """

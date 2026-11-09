@@ -310,6 +310,14 @@ def _has_step(log, suffix=".step"):
     return os.path.isfile(step) and os.path.getsize(step) > 0
 
 
+def _standing(log):
+    """What an attempt is ranked by when a retry must not lose it: whether the agent called it ok, then the Steps applied."""
+    import sdk
+
+    events, _ = sdk.replay(log)
+    return (any(e.kind == sdk.COMPLETED for e in events), sum(1 for e in events if e.kind == sdk.APPLIED))
+
+
 def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
           resume, provider, run_seconds, timestamp=None, edits=None,
           domain=None, task_folders=None, native=False):
@@ -347,6 +355,7 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
             ceiling = False
             attempts = []
             log = None
+            best = None
             fixture = edits.get(label)
             run_intent = intent
             for attempt in range(1, retries + 1):
@@ -371,6 +380,10 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
                 process = run_one(label, "" if label in task_folders else sheet, model, effort, budget_usd, log, run_intent, provider,
                                   **kwargs)
                 outcome = watch(process, log, hang_seconds, run_seconds)
+                if _has_step(log, saved):
+                    standing = _standing(log)
+                    if best is None or standing >= best[0]:
+                        best = (standing, log)
                 refusal = quota_refusal(log) if outcome == "exited" else None
                 if refusal:
                     break
@@ -383,7 +396,7 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
                       % (key, attempt, outcome, process.returncode), flush=True)
 
             succeeded = outcome == "exited" and process.returncode == 0 and _has_step(log, saved)
-            state["runs"][key] = {"label": label, "model": model, "log": log,
+            state["runs"][key] = {"label": label, "model": model, "log": best[1] if best else log,
                                   "attempts": attempts, "returncode": process.returncode,
                                   "status": "quota" if refusal
                                   else "ceiling" if ceiling and not succeeded
@@ -392,7 +405,7 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
                 output = os.path.join(model_dir, label, "output.step")
                 os.makedirs(os.path.dirname(output), exist_ok=True)
                 base = _shippable_base(fixture, os.path.dirname(output))
-                state["runs"][key]["fallback"] = _ship_edit(log, base, output)
+                state["runs"][key]["fallback"] = _ship_edit(state["runs"][key]["log"], base, output)
                 state["runs"][key]["input_invalid"] = step_problem(base)
                 if state["runs"][key]["input_invalid"]:
                     print("INPUT INVALID %s: %s" % (label, state["runs"][key]["input_invalid"]),
