@@ -694,3 +694,15 @@ def test_report_detail_names_the_model_each_run_was_answered_by(tmp_path):
 
     assert "resolved model" in detail
     assert "claude-opus-5-5" in detail
+
+
+def test_an_effort_the_dial_does_not_offer_is_an_argument_error(monkeypatch, tmp_path):
+    monkeypatch.setattr(lane, "sweep", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sys, "argv", [
+        "lane.py", "--pinned", "--model", "opus", "--effort", "ultra", "--out", str(tmp_path),
+    ])
+
+    with pytest.raises(SystemExit) as stopped:
+        lane.main()
+
+    assert stopped.value.code == 2

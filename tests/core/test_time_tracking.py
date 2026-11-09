@@ -111,3 +111,18 @@ def test_format_elapsed_over_one_hour():
     assert _format_elapsed(3600) == "1:00:00"
     assert _format_elapsed(3660) == "1:01:00"
     assert _format_elapsed(7384) == "2:03:04"
+
+
+def test_call_started_names_the_effort_the_call_runs_at():
+    from core.llm import ScriptedLLMClient
+    from core.agent.agent import _say
+    from core.llm.session import Session
+    from core.events import EventStream, CALL_STARTED
+
+    llm = ScriptedLLMClient(["test reply"])
+    llm.effort = "max"
+    events = EventStream()
+
+    _say(Session(), llm, "user", "design", events)
+
+    assert events_of(events, CALL_STARTED)[0].data["effort"] == "max"
