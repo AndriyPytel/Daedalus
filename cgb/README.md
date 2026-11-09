@@ -1,37 +1,103 @@
-# CADGenBench re-run kit
+# Перезапуск CADGenBench для Daedalus
 
-Re-runs four Daedalus arms (p17, p17-whole, a4h, a4h-whole) on the CADGenBench tasks, 3 reps each, and packs the logs into one zip.
+Скрипт проганяє чотири варіанти агента Daedalus на задачах CADGenBench (49 генерацій + 32 редагування), по 3 рази кожен, і пакує результати в один zip. Моделі викликаються через `claude` CLI на вашій підписці Claude, тож прогін витрачає її ліміт.
 
-## Prerequisites (Windows: WSL2 Ubuntu; or plain Linux)
+| варіант | що це |
+|---|---|
+| `p17` | фазовий пайплайн P17 |
+| `p17-whole` | P17, аркуш подається одним зображенням, без розбиття на фрагменти |
+| `a4h` | агент A4h |
+| `a4h-whole` | A4h, аркуш подається одним зображенням, без розбиття на фрагменти |
 
-Everything below runs inside the Ubuntu terminal, not in Windows.
+Повний прогін триває кілька днів: коли ліміт підписки вичерпується, скрипт чекає, поки він відновиться, і продовжує сам.
 
-1. WSL2: in PowerShell as admin `wsl --install -d Ubuntu`, reboot, open "Ubuntu".
-2. `sudo apt update && sudo apt install -y git python3 curl`
-3. GitHub access to the private repo: accept the collaborator invite, then `sudo apt install -y gh && gh auth login`.
-4. FreeCAD 1.1 Linux AppImage (py311), extracted to `~/freecad`:
+## 1. Підготовка (один раз)
+
+Усе, крім першого кроку, виконується в терміналі **Ubuntu** (WSL2), не в Windows.
+
+1. **WSL2.** Відкрийте PowerShell від імені адміністратора і виконайте:
    ```
+   wsl --install -d Ubuntu
+   ```
+   Перезавантажте комп'ютер, відкрийте програму «Ubuntu» з меню «Пуск» і задайте ім'я користувача та пароль.
+
+2. **Базові програми:**
+   ```
+   sudo apt update && sudo apt install -y git python3 curl gh
+   ```
+
+3. **Доступ до репозиторію.** Прийміть запрошення на GitHub (воно прийде на пошту), потім:
+   ```
+   gh auth login
+   ```
+   Відповіді: `GitHub.com` → `HTTPS` → `Login with a web browser`, далі введіть показаний код у браузері.
+
+4. **FreeCAD 1.1** (версія для Linux, розпаковується в `~/freecad`):
+   ```
+   cd ~
    curl -fLO https://github.com/FreeCAD/FreeCAD/releases/download/1.1.4/FreeCAD_1.1.4-Linux-x86_64-py311.AppImage
    chmod +x FreeCAD_*.AppImage && ./FreeCAD_*.AppImage --appimage-extract >/dev/null && mv squashfs-root ~/freecad
    ```
-5. The `claude` CLI inside WSL (a Windows install does not count): `curl -fsSL https://claude.ai/install.sh | bash`, then `claude auth login` with the Claude Max account. The run spends that subscription's quota.
 
-The full run takes days. Keep the computer awake (Windows power settings: never sleep) and the Ubuntu window open.
+5. **Claude Code** всередині Ubuntu (версія для Windows тут не підходить):
+   ```
+   curl -fsSL https://claude.ai/install.sh | bash
+   source ~/.bashrc
+   claude auth login
+   ```
+   Увійдіть акаунтом із підпискою Claude Max.
 
-## Run
+6. **Репозиторій:**
+   ```
+   cd ~
+   gh repo clone AndriyPytel/Daedalus -- -b cgb-repro
+   cd Daedalus
+   ```
+
+## 2. Пробний запуск (~1 година)
 
 ```
-gh repo clone AndriyPytel/Daedalus -- -b cgb-repro && cd Daedalus
-python3 cgb/run_cgb.py --smoke     # 1 gen + 1 edit task per arm: check the setup first
-python3 cgb/run_cgb.py             # the full run
+python3 cgb/run_cgb.py --smoke
 ```
 
-The script checks the tools, installs its Python packages into `cgb/.deps`, downloads the task data into `cgb/data`, and creates the P17 worktree `.arms/p17`. It installs nothing system-wide.
+Скрипт перевірить FreeCAD, `claude` і вхід, встановить свої Python-пакети в `cgb/.deps`, завантажить дані задач у `cgb/data` і прожене по одній задачі кожного типу для кожного варіанта. Нічого в систему він не встановлює.
 
-- Safe to stop with Ctrl+C. Run the same command again to resume.
-- When the subscription limit is hit, it waits for the reset and continues.
-- Useful options: `--arms a4h a4h-whole`, `--reps 1`, `--parallel 2`, `--phases gen`, `--tasks 101,201`, `--freecad DIR`, `--dry-run`.
+Якщо скрипт пише `ERROR: ...`, у повідомленні сказано, чого бракує. Найчастіше це:
+- `FreeCAD not found`: FreeCAD розпаковано не в `~/freecad`. Повторіть крок 4 або вкажіть шлях: `--freecad /шлях/до/freecad`.
+- `claude is not logged in`: виконайте `claude auth login`.
+- `pip install failed`: виконайте `~/freecad/usr/bin/python -m ensurepip` і запустіть знову.
 
-## Send back
+Після пробного запуску надішліть мені zip (див. розділ 4), щоб я перевірив, що все працює, перш ніж запускати повний прогін.
 
-The last step writes `cgb/results/daedalus-cgb-<host>-<date>.zip` and a done/failed/missing table. `python3 cgb/run_cgb.py --pack` rebuilds it. Send the zip.
+## 3. Повний прогін
+
+```
+python3 cgb/run_cgb.py
+```
+
+- Комп'ютер не повинен засинати: «Параметри» → «Система» → «Живлення» → «Перехід у режим сну: ніколи». Вікно Ubuntu не закривайте.
+- Зупинити можна будь-коли через `Ctrl+C`. Щоб продовжити, запустіть ту саму команду ще раз, і зроблене вдруге не прожениться.
+- Якщо ліміт підписки вичерпано, скрипт пише про це, чекає на відновлення і продовжує сам.
+- Щоб у прогону був окремий ліміт, краще не користуватися Claude паралельно для інших справ.
+
+## 4. Надіслати результати
+
+Наприкінці скрипт пише шлях до архіву і таблицю «done / failed / missing»:
+```
+cgb/results/daedalus-cgb-<комп'ютер>-<дата>.zip
+```
+Зібрати архів заново, наприклад після зупинки, можна так: `python3 cgb/run_cgb.py --pack`.
+
+Щоб скопіювати файл у Windows: `explorer.exe cgb/results`. Відкриється папка, звідти надішліть zip мені.
+
+## Додаткові параметри
+
+| параметр | що робить |
+|---|---|
+| `--arms a4h a4h-whole` | лише вибрані варіанти |
+| `--reps 1` | кількість повторів (типово 3) |
+| `--phases gen` | лише генерація, без редагування |
+| `--effort medium` | рівень міркування моделі |
+| `--parallel 2` | скільки задач іде одночасно |
+| `--tasks 101,201` | лише вибрані задачі |
+| `--dry-run` | показати команди, нічого не запускаючи |
