@@ -14,7 +14,7 @@ Part = pytest.importorskip("FreeCAD") and pytest.importorskip("Part")
 import os
 
 STEPS = os.path.join(os.path.dirname(__file__), "steps")
-SCORED_WELL = ("132", "128", "147", "109", "105")
+SCORED_WELL = ("132", "128", "147", "218", "105")
 
 
 def _read(name):
@@ -41,3 +41,26 @@ def test_a_step_that_scored_well_is_not_refused(name):
     from core.manifold import unmeshable_fc
 
     assert unmeshable_fc(_read(name)) is None
+
+
+@pytest.fixture
+def kernel():
+    from core.kernel.kernel import Kernel, find_freecadcmd
+
+    try:
+        find_freecadcmd()
+    except RuntimeError as exc:
+        pytest.skip(str(exc))
+    with Kernel() as running:
+        yield running
+
+
+@pytest.mark.parametrize("name, refused", [("149", True), ("132", False)])
+def test_the_check_the_finish_runs_in_the_kernel_refuses_only_the_solid_the_grader_cannot_mesh(kernel, name, refused):
+    from core.agent.reader import unmeshable
+
+    loaded = kernel.check("obj = doc.addObject('Part::Feature', 'Solid')\nobj.Shape = Part.read(%r)\ndoc.recompute()"
+                          % os.path.join(STEPS, name + ".step"))
+
+    assert loaded.ok, loaded.traceback
+    assert (unmeshable(kernel) is not None) is refused

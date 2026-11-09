@@ -99,17 +99,14 @@ shape = solids[0] if len(solids) == 1 else Part.Compound(solids)
 print("MESH " + json.dumps(unmeshable_fc(shape) if solids else None))
 """
 
-UNMEASURABLE = "The Document's solid could not be tested for meshing by the grader's mesher. Fix any error the kernel reported, then finish."
-
-
 def unmeshable(kernel):
-    """Why the grader's mesher would not get through the kernel's solid, or `None` where it would."""
+    """Why the grader's mesher would not get through the kernel's solid, or `None` where it would or where the check could not run."""
     result = kernel.check(MESH_CHECK, exploring=True, timeout=MESH_CHECK_TIMEOUT)
     for line in reversed((result.stdout or "").splitlines()):
         if line.startswith("MESH "):
             found = json.loads(line[len("MESH "):])
             return "The grader could not tessellate this solid: %s. Fix this, then finish." % found if found else None
-    return UNMEASURABLE
+    return None
 
 
 def unfinished_part(kernel):

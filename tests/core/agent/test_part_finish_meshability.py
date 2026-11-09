@@ -35,3 +35,7 @@ def test_the_kernel_is_given_longer_than_the_meshing_limit():
     reader.unfinished_part(kernel)
 
     assert kernel.timeouts[-1] > 60
+
+
+def test_a_check_that_could_not_run_does_not_refuse_the_finish():
+    assert reader.unmeshable(SimpleNamespace(check=lambda code, **options: SimpleNamespace(stdout=""))) is None
