@@ -34,6 +34,9 @@ def _one_turn(session, llm, content, phase=None, stream=None):
         started = {"phase": phase, "model": model}
         if ceiling is not None:
             started["ceiling"] = ceiling
+        effort = getattr(llm, "effort", None)
+        if effort is not None:
+            started["effort"] = effort
         stream.emit(CALL_STARTED, **started)
 
     start = time.time()

@@ -86,7 +86,9 @@ def _design_at(effort):
 
     The same sheet and the same prompt through `--effort low`, `medium` and
     `high` on Opus, kept as the `result` events the CLI ended each of them with;
-    `xhigh` is the longest Design call of a `mm2025-phase1` run on Haiku 5.5.
+    `xhigh` is the longest Design call of a `mm2025-phase1` run on Haiku 5.5, and
+    `max` the longest call of a validation task run at `--effort max` on Opus,
+    whose `duration_ms` is the seconds its `cost` event logged.
     """
     return [call for call in _events(DESIGN_AT_EFFORT)
             if call["effort"] == effort][0]["result"]

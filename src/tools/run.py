@@ -135,8 +135,10 @@ def main():
 
     import FreeCAD  # noqa: F401
 
-    from sdk import COST, Client
+    from sdk import COST, EFFORTS, Client
 
+    if args.effort not in EFFORTS:
+        parser.error("--effort must be one of %s" % ", ".join(EFFORTS))
     llm = client_for(args.provider, args.model, args.effort) if args.model else None
     seed = base_document(args.base_step) if args.base_step else args.base_document
     if args.base_ifc:
