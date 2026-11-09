@@ -199,7 +199,7 @@ VOLUME_RATIO = (0.2, 5.0)
 
 
 def _part():
-    for lib in ("/Applications/FreeCAD.app/Contents/Resources/lib",):
+    for lib in (os.environ.get("FREECAD_LIB", ""), "/Applications/FreeCAD.app/Contents/Resources/lib", "/usr/lib/freecad/lib"):
         if os.path.isdir(lib) and lib not in sys.path:
             sys.path.insert(0, lib)
     import FreeCAD  # noqa: F401

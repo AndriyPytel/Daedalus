@@ -14,3 +14,9 @@ manual/modelmania/
 
 # Prime Agent local skills
 .prime/
+
+# CADGenBench re-run kit
+cgb/.deps
+cgb/data
+cgb/results
+.arms/
