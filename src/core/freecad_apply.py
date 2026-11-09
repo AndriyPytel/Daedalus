@@ -15,6 +15,7 @@ script disproved, with why.
 import math
 import os
 import threading
+import time
 from dataclasses import dataclass, field
 
 from core.events import ANSWER, QUESTION
@@ -67,7 +68,7 @@ class ApplyResult:
     by a `SignatureMismatch`, the GUI Document disagreeing with what the
     kernel verified. `gate` names which refusal branch built this result --
     "lint", "op_mismatch", "changed_nothing", "no_document", "ownership",
-    "rollback" or "drift".
+    "rollback", "too_slow" or "drift".
     """
 
     ok: bool
@@ -87,6 +88,10 @@ class ApplyResult:
 
 
 _CHANGED_NOTHING = read_prompt("changed_nothing.md")
+
+STEP_LIMIT = 120
+_TOO_SLOW = ("this step took over %d s; build it with fewer elements or a pattern. "
+             "It was rolled back." % STEP_LIMIT)
 
 
 def _direct(func, timeout=None):
@@ -187,7 +192,8 @@ class ApplyPipeline:
 
     def __init__(self, document=None, worker=None, dispatch=None,
                  transaction=None, render_dir=None, confirm=None, owned=None,
-                 events=None, main_window=None, unattended=False):
+                 events=None, main_window=None, unattended=False, clock=time.monotonic):
+        self._clock = clock
         self._document = document
         self._worker = worker
         self._dispatch = dispatch or _direct
@@ -311,6 +317,7 @@ class ApplyPipeline:
         if declined:
             return ApplyResult(ok=False, traceback=declined, gate="ownership")
 
+        started = self._clock()
         try:
             self._dispatch(lambda: self._transaction(
                 doc, code, label, names=self._names,
@@ -326,6 +333,10 @@ class ApplyPipeline:
                           "so it was rolled back:\n\n" + trimmed_traceback(exc),
                 gate="rollback",
             )
+
+        if self._clock() - started > STEP_LIMIT:
+            self._dispatch(doc.undo)
+            return ApplyResult(ok=False, traceback=_TOO_SLOW, gate="too_slow")
 
         self._names = dict(kernel_result.get("names") or {})
         self._dispatch(lambda: _show_tip(doc))

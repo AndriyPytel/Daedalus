@@ -5,6 +5,11 @@ from core.freecad_apply import STEP_LIMIT, ApplyPipeline
 from core.kernel import KernelResult
 
 
+class Box:
+    Name = Label = "Box"
+    TypeId = "Part::Box"
+
+
 class Doc:
     def __init__(self):
         self.Objects = []
@@ -23,7 +28,7 @@ def _apply(took):
     doc = Doc()
     ticks = iter([100.0, 100.0 + took])
     pipeline = ApplyPipeline(document=doc, worker=Worker(), clock=lambda: next(ticks),
-                             transaction=lambda *a, **k: doc.Objects.append("Box"))
+                             transaction=lambda *a, **k: doc.Objects.append(Box()))
     result = pipeline.apply("box = 1", kernel_result={"created": ["Box"], "names": {}})
     return doc, result
 

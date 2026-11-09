@@ -10,7 +10,7 @@ import tempfile
 from core.agent.agent import _say
 from core.agent.domain import PART, Domain
 from core.agent.solo import run_solo
-from core.events import ERROR, FAILED
+from core.events import ERROR, FAILED, WARNING
 from core.llm import IMAGE_SUFFIXES, PDF_SUFFIXES, Session
 from core.loop.results import LoopResult
 from core.loop.prompt import _as_image, _attached, _object_of
@@ -103,9 +103,24 @@ def _count(value):
     return int(number) if number is not None and number >= 0 else None
 
 
-def parse_table(text):
+def _unusable(said, overall):
+    """The names of the fields the reply gave and `parse_table` cannot use."""
+    lost = ["overall.%s" % axis for axis in "xyz"
+            if overall.get(axis) is not None and _number(overall.get(axis)) is None]
+    if said.get("overall") is not None and not isinstance(said["overall"], dict):
+        lost.append("overall")
+    for name in ("views", "dimensions", "hole_patterns"):
+        value = said.get(name)
+        if value is not None and (not isinstance(value, list) or len(_dicts(value)) < len(value)):
+            lost.append(name)
+    if said.get("through_count") is not None and _count(said["through_count"]) is None:
+        lost.append("through_count")
+    return lost
+
+
+def parse_table(text, events=None):
     """
-    The table a reply carries, with every field that is not usable dropped to `None`, or `None` where the reply holds no object.
+    The table a reply carries, with every field that is not usable dropped to `None` and named in a WARNING on *events*, or `None` where the reply holds no object.
 
     Tolerant on purpose: the table steers the build and the Assertion, and a half-readable one is still worth handing over.
     """
@@ -113,6 +128,9 @@ def parse_table(text):
     if not isinstance(said, dict):
         return None
     overall = said.get("overall") if isinstance(said.get("overall"), dict) else {}
+    lost = _unusable(said, overall)
+    if lost and events is not None:
+        events.emit(WARNING, message="the table read off the sheet lost unusable fields: %s" % ", ".join(lost))
     thin = said.get("thin_walled")
     return {
         "views": _dicts(said.get("views")),
@@ -142,7 +160,7 @@ def read_table(sheet, llm, events):
     for _ in range(2):
         try:
             table = parse_table(_say(Session(system=read_prompt("read_table.md")), llm, content,
-                                     phase="read", stream=events))
+                                     phase="read", stream=events), events)
         except Exception as exc:
             events.emit(ERROR, message="the reading call failed: %s: %s" % (type(exc).__name__, exc))
             continue
@@ -234,7 +252,7 @@ def _direction(name):
     return "front" if "section" in name else None
 
 
-def assert_part(kernel, sheet, table, renders):
+def assert_part(kernel, sheet, table, renders, events):
     """
     What to send back at the first `finish`: the differences found, the part in each view the table names beside that view's crop, and the order to compare them, with the names of the views drawn; `None` where there is neither a difference nor a picture to compare.
     """
@@ -244,11 +262,15 @@ def assert_part(kernel, sheet, table, renders):
     for entry in (table or {}).get("views") or ():
         view, number = _direction(str(entry.get("view") or "")), _count(entry.get("crop"))
         if view is None or not number or number > len(sheet.crops):
+            events.emit(WARNING, message="the Assertion dropped the view %r (crop %s): no standard view "
+                                         "or no such crop on the sheet" % (entry.get("view"), entry.get("crop")))
             continue
         if view not in drawn_views:
             drawn = kernel.check("pass", render_path=os.path.join(renders, "assertion-%s.png" % view),
                                  render_view=view)
             drawn_views[view] = _as_image(drawn.render) if drawn.ok else None
+            if not drawn_views[view]:
+                events.emit(WARNING, message="the Assertion dropped the %s view: the part could not be drawn" % view)
         if drawn_views[view]:
             blocks += [{"type": "text", "text": "Your part, %s view, then crop %d (%s) of the drawing:"
                                                 % (view, number, entry.get("view"))},
@@ -264,14 +286,20 @@ def run_reader(intent, *, llm, kernel, tools, events, attachments=(), cancelled=
     Read the drawing once, then build with `run_solo` under the table and the Assertion; an edit (*base*) has no drawing to read and is asserted on changing the part.
     A drawing that two reads could not turn into a table ends the run, since a build without it has nothing to be measured against.
     """
-    sheet = None if base else next(
-        (found for found in map(sheet_reader.read, attachments) if found), None)
+    sheet = None
+    for path in () if base else attachments:
+        sheet = sheet_reader.read(path)
+        if sheet:
+            break
+        if path.lower().endswith(IMAGE_SUFFIXES + PDF_SUFFIXES):
+            events.emit(WARNING, message="%s gave no sheet: it is unreadable, or pymupdf or PIL is missing"
+                        % os.path.basename(path))
     table = read_table(sheet, llm, events) if sheet is not None else None
     if sheet is not None and table is None:
         events.emit(FAILED, message=NOT_READ)
         return LoopResult(ok=False, reason=NOT_READ)
     with tempfile.TemporaryDirectory(prefix="fcc-assertion-") as renders:
         domain = Domain(PART, read_prompt("reader.md"), opening(intent, sheet, table, attachments, base),
-                        lambda: assert_part(kernel, sheet, table, renders), without_feature_tree)
+                        lambda: assert_part(kernel, sheet, table, renders, events), without_feature_tree)
         return run_solo(intent, domain=domain, llm=llm, kernel=kernel, tools=tools, events=events,
                         attachments=attachments, cancelled=cancelled, max_turns=MAX_TURNS)

@@ -1675,6 +1675,7 @@ it up, so a prompt shows once whether live or restored.
             ev.REVIEW_VERDICT: DaedalusPanel._noop,
             ev.PLAN_REVISED: DaedalusPanel._noop,
             ev.ERROR: DaedalusPanel._noop,
+            ev.WARNING: DaedalusPanel._noop,
             ev.SUB_AGENT_SPAWNED: DaedalusPanel._oe_sub_agent_spawned,
             ev.SUB_AGENT_ANSWERED: DaedalusPanel._oe_sub_agent_answered,
             ev.SUB_AGENT_REFUSED: DaedalusPanel._oe_sub_agent_refused,

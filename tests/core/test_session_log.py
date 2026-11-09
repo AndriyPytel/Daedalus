@@ -21,7 +21,7 @@ def test_every_specced_event_kind_exists():
         "part", "plan", "plan_revised", "gate", "step_started", "step_declared", "tool_call",
         "tool_result", "preflight_failed", "applied", "assertion", "outstanding", "unbuilt",
         "review_suspected", "review_verdict", "blocked", "disputed", "stopped", "call_started", "cost",
-        "error", "change_set", "routed", "domain", "completed", "aborted", "budget_exhausted", "failed",
+        "error", "warning", "change_set", "routed", "domain", "completed", "aborted", "budget_exhausted", "failed",
         "sub_agent_spawned", "sub_agent_answered", "sub_agent_refused",
         "turn_budget_exhausted", "invoke_markup",
     }
