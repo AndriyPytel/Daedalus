@@ -4,6 +4,9 @@ Level 2 -- the grader's mesh timeout, caught before `finish`.
 `steps/149.step` is a BRepCheck-valid, watertight solid whose sub-millimetre fillets and chamfers make
 the grader's mesher run past its 180 s timeout, which scores a valid part 0. The other five are
 recorded STEPs that scored above 0.9 and must pass.
+
+`steps/00013697.step` meshes in 0.1 s and reads back whole, but the grader exports it again before it
+scores, and the STEP that export writes does not read back within hours.
 """
 import pytest
 
@@ -36,6 +39,12 @@ def test_the_refusal_names_the_sub_millimetre_features():
     assert "mm wide at (" in message
 
 
+def test_the_step_the_grader_cannot_read_back_after_its_own_export_is_refused():
+    from core.manifold import unmeshable_fc
+
+    assert unmeshable_fc(_read("00013697"), limit=10) is not None
+
+
 @pytest.mark.parametrize("name", SCORED_WELL)
 def test_a_step_that_scored_well_is_not_refused(name):
     from core.manifold import unmeshable_fc
@@ -55,7 +64,7 @@ def kernel():
         yield running
 
 
-@pytest.mark.parametrize("name, refused", [("149", True), ("132", False)])
+@pytest.mark.parametrize("name, refused", [("149", True), ("00013697", True), ("132", False)])
 def test_the_check_the_finish_runs_in_the_kernel_refuses_only_the_solid_the_grader_cannot_mesh(kernel, name, refused):
     from core.agent.reader import unmeshable
 
