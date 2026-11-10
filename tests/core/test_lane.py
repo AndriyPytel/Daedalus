@@ -769,3 +769,37 @@ def test_an_effort_the_dial_does_not_offer_is_an_argument_error(monkeypatch, tmp
         lane.main()
 
     assert stopped.value.code == 2
+
+
+def _hang_limit_of(monkeypatch, tmp_path, *flags):
+    seen = {}
+    monkeypatch.setattr(lane, "sweep", lambda tasks, models, effort, budget, intent, out, hang_seconds, *a, **k: seen.update(hang=hang_seconds))
+    monkeypatch.setattr(sys, "argv", ["lane.py", "--model", "opus", "--task", "a=a.pdf",
+                                      "--budget-usd", "5", "--out", str(tmp_path), *flags])
+    lane.main()
+    return seen["hang"]
+
+
+def test_the_default_hang_limit_outlasts_the_call_ceiling_of_every_effort(monkeypatch, tmp_path):
+    from core.llm.effort_policy import _CEILING
+
+    for effort, ceiling in _CEILING.items():
+        hang = _hang_limit_of(monkeypatch, tmp_path, "--effort", effort)
+        assert hang == max(lane.HANG_SECONDS, ceiling + 300)
+
+
+def test_max_without_hang_seconds_waits_at_least_3900_seconds(monkeypatch, tmp_path):
+    assert _hang_limit_of(monkeypatch, tmp_path, "--effort", "max") >= 3900
+
+
+def test_a_hang_limit_below_the_call_ceiling_is_a_parser_error(monkeypatch, tmp_path, capsys):
+    with pytest.raises(SystemExit) as stopped:
+        _hang_limit_of(monkeypatch, tmp_path, "--effort", "max", "--hang-seconds", "1800")
+
+    assert stopped.value.code == 2
+    assert "--hang-seconds" in capsys.readouterr().err
+
+
+def test_an_explicit_hang_limit_at_or_above_the_call_ceiling_is_kept(monkeypatch, tmp_path):
+    assert _hang_limit_of(monkeypatch, tmp_path, "--effort", "max", "--hang-seconds", "3600") == 3600
+    assert _hang_limit_of(monkeypatch, tmp_path, "--effort", "medium", "--hang-seconds", "1000") == 1000
