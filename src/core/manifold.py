@@ -402,15 +402,18 @@ def check_fc(fc_shape):
 
 
 def _finished_within(shape, limit):
-    """Whether the official deflection ladder gets through *shape* in *limit* seconds; the mesher is native, so only a killed child process stops it, and a forked FreeCAD process hangs."""
-    handle, path = tempfile.mkstemp(suffix=".brep")
-    os.close(handle)
-    try:
+    """Whether the STEP export, the grader's re-export of it and the official deflection ladder all get through *shape* in *limit* seconds. The readers and the mesher are native, so only a killed child process stops them, and a forked FreeCAD process hangs."""
+    with tempfile.TemporaryDirectory() as folder:
+        path = os.path.join(folder, "shape.brep")
         breptools.Write(shape, path)
         program = ("import sys; sys.path.insert(0, %r)\nfrom core import manifold\n"
                    "from OCC.Core.BRep import BRep_Builder\nshape = manifold.TopoDS_Shape()\n"
-                   "manifold.breptools.Read(shape, %r, BRep_Builder())\nmanifold.check(shape)\n"
-                   % (os.path.dirname(os.path.dirname(os.path.abspath(__file__))), path))
+                   "manifold.breptools.Read(shape, %r, BRep_Builder())\n"
+                   "exported = shape\nfor _ in range(2):\n"
+                   "    manifold._write(exported, %r, 0)\n    exported = manifold._read(%r)\n"
+                   "manifold.check(shape)\n"
+                   % (os.path.dirname(os.path.dirname(os.path.abspath(__file__))), path,
+                      os.path.join(folder, "shape.step"), os.path.join(folder, "shape.step")))
         child = subprocess.Popen([sys.executable, "-c", program], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
             child.wait(limit)
@@ -419,8 +422,6 @@ def _finished_within(shape, limit):
             child.wait()
             return False
         return True
-    finally:
-        os.remove(path)
 
 
 def _small_features(fc_shape):
@@ -444,7 +445,7 @@ def unmeshable_fc(fc_shape, limit=MESH_LIMIT):
     if not fc_shape.Solids or _finished_within(from_freecad(fc_shape), limit):
         return None
     features = _small_features(fc_shape)
-    return ("the grader's mesher does not finish on this solid within %g s, so it would score 0; the "
+    return ("the grader's STEP reader or mesher does not finish on this solid within %g s, so it would score 0; the "
             "sub-millimetre fillets and chamfers make it, enlarge or remove the smallest: %s"
             % (limit, "; ".join(features[:5]) or "none under %g mm found, simplify the smallest curved faces" % SMALL_FEATURE))
 
