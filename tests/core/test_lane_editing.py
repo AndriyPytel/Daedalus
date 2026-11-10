@@ -92,10 +92,10 @@ def _fixture(tmp_path, name="101"):
     return str(folder)
 
 
-def _sweep(tmp_path, monkeypatch, folder, build=None, returncode=0):
+def _sweep(tmp_path, monkeypatch, folder, build=None, returncode=0, outcome="exited"):
     fake, spawned = _fake_run(tmp_path, build, returncode)
     monkeypatch.setattr(lane, "run_one", fake)
-    monkeypatch.setattr(lane, "watch", lambda *a, **k: "exited")
+    monkeypatch.setattr(lane, "watch", lambda *a, **k: outcome)
     out = str(tmp_path / "out")
     lane.sweep([("101", "")], ["opus"], "medium", None, "unused", out, 1800, 1, False,
                "Claude (subscription)", None, edits={"101": folder})
@@ -125,6 +125,17 @@ def test_a_passing_edit_is_the_output(tmp_path, monkeypatch):
     assert open(output, "rb").read() != open(os.path.join(folder, "input.step"), "rb").read()
     assert run["status"] == "done"
     assert run["fallback"] is None
+
+
+def test_a_run_cut_at_the_time_ceiling_ships_the_step_it_saved(tmp_path, monkeypatch):
+    folder = _fixture(tmp_path)
+
+    output, run, _spawned = _sweep(tmp_path, monkeypatch, folder, _box_with_a_hole,
+                                   returncode=-9, outcome="over time")
+
+    assert run["status"] == "ceiling"
+    assert run["fallback"] is None
+    assert open(output, "rb").read() != open(os.path.join(folder, "input.step"), "rb").read()
 
 
 def test_a_two_solid_edit_ships_a_copy_of_the_input(tmp_path, monkeypatch):
