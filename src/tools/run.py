@@ -75,6 +75,40 @@ def base_document(step_path):
 NO_SOLID_EXIT = 3
 
 
+def write_step(client, path, only=None):
+    """
+    Write *path* as a STEP through a sibling file renamed over it, so a process killed or failing mid-export leaves the earlier STEP whole.
+
+    The sibling keeps the `.step` extension, since the export picks its format from it.
+    """
+    root, extension = os.path.splitext(path)
+    partial = root + ".partial" + extension
+    try:
+        client.export_step(partial, only) if only else client.export_step(partial)
+        os.replace(partial, path)
+    finally:
+        if os.path.exists(partial):
+            os.remove(partial)
+
+
+def save_each_step(client, save, only=None):
+    """
+    Rewrite the STEP *save* after every applied Step, so a run the lane kills at its time limit leaves the build it had.
+
+    A save that is not a STEP waits for the final export, and a Document with no solid yet writes nothing.
+    """
+    from sdk import APPLIED
+
+    if not save.lower().endswith((".step", ".stp")):
+        return
+
+    def rewrite(event):
+        if event.kind == APPLIED and client.has_solid():
+            write_step(client, save, only)
+
+    client.watch(rewrite)
+
+
 def finish(client, result, save, only=None):
     """
     Write *save* and give the process exit code: 0 for a passing run, 1 for a failed one.
@@ -92,7 +126,7 @@ def finish(client, result, save, only=None):
         return NO_SOLID_EXIT
     if save:
         if save.lower().endswith((".step", ".stp")):
-            client.export_step(save, only) if only else client.export_step(save)
+            write_step(client, save, only)
         else:
             client.save(save)
         print("saved         :", save)
@@ -158,6 +192,7 @@ def main():
             spent["usd"] += event.data.get("usd") or 0.0
 
     client.watch(track)
+    save_each_step(client, args.save, "Body" if args.base_step else None)
 
     cancelled = (lambda: spent["usd"] >= args.budget_usd) if args.budget_usd is not None else None
     result = client.agent(args.intent, attachments=list(args.attach), cancelled=cancelled,

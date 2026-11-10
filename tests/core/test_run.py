@@ -65,6 +65,7 @@ class _FakeClient:
         return self.solid
 
     def export_step(self, path):
+        open(path, "w").close()
         self.exported.append(path)
 
     def save(self, path):
@@ -91,7 +92,7 @@ def test_a_failed_run_with_a_solid_still_exports_it_and_exits_1(tmp_path):
     path = str(tmp_path / "made.step")
 
     assert run.finish(client, _Result(ok=False), path) == 1
-    assert client.exported == [path]
+    assert os.path.exists(path)
 
 
 def test_a_passing_run_with_a_solid_exports_it_and_exits_0(tmp_path):
@@ -99,7 +100,7 @@ def test_a_passing_run_with_a_solid_exports_it_and_exits_0(tmp_path):
     path = str(tmp_path / "made.step")
 
     assert run.finish(client, _Result(ok=True), path) == 0
-    assert client.exported == [path]
+    assert os.path.exists(path)
 
 
 class _FlatClient:
