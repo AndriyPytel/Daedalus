@@ -6,11 +6,11 @@ check:
   - pytest
 
 tracker: youtrack
-review_by: manager
+review_by: agent
 external_tracking: false
 permissions:
   # auto: commit after every change that leaves the tests green, without asking
-  commit: auto
+  commit: allow
   merge_local: allow
   push: deny
   pull_request: deny
