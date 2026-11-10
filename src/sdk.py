@@ -22,7 +22,7 @@ from core.freecad_apply import ApplyPipeline, active_document, build_registry
 from core.events import (APPLIED, ASSERTION, BLOCKED, COMPLETED, COST, REVIEW_VERDICT,
                          EventStream, replay)
 from core.kernel import Kernel
-from core.llm import (EFFORTS, ORCHESTRATOR, TEXT, ScriptedLLMClient, Session,
+from core.llm import (EFFORTS, call_ceiling, ORCHESTRATOR, TEXT, ScriptedLLMClient, Session,
                       client_from_roles, effort_is_honoured, selected_model_name,
                       unusable_attachments)
 from core.llm.factory import client_from_settings

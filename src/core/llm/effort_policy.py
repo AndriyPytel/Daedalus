@@ -16,6 +16,11 @@ STALL_WAIT = 600.0
 
 CALL_TIMEOUT = _CEILING[_SUBSCRIPTION_EFFORT]
 
+
+def call_ceiling(effort: str) -> float:
+    """The seconds one *effort* call may take before it is cut off."""
+    return _CEILING[effort]
+
 _THINKING_BUDGET = {"low": 1024, "medium": 2048, "high": 4096}
 
 

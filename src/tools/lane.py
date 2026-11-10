@@ -5,7 +5,7 @@ each run `tools/run.py` spawned as its own subprocess so a run that goes
 quiet is one process to kill and restart, not the whole lane. State is
 written to `state.json` after every run, keyed `label/model`, `--resume`
 reads it back and skips what is already `done`, and a run whose log has not
-grown for `--hang-seconds` (default 1800) is killed and retried rather than
+grown for `--hang-seconds` (default 1800, or the longest call of `--effort` plus 300 when that is more) is killed and retried rather than
 left to rot the lane overnight. `--status` prints `core.measure.compare`'s
 table over the logs a lane run already wrote, without starting anything,
 and any other count falls back to one `core.measure.measure` report per
@@ -886,7 +886,7 @@ def report(out):
 
 def main():
     from tests import modelmania_harness
-    from sdk import EFFORTS
+    from sdk import EFFORTS, call_ceiling
 
     part, assembly, bim = _domains()
 
@@ -905,7 +905,9 @@ def main():
     parser.add_argument("--budget-usd", type=float, default=None,
                         help="Dollar ceiling per run, required for a paid run. Checked between "
                              "calls, so a run can exceed it by one call")
-    parser.add_argument("--hang-seconds", type=float, default=HANG_SECONDS)
+    parser.add_argument("--hang-seconds", type=float, default=None,
+                        help="Seconds of silence before a run is killed as hung; defaults to "
+                             "the longest call of --effort plus 300, at least %d" % HANG_SECONDS)
     parser.add_argument("--run-seconds", type=float, default=None,
                         help="Wall-clock ceiling on one run, whatever it is doing")
     parser.add_argument("--retries", type=_attempts, default=3,
@@ -939,6 +941,13 @@ def main():
     parser.add_argument("--labels", help="A labels.txt of an earlier --sample, reused as the tasks")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
+
+    ceiling = call_ceiling(args.effort)
+    if args.hang_seconds is None:
+        args.hang_seconds = max(HANG_SECONDS, ceiling + 300)
+    elif args.hang_seconds < ceiling:
+        parser.error("--hang-seconds %g is below the %g s one --effort %s call may take"
+                     % (args.hang_seconds, ceiling, args.effort))
 
     if args.status:
         status(args.out)
