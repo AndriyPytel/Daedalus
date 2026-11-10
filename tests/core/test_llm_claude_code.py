@@ -208,6 +208,8 @@ def _spent(name):
         "stop_reason": result["stop_reason"],
         "duration_api_ms": result["duration_api_ms"],
         "num_turns": result["num_turns"],
+        "reasoning_tokens": usage["output_tokens_details"]["thinking_tokens"],
+        "terminal_reason": result["terminal_reason"],
     }
 
 
@@ -475,7 +477,7 @@ def test_a_truncated_call_still_records_what_the_result_event_reported():
     with pytest.raises(ProviderRefused):
         collect(client.stream(a_turn()))
 
-    assert client.last_cost == _spent(MINIMAL)
+    assert client.last_cost == {**_spent(MINIMAL), "stop_reason": "max_tokens"}
 
 
 def test_a_truncated_call_with_no_usage_at_all_says_so_rather_than_nothing():
