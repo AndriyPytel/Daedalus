@@ -195,6 +195,24 @@ def _changed(name, **fields):
     return lines
 
 
+def _spent(name):
+    """What `last_cost` holds for the recorded call *name*, read off its `result` event."""
+    result = _result(name)
+    usage = result["usage"]
+    return {
+        "usd": result["total_cost_usd"], "model": MODEL,
+        "prompt_tokens": usage["input_tokens"],
+        "completion_tokens": usage["output_tokens"],
+        "cached_tokens": usage["cache_read_input_tokens"],
+        "resolved_model": next(iter(result["modelUsage"])),
+        "stop_reason": result["stop_reason"],
+        "duration_api_ms": result["duration_api_ms"],
+        "num_turns": result["num_turns"],
+        "reasoning_tokens": usage["output_tokens_details"]["thinking_tokens"],
+        "terminal_reason": result["terminal_reason"],
+    }
+
+
 def _rate_limited(name, status="rejected"):
     """The recorded transcript with its `rate_limit_event` refusing the call."""
     lines = []
@@ -309,14 +327,39 @@ def test_what_the_call_spent_is_carried_off_the_result_event():
 
     collect(client.stream(a_turn()))
 
-    usage = _result(MINIMAL)["usage"]
-    assert client.last_cost == {
-        "usd": _result(MINIMAL)["total_cost_usd"], "model": MODEL,
-        "prompt_tokens": usage["input_tokens"],
-        "completion_tokens": usage["output_tokens"],
-        "cached_tokens": usage["cache_read_input_tokens"],
-        "resolved_model": next(iter(_result(MINIMAL)["modelUsage"])),
-    }
+    assert client.last_cost == _spent(MINIMAL)
+
+
+def test_thinking_tokens_are_carried_as_reasoning_tokens():
+    from core.llm.claude_stream import _tokens_of
+
+    tokens = _tokens_of({"input_tokens": 2, "output_tokens": 408,
+                         "output_tokens_details": {"thinking_tokens": 245}})
+
+    assert tokens["reasoning_tokens"] == 245
+
+
+def test_a_recorded_call_that_thought_reports_its_thinking_tokens_stop_reason_and_api_time():
+    client, _ = client_replaying(THINKING_REDACTED)
+
+    collect(client.stream(a_turn()))
+
+    result = _result(THINKING_REDACTED)
+    assert client.last_cost["reasoning_tokens"] == result["usage"]["output_tokens_details"]["thinking_tokens"]
+    assert client.last_cost["reasoning_tokens"] > 0
+    assert client.last_cost["stop_reason"] == "end_turn"
+    assert client.last_cost["duration_api_ms"] == result["duration_api_ms"]
+
+
+def test_an_error_result_reports_why_the_cli_ended_the_call():
+    client, _ = client_over(_Process(_changed(
+        MINIMAL, is_error=True, api_error_status=529, terminal_reason="model_error")))
+
+    with pytest.raises(ProviderRefused):
+        collect(client.stream(a_turn()))
+
+    assert client.last_cost["api_error_status"] == 529
+    assert client.last_cost["terminal_reason"] == "model_error"
 
 
 def test_tokens_of_carries_cache_creation_tokens_when_reported():
@@ -434,14 +477,7 @@ def test_a_truncated_call_still_records_what_the_result_event_reported():
     with pytest.raises(ProviderRefused):
         collect(client.stream(a_turn()))
 
-    usage = _result(MINIMAL)["usage"]
-    assert client.last_cost == {
-        "usd": _result(MINIMAL)["total_cost_usd"], "model": MODEL,
-        "prompt_tokens": usage["input_tokens"],
-        "completion_tokens": usage["output_tokens"],
-        "cached_tokens": usage["cache_read_input_tokens"],
-        "resolved_model": next(iter(_result(MINIMAL)["modelUsage"])),
-    }
+    assert client.last_cost == {**_spent(MINIMAL), "stop_reason": "max_tokens"}
 
 
 def test_a_truncated_call_with_no_usage_at_all_says_so_rather_than_nothing():

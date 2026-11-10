@@ -32,6 +32,8 @@ from core.llm.claude_stream import (
 
 _WATCH_SECONDS = 1.0
 
+_RESULT_FIELDS = ("stop_reason", "duration_api_ms", "num_turns", "api_error_status", "terminal_reason")
+
 
 class Run:
     """
@@ -249,6 +251,9 @@ class ClaudeCodeClient:
                     if answered:
                         self.last_cost["resolved_model"] = answered
                     self.last_cost.update(_tokens_of(event.get("usage") or {}))
+                if event.get("type") == "result" and self.last_cost is not None:
+                    self.last_cost.update(
+                        {key: event[key] for key in _RESULT_FIELDS if event.get(key) is not None})
                 refusal = _refusal_in(event, self.model)
                 if refusal is not None:
                     if self.last_cost is None and event.get("stop_reason") == "max_tokens":

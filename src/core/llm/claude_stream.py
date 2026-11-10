@@ -211,4 +211,7 @@ def _tokens_of(usage: dict) -> dict:
     written = usage.get("cache_creation_input_tokens")
     if written:
         tokens["cache_creation_tokens"] = written
+    thinking = (usage.get("output_tokens_details") or {}).get("thinking_tokens")
+    if thinking is not None:
+        tokens["reasoning_tokens"] = thinking
     return tokens
