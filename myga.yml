@@ -1,5 +1,4 @@
 stall_timeout_minutes: 10
-autonomous_budget_tokens: 10000000
 max_attempts_per_ticket: 3
 
 check:
