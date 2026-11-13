@@ -754,7 +754,7 @@ Session's id.
         Read here, not left to `build_registry`'s fallback: only at the
         Session's first Intent are "whichever is in focus" and "the Document
         this Session is about" guaranteed the same. Goes through
-        `core.freecad_apply.active_document`, never `FreeCAD.ActiveDocument`.
+        `core.document_tools.active_document`, never `FreeCAD.ActiveDocument`.
         """
         if bundle.worker.document is None:
             from sdk import active_document

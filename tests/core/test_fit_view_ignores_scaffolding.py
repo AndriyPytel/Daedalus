@@ -18,7 +18,8 @@ import types
 
 import pytest
 
-from core.freecad_apply import _SCAFFOLDING, fit_view
+from core.document_tools import _SCAFFOLDING
+from core.freecad_apply import fit_view
 
 
 class FakeBoundBox:

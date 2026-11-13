@@ -9,7 +9,8 @@ import os
 
 import pytest
 
-from core.freecad_apply import ApplyPipeline, build_registry, run_in_transaction
+from core.document_tools import build_registry
+from core.freecad_apply import ApplyPipeline, run_in_transaction
 from core.kernel import Kernel, copy_of, find_freecadcmd
 
 
