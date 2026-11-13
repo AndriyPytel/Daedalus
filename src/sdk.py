@@ -168,20 +168,13 @@ def native_document(ifc, work, path):
 
 class Client:
     """
-    *document* is a path to open, `None` for a fresh one, or an already-open
-    FreeCAD Document object (live-document mode, so the panel binds to the
-    Document it already has). *llm* and *kernel* default to a real provider
-    and a real headless kernel, a test hands in its own, and `NO_KERNEL` runs
-    in-process without a subprocess. Without an *answer* callback `send`
-    pauses in a blocked, resumable `needs-answer` state rather than guessing,
-    and *confirm* and *dispatch* set the corresponding `ApplyPipeline` callables,
-    *dispatch* also carrying the open or create of the Document itself, since
-    `FreeCAD.newDocument` on a worker thread has the GUI instantiate an MDI
-    window off the main thread and macOS aborts FreeCAD for it.
+    *document* is a path to open, `None` for a fresh one, or an already-open Document object; *llm* and *kernel* default to the chat's model and a real headless kernel, and `NO_KERNEL` runs in-process without one.
+    *confirm* is asked before an object the assistant did not create is deleted, and left out nothing is asked and the deletion is refused; *dispatch* carries every touch of the Document, its open included, because `FreeCAD.newDocument` off the main thread aborts FreeCAD on macOS.
+    *history* is the conversation to continue and *on_document* is told the Document's name at each send.
     """
 
     def __init__(self, document=None, llm=None, kernel=None,
-                 confirm=None, dispatch=None):
+                 confirm=None, dispatch=None, history=(), on_document=None):
         import FreeCAD
 
         self.dispatch = dispatch or (lambda func, timeout=None: func())
@@ -202,12 +195,14 @@ class Client:
         else:
             self.kernel = kernel
 
-        self._llm = self._live = llm
+        self._injected = self._live = llm
         self._intent = None
+        self._on_document = on_document
         self._confirm = confirm or (lambda kinds: False)
         self.events = EventStream()
         self.session = Session()
-        self.pipeline = ApplyPipeline(
+        self.session.messages.extend(history)
+        self._pipeline = ApplyPipeline(
             document=self.document,
             worker=self.kernel,
             dispatch=self.dispatch,
@@ -226,7 +221,7 @@ class Client:
 
     def _the_llm(self):
         """The client a run is made with: the one handed in, else the chat's model and Effort as they are now."""
-        self._live = self._llm or client_from_settings()
+        self._live = self._injected or client_from_settings()
         return self._live
 
     def watch(self, callback):
@@ -234,23 +229,26 @@ class Client:
         self.events.subscribe(callback)
 
     def send(self, prompt, attachments=(), cancelled=None, route_first=True, events=None,
-             domain=PART):
+             choice=AUTO):
         """
-        Run *prompt* to the end, blocking. *route_first* classifies it via the orchestrator (default), and *events* overrides this Client's stream for this run only.
-        The loop builds under *domain*.
+        Run *prompt* to the end, blocking: the GUI is locked where there is one, *route_first* classifies the prompt via the orchestrator, and a design builds under the Domain *choice* names or, left `AUTO`, the one inferred.
+        *events* overrides this Client's stream for this run only.
         """
         stream = events if events is not None else self.events
-        self.pipeline.events = stream
+        self._pipeline.events = stream
 
         self._stop = False
         llm = self._the_llm()
-        tools = build_registry(document=self.document, pipeline=self.pipeline,
+        tools = build_registry(document=self.document, pipeline=self._pipeline,
                                dispatch=self.dispatch)
 
         def is_cancelled():
             return self._stop or bool(cancelled and cancelled())
 
         def design(message, decision=None):
+            types, arch = self.dispatch(lambda: ([o.TypeId for o in self.document.Objects],
+                                                 any(arch_type(o) for o in self.document.Objects)))
+            domain = choose(choice, message, types, llm, stream, arch=arch)
             return self.agent(message, attachments=attachments, cancelled=is_cancelled,
                               base=tools.call("base_inventory")["inventory"] is not None,
                               domain=domain, events=stream, llm=llm)
@@ -262,12 +260,22 @@ class Client:
         def control(message, decision):
             self._stop = True
 
-        if route_first:
-            return route(prompt, llm=llm, events=stream,
-                         handlers={DESIGN: design, RUN_QUESTION: run_question, CONTROL: control},
-                         session=self.session)
-        else:
+        import FreeCAD
+
+        locked = bool(FreeCAD.GuiUp)
+        if locked:
+            self._pipeline.lock()
+        try:
+            if self._on_document:
+                self._on_document(str(tools.call("snapshot").get("document") or ""))
+            if route_first:
+                return route(prompt, llm=llm, events=stream,
+                             handlers={DESIGN: design, RUN_QUESTION: run_question, CONTROL: control},
+                             session=self.session)
             return design(prompt)
+        finally:
+            if locked:
+                self._pipeline.end_run()
 
     def part_builder(self, folder, cancelled, budget_usd, events, llm):
         """
@@ -319,10 +327,10 @@ class Client:
         self._intent = prompt if base and domain != PART else None
         llm = llm or self._the_llm()
         stream = events if events is not None else self.events
-        self.pipeline.events = stream
-        tools = build_registry(document=lambda: self.document, pipeline=self.pipeline,
+        self._pipeline.events = stream
+        tools = build_registry(document=lambda: self.document, pipeline=self._pipeline,
                                dispatch=self.dispatch)
-        self.pipeline.start_run()
+        self._pipeline.start_run()
         if domain == ASSEMBLY:
             with tempfile.TemporaryDirectory(prefix="fcc-parts-") as folder:
                 return run_assembly(prompt, llm=llm, kernel=self.kernel, tools=tools,
@@ -340,18 +348,16 @@ class Client:
                           events=stream, attachments=list(attachments),
                           cancelled=cancelled, base=base)
 
-    def domain_for(self, intent, choice=AUTO, events=None):
-        """The Domain *intent* builds under for the panel's *choice*, said on *events* (this Client's own where none is given); the Document's object types are read where `dispatch` runs."""
-        types, arch = self.dispatch(lambda: ([o.TypeId for o in self.document.Objects],
-                                             any(arch_type(o) for o in self.document.Objects)))
-        return choose(choice, intent, types, self._the_llm(),
-                      events if events is not None else self.events, arch=arch)
-
-    def kill_provider(self):
-        """End this Client's own live provider process at once."""
+    def stop(self):
+        """End the run in flight at once: it is cancelled between calls and the provider call under way is killed, the kernel left to checkpoint its Step."""
         from core.llm.claude import kill
 
+        self._stop = True
         kill(self._live)
+
+    def shutdown(self):
+        """Kill the kernel now, so the Step in flight comes back a crash and stays out of the Document."""
+        self._pipeline.shutdown()
 
     def save(self, path):
         """Write this Client's Document to *path* and hand the path back."""

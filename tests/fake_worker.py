@@ -3,7 +3,7 @@ A stand-in for `service.worker` that speaks the channel with no FreeCAD, steered
 
 `make` emits an event, a STEP and an FCStd blob and finishes, `attachments` reports the name and sha256 of each attachment it received, `hello` emits two events and finishes, `priced` does the same with a `cost` event of 0.25 USD between them, `hang` starts a child process, reports its pid and never ends, `cut` writes half
 an event line and exits, `bye` exits at once, `settings` reports the settings of the send and whether the token variable reached it, `gated:<path>` emits five events, waits for the file `<path>` to exist, then emits five more and finishes. End of input ends the process unless the prompt was `hang`.
-`pid` reports the worker's pid, `routed` emits a `routed` event of route `design`, `restored` reports what a fresh worker was handed to restore (the sha256 of its checkpoint and its conversation) and `flags` reports the `interactive` and `confirm` it was sent, `slow` steps until a `cancel` line arrives then reports `stopped`, `asks` puts a question when sent `interactive` and waits for the `answer` line, `nags` puts a question whatever it was sent, and `carry` reports its attachments and flags, then on `cancel` emits its blobs and stops.
+`pid` reports the worker's pid, `routed` emits a `routed` event of route `design`, `restored` reports what a fresh worker was handed to restore (the sha256 of its checkpoint and its conversation) and `flags` reports the `interactive` and `confirm` it was sent, `slow` steps until a `cancel` line arrives then reports `stopped`, and `carry` reports its attachments and flags, then on `cancel` emits its blobs and stops.
 """
 import base64
 import hashlib
@@ -53,20 +53,6 @@ def main():
             put(op="event", kind="step", at=1.0, data={"n": 1})
             await_op("cancel")
             put(op="event", kind="stopped", at=2.0, data={"reason": "cancelled"})
-            put(op="done")
-        elif prompt == "asks":
-            put(op="event", kind="question", at=1.0, data={"text": "solid or hollow?"})
-            if request.get("interactive"):
-                put(op="question", text="solid or hollow?")
-                answer = await_op("answer")["text"]
-                put(op="event", kind="answer", at=2.0, data={"text": answer, "by": "user"})
-            else:
-                put(op="event", kind="answer", at=2.0, data={"text": "", "by": "nobody"})
-            put(op="event", kind="completed", at=3.0, data={})
-            put(op="done")
-        elif prompt == "nags":
-            put(op="question", text="anything?")
-            put(op="event", kind="completed", at=3.0, data={})
             put(op="done")
         elif prompt == "carry":
             got = [{"name": item["name"], "sha256": hashlib.sha256(base64.b64decode(item["content"])).hexdigest()}

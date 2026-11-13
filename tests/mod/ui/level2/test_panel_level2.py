@@ -1956,7 +1956,7 @@ def test_a_restored_session_owns_nothing(panel, tmp_path):
     """
     live = panel.chat_sessions.current_id()
     panel.worker._get_sdk_client()
-    panel.worker.pipeline.owned = {"BoxFromTheLiveSession"}
+    panel.worker.sdk_client._pipeline.owned = {"BoxFromTheLiveSession"}
 
     log = str(tmp_path / "old.jsonl")
     _a_transcript(log)
@@ -1965,22 +1965,22 @@ def test_a_restored_session_owns_nothing(panel, tmp_path):
 
     panel.switch_session(session_id)
     panel.worker._get_sdk_client()
-    assert panel.worker.pipeline.owned == set(), \
+    assert panel.worker.sdk_client._pipeline.owned == set(), \
         "the next Step would apply against another Session's Owned Objects"
 
     panel.switch_session(live)
-    assert panel.worker.pipeline.owned == {"BoxFromTheLiveSession"}, \
+    assert panel.worker.sdk_client._pipeline.owned == {"BoxFromTheLiveSession"}, \
         "switching away and back cost the live Session its own Owned Objects"
 
 
 def test_a_new_session_owns_nothing(panel):
     panel.worker._get_sdk_client()
-    panel.worker.pipeline.owned = {"BoxFromAnotherSession"}
+    panel.worker.sdk_client._pipeline.owned = {"BoxFromAnotherSession"}
 
     panel.new_chat()
 
     panel.worker._get_sdk_client()
-    assert panel.worker.pipeline.owned == set()
+    assert panel.worker.sdk_client._pipeline.owned == set()
 
 
 def test_returning_to_a_session_does_not_keep_another_ones_widgets(panel, tmp_path):
@@ -2256,10 +2256,11 @@ def test_stop_and_abort_kill_the_run_provider_process_without_waiting_the_ceilin
     from core.llm.claude import ClaudeCodeClient, kill
 
     class _StubSdkClient:
-        pipeline = None
-
-        def kill_provider(self):
+        def stop(self):
             kill(self._live)
+
+        def shutdown(self):
+            pass
 
     a_turn = [{"role": "system", "content": "You are the Design phase."},
               {"role": "user", "content": "Make a 10mm plate"}]
@@ -2760,8 +2761,8 @@ def test_the_panel_marshals_the_document_onto_the_gui_thread(panel):
     """
     The first Intent of a Session segfaults FreeCAD without this.
 
-    `LoopWorker.do_work` runs on a QThread and the first thing it does is
-    `pipeline.lock()`, which disables the main window. `sdk.Client` defaults
+    `LoopWorker.do_work` runs on a QThread and the first thing `Client.send` does is
+    lock the GUI, which disables the main window. `sdk.Client` defaults
     `dispatch` to running the callable where it stands -- right for a headless script, a Document
     mutation and a `QWidget.setEnabled` off the GUI thread here.
     """
@@ -2770,7 +2771,7 @@ def test_the_panel_marshals_the_document_onto_the_gui_thread(panel):
     client = panel.worker._get_sdk_client()
 
     assert client.dispatch is on_main_thread
-    assert client.pipeline._dispatch is on_main_thread
+    assert client._pipeline._dispatch is on_main_thread
 
 
 def test_daedalus_panel_has_no_dead_request_work_signal():
@@ -2826,53 +2827,6 @@ def test_the_intent_shows_at_once_while_the_message_is_routed(panel, monkeypatch
     assert "unrecognized" not in shown
 
 
-def test_a_step_that_faults_ends_its_own_run_and_the_gui_survives(panel, monkeypatch):
-    """
-    A Step that faults must end its own run, not take the process
-    down with it. `send()` raising is `do_work`'s worst case -- it still has
-    to emit `finished` with no result and still has to call `pipeline.end_run`,
-    so the Document is unlocked and the panel is left usable for the next
-    Intent rather than stuck mid-run.
-    """
-    import types
-
-    from ui.daedalus_panel import LoopWorker, EventBridge, AskTheUser
-
-    worker = LoopWorker(EventBridge(), AskTheUser())
-
-    ended = []
-
-    class _FakePipeline:
-        def lock(self):
-            return None
-
-        def end_run(self):
-            ended.append(True)
-
-    class _FakeClient:
-        def __init__(self):
-            self.pipeline = _FakePipeline()
-            self.dispatch = lambda func, timeout=None: func()
-
-        def domain_for(self, intent, choice, events):
-            return "part"
-
-        def send(self, *args, **kwargs):
-            raise RuntimeError("a Step faulted inside the kernel")
-
-    fake_registry = types.SimpleNamespace(call=lambda *a, **k: {"document": ""})
-    monkeypatch.setattr(worker, "_get_sdk_client", lambda: _FakeClient())
-    monkeypatch.setattr("sdk.build_registry", lambda **kwargs: fake_registry)
-
-    finished = []
-    worker.finished.connect(lambda result, transcript: finished.append(result))
-
-    worker.do_work("break something", [], "")
-
-    assert finished == [None], "a faulting Step still ends the run rather than raising out"
-    assert ended == [True], "end_run must still run so the Document is left unlocked"
-
-
 def test_stop_with_no_sdk_client_yet_is_a_no_op(monkeypatch):
     """A Stop before any Intent has built an `sdk_client` has nothing to kill."""
     from ui.daedalus_panel import LoopWorker, EventBridge, AskTheUser
@@ -2882,98 +2836,6 @@ def test_stop_with_no_sdk_client_yet_is_a_no_op(monkeypatch):
 
     worker.stop()
     worker.abort()
-
-
-def test_an_unopenable_transcript_is_logged_not_swallowed(monkeypatch, tmp_path):
-    """
-    A missing transcript log must not cost the user their run, but it must
-    say why it is missing. The bare `except: pass` here left five
-    Sessions with no transcript at all and no line anywhere naming the cause.
-    """
-    import types
-
-    from bridge import logger as logger_module
-    from ui.daedalus_panel import LoopWorker, EventBridge, AskTheUser
-
-    worker = LoopWorker(EventBridge(), AskTheUser())
-
-    class _FakePipeline:
-        def lock(self):
-            return None
-
-        def end_run(self):
-            return None
-
-    class _FakeClient:
-        def __init__(self):
-            self.pipeline = _FakePipeline()
-            self.dispatch = lambda func, timeout=None: func()
-
-        def domain_for(self, intent, choice, events):
-            return "part"
-
-        def send(self, *args, **kwargs):
-            return types.SimpleNamespace(ok=True)
-
-    fake_registry = types.SimpleNamespace(call=lambda *a, **k: {"document": ""})
-    monkeypatch.setattr(worker, "_get_sdk_client", lambda: _FakeClient())
-    monkeypatch.setattr("sdk.build_registry", lambda **kwargs: fake_registry)
-
-    errors = []
-    monkeypatch.setattr(logger_module.logger, "error", lambda msg: errors.append(msg))
-
-    unopenable = str(tmp_path / "does-not-exist" / "session.jsonl")
-    finished = []
-    worker.finished.connect(lambda result, transcript: finished.append(transcript))
-
-    worker.do_work("do something", [], unopenable)
-
-    assert finished == [unopenable], "an unopenable transcript must not stop the run"
-    assert any(unopenable in msg for msg in errors), "the failure must name the path"
-
-
-def test_an_intent_from_the_panel_is_routed_before_design(monkeypatch):
-    """
-    Every Intent the panel sends reaches the orchestrator first, the same as
-    an SDK caller's. `route_first=False` here made the classifier dead code
-    in the GUI: a run question or a Stop typed into the composer was built
-    as a design request.
-    """
-    import types
-
-    from ui.daedalus_panel import LoopWorker, EventBridge, AskTheUser
-
-    worker = LoopWorker(EventBridge(), AskTheUser())
-    sent = []
-
-    class _FakePipeline:
-        def lock(self):
-            return None
-
-        def end_run(self):
-            return None
-
-    class _FakeClient:
-        def __init__(self):
-            self.pipeline = _FakePipeline()
-            self.dispatch = lambda func, timeout=None: func()
-
-        def domain_for(self, intent, choice, events):
-            return "part"
-
-        def send(self, *args, **kwargs):
-            sent.append(kwargs)
-            return types.SimpleNamespace(ok=True)
-
-    fake_registry = types.SimpleNamespace(call=lambda *a, **k: {"document": ""})
-    monkeypatch.setattr(worker, "_get_sdk_client", lambda: _FakeClient())
-    monkeypatch.setattr("sdk.build_registry", lambda **kwargs: fake_registry)
-
-    worker.do_work("is it done yet?", [], "")
-
-    assert sent, "the panel must reach the SDK at all"
-    assert sent[0].get("route_first", True) is not False, (
-        "the panel must let the orchestrator classify the Intent, not force Design")
 
 
 @pytest.fixture
@@ -3031,45 +2893,6 @@ def test_the_chat_says_the_domain_before_the_loop_starts(panel):
     assert "Domain: Part" in said
 
 
-def test_the_run_is_sent_under_the_domain_the_choice_resolved_to(monkeypatch):
-    import types
-
-    from ui.daedalus_panel import LoopWorker, EventBridge, AskTheUser
-
-    worker = LoopWorker(EventBridge(), AskTheUser())
-    sent, asked = [], []
-
-    class _FakePipeline:
-        def lock(self):
-            return None
-
-        def end_run(self):
-            return None
-
-    class _FakeClient:
-        def __init__(self):
-            self.pipeline = _FakePipeline()
-            self.dispatch = lambda func, timeout=None: func()
-
-        def domain_for(self, intent, choice, events):
-            asked.append((intent, choice))
-            return "assembly"
-
-        def send(self, *args, **kwargs):
-            sent.append(kwargs)
-            return types.SimpleNamespace(ok=True)
-
-    monkeypatch.setattr(worker, "_get_sdk_client", lambda: _FakeClient())
-    monkeypatch.setattr("sdk.build_registry",
-                        lambda **kwargs: types.SimpleNamespace(call=lambda *a, **k: {"document": ""}))
-    monkeypatch.setattr("sdk.get_domain", lambda: "auto")
-
-    worker.do_work("join the plates", [], "")
-
-    assert asked == [("join the plates", "auto")]
-    assert sent[0]["domain"] == "assembly"
-
-
 def test_what_the_domain_call_cost_stays_in_the_runs_total(panel):
     from core.events import COST, INTENT, Event
 
@@ -3081,41 +2904,103 @@ def test_what_the_domain_call_cost_stays_in_the_runs_total(panel):
     assert panel.usage_label.text().startswith("$0.05")
 
 
-def test_a_failed_domain_call_ends_the_run_with_an_error_in_the_chat(monkeypatch):
-    import types
+class _FakeClient:
+    """The one method `LoopWorker.do_work` calls on a `Client`, recording what it was sent and raising *error* when it has one."""
 
+    def __init__(self, error=None):
+        self.sent = []
+        self.error = error
+
+    def send(self, intent, **kwargs):
+        import types
+
+        self.sent.append((intent, kwargs))
+        if self.error:
+            raise self.error
+        return types.SimpleNamespace(ok=True)
+
+
+def _a_worker_over(monkeypatch, client):
     from ui.daedalus_panel import LoopWorker, EventBridge, AskTheUser
 
     worker = LoopWorker(EventBridge(), AskTheUser())
-    seen, finished, ended = [], [], []
+    monkeypatch.setattr(worker, "_get_sdk_client", lambda: client)
+    return worker
 
-    class _FakePipeline:
-        def lock(self):
-            return None
 
-        def end_run(self):
-            ended.append(True)
+def test_a_step_that_faults_ends_its_own_run_and_the_gui_survives(monkeypatch):
+    """
+    A Step that faults must end its own run, not take the process down with it: `send()` raising is `do_work`'s worst case, and it still emits `finished` with no result and an error in the chat.
+    """
+    worker = _a_worker_over(monkeypatch, _FakeClient(RuntimeError("a Step faulted inside the kernel")))
+    seen, finished = [], []
+    monkeypatch.setattr(worker.bridge, "subscriber", lambda: seen.append)
+    worker.finished.connect(lambda result, transcript: finished.append(result))
 
-    class _FakeClient:
-        def __init__(self):
-            self.pipeline = _FakePipeline()
-            self.dispatch = lambda func, timeout=None: func()
+    worker.do_work("break something", [], "")
 
-        def domain_for(self, intent, choice, events):
-            raise RuntimeError("quota exceeded")
+    assert finished == [None], "a faulting Step still ends the run rather than raising out"
+    assert any(e.kind == "error" and "a Step faulted inside the kernel" in e.data["message"] for e in seen)
 
-        def send(self, *args, **kwargs):
-            raise AssertionError("the run must not start")
 
-    monkeypatch.setattr(worker, "_get_sdk_client", lambda: _FakeClient())
-    monkeypatch.setattr("sdk.build_registry",
-                        lambda **kwargs: types.SimpleNamespace(call=lambda *a, **k: {"document": ""}))
-    monkeypatch.setattr("sdk.get_domain", lambda: "auto")
+def test_a_model_that_cannot_be_resolved_is_a_sentence_in_the_chat_not_a_crash_report(monkeypatch):
+    worker = _a_worker_over(monkeypatch, _FakeClient(ValueError("No model selected. Configure API keys in Preferences.")))
+    seen, finished = [], []
     monkeypatch.setattr(worker.bridge, "subscriber", lambda: seen.append)
     worker.finished.connect(lambda result, transcript: finished.append(result))
 
     worker.do_work("join the plates", [], "")
 
     assert finished == [None]
-    assert ended == [True]
-    assert any(e.kind == "error" and "quota exceeded" in e.data["message"] for e in seen)
+    assert [e.data["message"] for e in seen if e.kind == "error"] == [
+        "No model selected. Configure API keys in Preferences."]
+
+
+def test_an_unopenable_transcript_is_logged_not_swallowed(monkeypatch, tmp_path):
+    """
+    A missing transcript log must not cost the user their run, but it must
+    say why it is missing. The bare `except: pass` here left five
+    Sessions with no transcript at all and no line anywhere naming the cause.
+    """
+    from bridge import logger as logger_module
+
+    worker = _a_worker_over(monkeypatch, _FakeClient())
+    errors = []
+    monkeypatch.setattr(logger_module.logger, "error", lambda msg: errors.append(msg))
+
+    unopenable = str(tmp_path / "does-not-exist" / "session.jsonl")
+    finished = []
+    worker.finished.connect(lambda result, transcript: finished.append(transcript))
+
+    worker.do_work("do something", [], unopenable)
+
+    assert finished == [unopenable], "an unopenable transcript must not stop the run"
+    assert any(unopenable in msg for msg in errors), "the failure must name the path"
+
+
+def test_an_intent_from_the_panel_is_routed_and_sent_under_the_domain_the_pill_names(monkeypatch):
+    """
+    Every Intent the panel sends reaches the orchestrator first, the same as an SDK caller's, and goes with the Domain choice the pill holds for the Client to resolve.
+    """
+    client = _FakeClient()
+    worker = _a_worker_over(monkeypatch, client)
+    monkeypatch.setattr("sdk.get_domain", lambda: "assembly")
+
+    worker.do_work("is it done yet?", [], "")
+
+    intent, kwargs = client.sent[0]
+    assert intent == "is it done yet?"
+    assert kwargs.get("route_first", True) is not False
+    assert kwargs["choice"] == "assembly"
+
+
+def test_the_document_the_client_names_reaches_the_panel_with_the_transcript(monkeypatch, tmp_path):
+    worker = _a_worker_over(monkeypatch, _FakeClient())
+    named = []
+    worker.document_named.connect(lambda transcript, name, uid: named.append((transcript, name)))
+
+    transcript = str(tmp_path / "t.jsonl")
+    worker.do_work("make a plate", [], transcript)
+    worker._name_the_document("Plate")
+
+    assert named == [(transcript, "Plate")]
