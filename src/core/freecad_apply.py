@@ -199,6 +199,7 @@ class ApplyPipeline:
         self._main_window = main_window
         self.locked = False
         self._names = {}
+        self._rules = None
 
     @property
     def worker(self) -> Kernel:
@@ -224,22 +225,23 @@ class ApplyPipeline:
         if self._worker is not None:
             self._worker.kill()
 
-    def start_run(self) -> KernelResult:
+    def start_run(self, rules=None) -> KernelResult:
         """
-        Seed the kernel from the live Document, the one seed of a run, and forget the names the last run allocated.
+        Seed the kernel from the live Document under the Domain's *rules*, the one seed of a run, and forget the names the last run allocated.
 
         The seed leaves a checkpoint, so a failed first Step reloads it and a restarted kernel resumes on it.
         """
         self._names = {}
+        self._rules = rules
         return self._seed()
 
     def _seed(self) -> KernelResult:
         doc = self._dispatch(self._active)
         if doc is None:
-            return self.worker.seed()
+            return self.worker.seed(rules=self._rules)
         copy = self._dispatch(lambda: copy_of(doc))
         try:
-            return self.worker.seed(copy)
+            return self.worker.seed(copy, self._rules)
         finally:
             discard(copy)
 

@@ -85,7 +85,7 @@ def test_a_single_concavity_selection_comes_back_as_one_group(worker):
 
 def test_a_step_builds_one_fillet_per_group_and_none_is_left_mixed(worker):
     code = A_PLATE_WITH_TWO_BOSSES + (
-        "from core.kernel import step_rules\n"
+        "from core.agent import part_rules\n"
         "top = body.Tip\n"
         "groups = edges_by_concavity(top.Shape, ['Edge10', 'Edge9'])\n"
         "for at, names in enumerate(groups):\n"
@@ -94,7 +94,7 @@ def test_a_step_builds_one_fillet_per_group_and_none_is_left_mixed(worker):
         "    fillet.Base = (top, names)\n"
         "    fillet.Radius = 1.0\n"
         "    doc.recompute()\n"
-        "facts = step_rules._fillets_with_mixed_concavity(doc)\n"
+        "facts = part_rules._fillets_with_mixed_concavity(doc)\n"
     ) + PRINT_FACTS
     assert worker.seed().ok
 

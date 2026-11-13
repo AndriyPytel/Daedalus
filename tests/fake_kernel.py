@@ -18,7 +18,7 @@ class FakeKernel:
         self.probed.append(code)
         return self.probing
 
-    def seed(self, path=None):
+    def seed(self, path=None, rules=None):
         self.seeded.append(path)
         return KernelResult(ok=True)
 

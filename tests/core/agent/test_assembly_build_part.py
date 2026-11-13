@@ -12,7 +12,7 @@ def _run(turns, build_part):
     llm = ScriptedLLMClient([json.dumps(turn) for turn in turns + [turns[0]]])
     asked = iter([False, False, True])
     result = run_assembly("Build two plates.", llm=llm, kernel=None, tools=None, events=EventStream(),
-                          attachments=["/d/assembly.png"], cancelled=lambda: next(asked, True),
+                          start=lambda rules: None, attachments=["/d/assembly.png"], cancelled=lambda: next(asked, True),
                           build_part=build_part)
     return llm, result
 

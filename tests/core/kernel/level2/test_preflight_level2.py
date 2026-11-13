@@ -16,6 +16,7 @@ the worker said follows it.
 """
 import time
 
+from core.agent import part_rules
 import pytest
 
 from core.kernel import Kernel, copy_of, find_freecadcmd
@@ -131,7 +132,7 @@ def test_the_workers_render_is_byte_identical_to_preflight_render_directly(warm,
 
 
 def test_the_document_copy_is_opened_and_seen(warm, saved_document):
-    assert warm.seed(saved_document).ok
+    assert warm.seed(saved_document, rules=part_rules).ok
     result = warm.rehearse("assert doc.getObject('ExistingBox').Length.Value == 12")
 
     assert result.ok, result.traceback
@@ -140,12 +141,12 @@ def test_the_document_copy_is_opened_and_seen(warm, saved_document):
 
 def test_the_document_is_reloaded_for_every_preflight(warm, saved_document):
     """No state may survive from one Preflight to the next."""
-    assert warm.seed(saved_document).ok
+    assert warm.seed(saved_document, rules=part_rules).ok
     first = warm.rehearse("doc.addObject('Part::Box', 'Leaked')")
     assert first.ok, first.traceback
     assert sorted(o["name"] for o in first.objects) == ["ExistingBox", "Leaked"]
 
-    second = warm.seed(saved_document)
+    second = warm.seed(saved_document, rules=part_rules)
 
     assert second.ok, second.traceback
     assert [o["name"] for o in second.objects] == ["ExistingBox"]
@@ -387,7 +388,7 @@ def test_worker_death_is_never_raised_at_the_caller(fresh):
         assert not result.ok
 
     assert not fresh.rehearse("pass").ok
-    assert fresh.seed().ok
+    assert fresh.seed(rules=part_rules).ok
 
 
 def test_a_body_left_in_pieces_is_still_refused(warm):
@@ -407,7 +408,7 @@ def test_a_body_left_in_pieces_is_still_refused(warm):
         "pad.Profile = sketch\n"
         "pad.Length = 10\n")
 
-    assert warm.seed().ok
+    assert warm.seed(rules=part_rules).ok
     result = warm.rehearse(two_lumps)
 
     assert not result.ok

@@ -14,6 +14,7 @@ traceback.
 """
 import contextlib
 import difflib
+import importlib
 import io
 import json
 import os
@@ -327,7 +328,7 @@ def _recompute_scope(doc, touched):
 
 SCRATCH = "KERNEL_SCRATCH"
 
-_SESSION = {"doc": None, "checkpoint": None, "names": {}, "scratch": None}
+_SESSION = {"doc": None, "checkpoint": None, "names": {}, "scratch": None, "rules": None}
 
 
 def _scratch():
@@ -400,14 +401,15 @@ def _run_step_body(doc, namespace, touched, request):
     `RuntimeError` from a check below -- for `run_step` to catch and
     translate into a checkpoint reload. Returns the success payload.
     """
-    from core.kernel.step_namespace import register_step_source, signature_of
-    from core.kernel.step_rules import _raise_if_broken, _raise_if_mixed_concavity, _volume_moved
+    from core.kernel.step_namespace import register_step_source, signature_of, volume_moved
 
+    rules = _SESSION["rules"]
     register_step_source(request["code"])
     exec(compile(request["code"], "<step>", "exec"), namespace)  # noqa: S102
     touched.diff(doc)
 
-    _raise_if_mixed_concavity(doc)
+    if rules:
+        rules.precheck(doc)
 
     if touched.touched():
         scope = _recompute_scope(doc, touched)
@@ -416,8 +418,8 @@ def _run_step_body(doc, namespace, touched, request):
         else:
             doc.recompute(scope)
 
-    if touched.touched() or "document" in request:
-        _raise_if_broken(doc, touched)
+    if rules and (touched.touched() or "document" in request):
+        rules.check(doc, touched)
 
     changed = touched.touched() or "document" in request
     result = {
@@ -427,7 +429,7 @@ def _run_step_body(doc, namespace, touched, request):
         "deleted": sorted(touched.deleted),
         "modified": sorted(touched.modified()),
         "geometry": _geometry_snapshot(doc) if changed else {},
-        "volume": _volume_moved(doc, touched.created),
+        "volume": volume_moved(doc, touched.created),
         "signature": signature_of(doc) if changed else {},
     }
     render_path = request.get("render_path")
@@ -442,20 +444,20 @@ def run_step(request):
     """
     Run one Step against the kernel's live Document. A `document` in
     *request* is a fresh handoff: the session starts over from that path,
-    with an empty name map. Pass writes the checkpoint;
+    with an empty name map and the `rules` module it names, or none. Pass writes the checkpoint;
     fail reopens the last checkpoint only when `_Touched.touched()` says
     the Step actually changed the Document, since a read-only probe that
     raises leaves it exactly as it was; `exploring=True` marks a call no
     Step declared, so a pass that touched the Document is reopened the
     same as a failed one, and the response names what was rolled back.
     """
-    from core.kernel.step_namespace import _NamedDoc, step_namespace, trimmed_traceback
-    from core.kernel.step_rules import _idle_feature_report, _past_the_tip, _volume_moved
+    from core.kernel.step_namespace import _NamedDoc, step_namespace, trimmed_traceback, volume_moved
 
     exploring = request.get("exploring", False)
     if "document" in request or _SESSION["doc"] is None:
         _SESSION["doc"] = _open_document(request.get("document"))
         _SESSION["names"] = {}
+        _SESSION["rules"] = importlib.import_module(request["rules"]) if request.get("rules") else None
         _save_checkpoint(_SESSION["doc"])
 
     doc = _SESSION["doc"]
@@ -471,22 +473,21 @@ def run_step(request):
     except AssertionError as exc:
         touched.diff(doc)
         response = {"ok": False,
-                    "traceback": trimmed_traceback(exc) + _idle_feature_report(doc, touched.created),
-                    "volume": _volume_moved(doc, touched.created)}
+                    "traceback": trimmed_traceback(exc),
+                    "volume": volume_moved(doc, touched.created)}
     except BaseException as exc:
         touched.diff(doc)
         response = {"ok": False,
-                    "traceback": (trimmed_traceback(exc) + introspect(exc, doc)
-                                  + _idle_feature_report(doc, touched.created)),
-                    "volume": _volume_moved(doc, touched.created)}
+                    "traceback": trimmed_traceback(exc) + introspect(exc, doc),
+                    "volume": volume_moved(doc, touched.created)}
     printed = _printed(said)
     if printed:
         response["stdout"] = printed
 
-    past = _past_the_tip(doc, touched.created)
-    if past:
+    hints = _SESSION["rules"].hints(doc, touched.created) if _SESSION["rules"] else ""
+    if hints:
         response["ok"] = False
-        response["traceback"] = (response.get("traceback") or "") + past
+        response["traceback"] = (response.get("traceback") or "") + hints
     if response.get("ok"):
         if exploring and touched.touched():
             _reload_checkpoint()

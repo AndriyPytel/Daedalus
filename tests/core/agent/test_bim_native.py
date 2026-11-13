@@ -69,7 +69,7 @@ def test_an_input_with_no_fills_and_no_storey_is_still_held_to_both(monkeypatch)
     seen = {}
     monkeypatch.setattr(bim, "run_solo", lambda intent, domain, **_: seen.update(domain=domain))
 
-    bim.run_bim("Remove Window_WIN1.", llm=None, kernel=kernel, tools=None, events=None, edit=True, native=True)
+    bim.run_bim("Remove Window_WIN1.", llm=None, kernel=kernel, tools=None, events=None, start=lambda rules: None, edit=True, native=True)
     why = seen["domain"].done_check(kernel)
 
     assert "Window_WIN2" in why and "Wall_W3" in why

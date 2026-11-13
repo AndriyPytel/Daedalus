@@ -335,6 +335,24 @@ def volume_of(obj):
     return shape.Volume
 
 
+def volume_moved(doc, created):
+    """
+    How much material each PartDesign feature this Step created actually moved.
+    Every Domain's Step result carries it, and the Part rules' volume-neutral check reads the same numbers.
+    """
+    moved = {}
+    for name in sorted(created):
+        obj = doc.getObject(name)
+        if obj is None or not obj.isDerivedFrom("PartDesign::Feature"):
+            continue
+        base = getattr(obj, "BaseFeature", None)
+        before = volume_of(base) if base is not None else 0.0
+        now = volume_of(obj)
+        moved[name] = {"before": round(before, 6), "after": round(now, 6),
+                       "moved": round(now - before, 6)}
+    return moved
+
+
 def signature_of(doc):
     """
     A landed Step reduced to what a replay must reproduce exactly.

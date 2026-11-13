@@ -8,6 +8,7 @@ thing left to change was how the selection was written
 """
 import pytest
 
+from core.agent import part_rules
 from core.kernel import Kernel, find_freecadcmd
 
 pytestmark = pytest.mark.freecad
@@ -68,14 +69,14 @@ def rounding_the_top_face_at(radius):
 
 
 def test_a_fillet_that_will_not_fit_fails_preflight(worker):
-    assert worker.seed().ok
+    assert worker.seed(rules=part_rules).ok
     result = worker.rehearse(rounding_the_top_face_at(2.0))
 
     assert not result.ok, "a fillet OCC refused was passed to the Document"
 
 
 def test_the_failure_says_what_freecad_would_not(worker):
-    assert worker.seed().ok
+    assert worker.seed(rules=part_rules).ok
     said = worker.rehearse(rounding_the_top_face_at(2.0)).traceback
 
     assert "Fillet (PartDesign::Fillet): " in said, said
@@ -85,7 +86,7 @@ def test_the_failure_says_what_freecad_would_not(worker):
 
 
 def test_the_same_fillet_small_enough_passes(worker):
-    assert worker.seed().ok
+    assert worker.seed(rules=part_rules).ok
     result = worker.rehearse(rounding_the_top_face_at(0.4))
 
     assert result.ok, result.traceback
@@ -141,7 +142,7 @@ def test_a_full_round_at_half_the_thickness_is_refused(worker):
     face between them has no width left at the moment they touch, so a full
     round has to be built as the shape it is and cannot be filleted to.
     """
-    assert worker.seed().ok
+    assert worker.seed(rules=part_rules).ok
     result = worker.rehearse(rounding_the_rib_top_at(2.0))
 
     assert not result.ok, "a full round OCC refused was passed to the Document"
@@ -152,7 +153,7 @@ def test_the_same_round_a_shade_under_half_the_thickness_builds(worker):
     What separates the two is the degeneracy alone. The round that stops
     0.001 mm short of meeting leaves a face between, and builds.
     """
-    assert worker.seed().ok
+    assert worker.seed(rules=part_rules).ok
     result = worker.rehearse(rounding_the_rib_top_at(1.999))
 
     assert result.ok, result.traceback

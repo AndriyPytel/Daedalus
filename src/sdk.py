@@ -331,11 +331,11 @@ class Client:
         self._pipeline.events = stream
         tools = build_registry(document=lambda: self.document, pipeline=self._pipeline,
                                dispatch=self.dispatch)
-        self._pipeline.start_run()
+        start = self._pipeline.start_run
         if domain == ASSEMBLY:
             with tempfile.TemporaryDirectory(prefix="fcc-parts-") as folder:
                 return run_assembly(prompt, llm=llm, kernel=self.kernel, tools=tools,
-                                    events=stream, attachments=list(attachments),
+                                    events=stream, start=start, attachments=list(attachments),
                                     cancelled=cancelled,
                                     build_part=self.part_builder(folder, cancelled, budget_usd, stream, llm),
                                     edit=base)
@@ -343,10 +343,10 @@ class Client:
             native = bool(base and self.dispatch(lambda: nativeifc.projects(self.document)))
             if native:
                 nativeifc.without_geometry()
-            return run_bim(prompt, llm=llm, kernel=self.kernel, tools=tools, events=stream,
+            return run_bim(prompt, llm=llm, kernel=self.kernel, tools=tools, events=stream, start=start,
                            attachments=list(attachments), cancelled=cancelled, edit=base, native=native)
         return run_reader(prompt, llm=llm, kernel=self.kernel, tools=tools,
-                          events=stream, attachments=list(attachments),
+                          events=stream, start=start, attachments=list(attachments),
                           cancelled=cancelled, base=base)
 
     def stop(self):

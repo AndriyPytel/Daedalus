@@ -15,6 +15,7 @@ that fuse into one solid; SINGLE pads one.
 """
 import pytest
 
+from core.agent import part_rules
 from core.kernel import Kernel, find_freecadcmd
 
 pytestmark = pytest.mark.freecad
@@ -56,14 +57,14 @@ SINGLE = _pad_of((0, 5))
 
 
 def test_a_pad_of_two_disjoint_profiles_fails_preflight(worker):
-    assert worker.seed().ok
+    assert worker.seed(rules=part_rules).ok
     result = worker.rehearse(DISJOINT)
 
     assert not result.ok, "a Body left in two pieces was passed to the Document"
 
 
 def test_the_failure_says_what_happened_rather_than_that_it_failed(worker):
-    assert worker.seed().ok
+    assert worker.seed(rules=part_rules).ok
     result = worker.rehearse(DISJOINT)
 
     said = result.traceback
@@ -74,14 +75,14 @@ def test_the_failure_says_what_happened_rather_than_that_it_failed(worker):
 
 def test_profiles_that_meet_are_one_solid_and_still_pass(worker):
     """The overlapping case is legitimate — they fuse — and must not be refused."""
-    assert worker.seed().ok
+    assert worker.seed(rules=part_rules).ok
     result = worker.rehearse(OVERLAPPING)
 
     assert result.ok, result.traceback
 
 
 def test_one_profile_still_passes(worker):
-    assert worker.seed().ok
+    assert worker.seed(rules=part_rules).ok
     result = worker.rehearse(SINGLE)
 
     assert result.ok, result.traceback
@@ -92,7 +93,7 @@ def test_several_unrelated_objects_are_not_a_body_in_pieces(worker):
     The count only means something inside a Body. A Document holding two
     Part primitives is two solids on purpose.
     """
-    assert worker.seed().ok
+    assert worker.seed(rules=part_rules).ok
     result = worker.rehearse(
         "a = doc.addObject('Part::Box', 'A')\n"
         "b = doc.addObject('Part::Box', 'B')\n"

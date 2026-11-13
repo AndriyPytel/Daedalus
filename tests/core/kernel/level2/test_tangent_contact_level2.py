@@ -5,6 +5,7 @@ A pocket whose cylinder is exactly tangent to the plate's side face recomputes c
 OCC's `isValid()`, yet the official mesh gate rejects the STEP. The Step is refused with the two
 faces named, so the next Step can move the pocket.
 """
+from core.agent import part_rules
 import pytest
 
 from core.kernel import Kernel, find_freecadcmd
@@ -40,7 +41,7 @@ body.Tip = feat
 
 
 def test_a_step_that_makes_a_tangent_contact_names_the_two_faces(worker):
-    assert worker.seed().ok
+    assert worker.seed(rules=part_rules).ok
     result = worker.rehearse(BODY_WITH_A_POCKET % {"r": 8, "y": 52})
 
     assert not result.ok
@@ -50,7 +51,7 @@ def test_a_step_that_makes_a_tangent_contact_names_the_two_faces(worker):
 
 
 def test_the_same_pocket_moved_off_the_wall_passes(worker):
-    assert worker.seed().ok
+    assert worker.seed(rules=part_rules).ok
     result = worker.rehearse(BODY_WITH_A_POCKET % {"r": 8, "y": 40})
 
     assert result.ok, result.traceback

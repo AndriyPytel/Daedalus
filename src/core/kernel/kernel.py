@@ -145,6 +145,7 @@ class Kernel:
         self._stderr = None
         self._draining = None
         self._checkpoint = None
+        self._rules = None
         self._scratch = None
         self._needs_resume = False
 
@@ -246,12 +247,13 @@ class Kernel:
         """Run *code* and roll the Document back to the last checkpoint, the result naming what the code touched and undid."""
         return self._step({"code": code, "exploring": True}, timeout)
 
-    def seed(self, path=None):
+    def seed(self, path=None, rules=None):
         """
-        Load the Document at *path* as the run's state, a new empty Document where *path* is `None`.
-        The seed is checkpointed, so a failed first Step reloads it and a restarted kernel resumes on it.
+        Load the Document at *path* as the run's state, a new empty Document where *path* is `None`, and hold every Step to the module *rules*, or to none.
+        The seed is checkpointed, so a failed first Step reloads it and a restarted kernel resumes on it, under the same rules.
         """
-        return self._step({"code": "pass", "document": path}, None)
+        self._rules = rules.__name__ if rules else None
+        return self._step({"code": "pass", "document": path, "rules": self._rules}, None)
 
     def render(self, path, view=None):
         """Draw the Document from *view*, isometric where unset, into the picture *path*; the result's `render` is where it landed."""
@@ -287,6 +289,7 @@ class Kernel:
                     "checkpoint to resume from. Seed the kernel with a Document "
                     "to start a session."))
             request["document"] = self._checkpoint
+            request["rules"] = self._rules
         response, why = self._ask(request, timeout or self.timeout, "the Step")
         if response is None:
             return KernelResult(ok=False, traceback=why)

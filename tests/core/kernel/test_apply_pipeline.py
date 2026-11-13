@@ -9,6 +9,7 @@ rehearsal and the seed with whatever result the test sets.
 """
 import pytest
 
+from core.agent import part_rules
 from core.freecad_apply import CHAT_DOCK, ApplyPipeline, Closing, SignatureMismatch
 from core.kernel import KernelResult
 
@@ -39,13 +40,15 @@ class FakeWorker:
                                                 created=["Box"])
         self.rehearsed = []
         self.seeded = []
+        self.rules = []
 
     def rehearse(self, code, timeout=None):
         self.rehearsed.append(code)
         return self.result
 
-    def seed(self, path=None):
+    def seed(self, path=None, rules=None):
         self.seeded.append(path)
+        self.rules.append(rules)
         return self.result
 
 
@@ -239,6 +242,20 @@ def test_a_refusal_resyncs_the_kernel(trace):
     assert not result.ok
     assert worker.rehearsed == ["doc.recompute()"]
     assert worker.seeded[-1] is not None
+
+
+def test_a_resync_keeps_the_rules_the_run_started_under(trace):
+    def transaction(document, code, label, **_):
+        raise RuntimeError("the live Document disagreed")
+
+    worker = FakeWorker()
+    pipeline = ApplyPipeline(document=FakeDocument(), worker=worker,
+                             dispatch=lambda f, timeout=None: f(), transaction=transaction)
+    pipeline.start_run(part_rules)
+
+    pipeline.apply("doc.recompute()")
+
+    assert worker.rules == [part_rules, part_rules]
 
 
 def test_a_step_that_lands_does_not_resync_the_kernel(pipeline):
