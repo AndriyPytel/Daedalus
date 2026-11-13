@@ -19,8 +19,8 @@ HEADERS = {"Authorization": "Bearer " + TOKEN}
 DEFAULTS = {"interactive": False, "confirm": False, "budget_usd": 5.0}
 SECRETS = ({"api_keys": [{"provider": "Anthropic", "api_key": "sk-x"}]}, {"base_urls": {"Ollama": "http://x"}},
            {"api_key": "sk-x"}, {"base_url": "http://x"}, {"anthropic_api_key": "sk-x"},
-           {"role_table": [{"role": "design", "provider": "Anthropic", "model": "m", "api_key": "sk-x"}]},
-           {"default_model": {"provider": "Anthropic", "model": "m", "base_url": "http://x"}})
+           {"provider": "Anthropic", "model": "m", "api_key": "sk-x"},
+           {"provider": "Anthropic", "model": "m", "base_url": "http://x"})
 
 
 @pytest.fixture
@@ -70,9 +70,7 @@ def test_patching_null_removes_a_preference_and_the_default_comes_back(api):
 
 
 def test_every_preference_the_ticket_names_can_be_stored(api):
-    table = [{"role": "design", "provider": "Anthropic", "model": "claude-x", "effort": "high"}]
-    body = {"role_table": table, "default_model": {"provider": "Anthropic", "model": "claude-x"},
-            "naming_model": {"provider": "Anthropic", "model": "claude-y"}, "effort": "medium",
+    body = {"provider": "Anthropic", "model": "claude-x", "effort": "medium",
             "interactive": True, "confirm": True, "budget_usd": 1.0}
     assert api.patch("/v1/users/usr_alice/preferences", json=body).json()["preferences"] == body
 
@@ -91,8 +89,8 @@ def test_a_per_run_override_wins_over_the_preference_and_only_for_that_run(api):
 
 
 def test_the_server_defaults_come_from_the_environment_and_a_preference_beats_them(api, monkeypatch):
-    monkeypatch.setenv("DAEDALUS_DEFAULTS", json.dumps({"budget_usd": 9.0, "default_model": {"provider": "Anthropic", "model": "m"}}))
-    assert settings_of(api)["budget_usd"] == 9.0 and settings_of(api)["default_model"]["model"] == "m"
+    monkeypatch.setenv("DAEDALUS_DEFAULTS", json.dumps({"budget_usd": 9.0, "provider": "Anthropic", "model": "m"}))
+    assert settings_of(api)["budget_usd"] == 9.0 and settings_of(api)["model"] == "m"
     api.patch("/v1/users/usr_alice/preferences", json={"budget_usd": 3.0})
     assert settings_of(api)["budget_usd"] == 3.0
 
@@ -112,7 +110,7 @@ def test_a_provider_key_or_base_url_in_a_per_run_override_is_422_and_starts_no_r
 
 
 def test_a_malformed_preference_is_422(api):
-    for body in ({"budget_usd": -1}, {"budget_usd": "lots"}, {"interactive": "maybe"}, {"effort": 3}, {"default_model": "m"}):
+    for body in ({"budget_usd": -1}, {"budget_usd": "lots"}, {"interactive": "maybe"}, {"effort": 3}, {"model": 3}):
         assert api.patch("/v1/users/usr_alice/preferences", json=body).status_code == 422, body
 
 

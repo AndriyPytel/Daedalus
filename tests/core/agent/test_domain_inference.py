@@ -86,7 +86,7 @@ def test_an_override_makes_no_call_and_says_so(picked):
     assert [e.data for e in events if e.kind == DOMAIN] == [{"domain": picked, "inferred": False}]
 
 
-def test_the_call_asks_for_the_lowest_effort_and_leaves_the_session_client_alone():
+def test_the_call_is_asked_with_the_clients_own_effort():
     from core.llm import EFFORTS, TEXT, Chunk
 
     class Client:
@@ -97,12 +97,9 @@ def test_the_call_asks_for_the_lowest_effort_and_leaves_the_session_client_alone
             Client.asked_with = self.effort
             return iter([Chunk(TEXT, "part")])
 
-    client = Client()
+    classify("Make a bracket.", [], Client())
 
-    classify("Make a bracket.", [], client)
-
-    assert Client.asked_with == EFFORTS[0]
-    assert client.effort == EFFORTS[-1]
+    assert Client.asked_with == EFFORTS[-1]
 
 
 def test_the_call_is_paid_for_on_the_stream():

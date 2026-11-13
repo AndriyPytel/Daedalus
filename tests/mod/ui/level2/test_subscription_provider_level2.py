@@ -172,7 +172,7 @@ def test_a_provider_that_does_need_a_key_still_says_when_it_has_none(providers_p
 
 def test_the_subscription_is_offered_with_no_key_stored(manager):
     """
-    `_configured` skips a provider with neither a key nor an address, so this
+    `_credentials` skips a provider with neither a key nor an address, so this
     one would never have been asked for its models at all.
     """
     offered = [model for model in manager.get_available_models()
@@ -181,22 +181,16 @@ def test_the_subscription_is_offered_with_no_key_stored(manager):
     assert [model["id"] for model in offered] == ["claude-sonnet-5", "claude-sonnet-5-5", "claude-opus-5-5"]
 
 
-def test_a_model_on_the_subscription_resolves_without_a_key(manager,
+def test_the_client_for_a_subscription_model_spawns_the_cli(manager,
                                                             settings_are_the_tests_own):
-    """`get_llm_credentials` raises when a provider has neither key nor address."""
-    provider, model_id, key = settings_are_the_tests_own.get_llm_credentials("claude-sonnet-5-5")
-
-    assert (provider, model_id, key) == (CLAUDE, "claude-sonnet-5-5", "")
-
-
-def test_the_client_for_a_subscription_model_spawns_the_cli(manager):
     """
     Not a `LiteLLMClient` with an empty key: LiteLLM has no route to a
     subscription, and it has no key to bill.
     """
     from core.llm import ClaudeCodeClient, client_from_settings
 
-    client = client_from_settings("claude-sonnet-5-5")
+    settings_are_the_tests_own.set_last_model(CLAUDE, "claude-sonnet-5-5")
+    client = client_from_settings()
 
     assert isinstance(client, ClaudeCodeClient)
     assert client.model == "claude-sonnet-5-5"

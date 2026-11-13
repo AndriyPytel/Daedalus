@@ -11,8 +11,7 @@ import sys
 import tempfile
 import threading
 
-from sdk import (Client, remember_model, set_api_keys, set_base_urls, set_default_model, set_effort,
-                 set_naming_model, set_role_table)
+from sdk import Client, set_api_keys, set_base_urls, set_effort, set_last_model
 
 
 def artifacts(client, directory):
@@ -56,15 +55,9 @@ def configure(environ):
 
 
 def apply_settings(settings):
-    """Put the resolved settings of a send into `sdk`, and name each model's provider to the registry the panel's fetch fills in a GUI."""
-    if "role_table" in settings:
-        set_role_table(settings["role_table"])
-        for row in settings["role_table"]:
-            remember_model(row["model"], row["provider"])
-    for key, setter in (("default_model", set_default_model), ("naming_model", set_naming_model)):
-        if settings.get(key):
-            setter(settings[key]["model"])
-            remember_model(settings[key]["model"], settings[key]["provider"])
+    """Put the resolved model and Effort of a send into `sdk`, where the run's client is built from them."""
+    if settings.get("provider") and settings.get("model"):
+        set_last_model(settings["provider"], settings["model"])
     if "effort" in settings:
         set_effort(settings["effort"])
 
@@ -106,7 +99,7 @@ def main():
 
     configure(os.environ)
     budget = Budget()
-    client, applied = None, None
+    client = None
 
     def open_client(restore, directory):
         path = None
@@ -130,9 +123,6 @@ def main():
         current["confirm"] = job.get("confirm") is True
         settings = job.get("settings") or {}
         apply_settings(settings)
-        if client is not None and applied is not None and settings != applied:
-            client.llm = None
-        applied = settings
         budget.start(settings.get("budget_usd"))
         with tempfile.TemporaryDirectory() as directory:
             try:

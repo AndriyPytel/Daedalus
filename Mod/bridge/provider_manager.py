@@ -47,11 +47,7 @@ class _ProviderManager(QObject):
     Internal singleton implementation. ``models_changed`` carries the whole
     list of ``{display, id, provider}`` dicts, from a session-lifetime cache
     keyed by provider (a disk cache with a TTL is the upgrade path once one
-    fetch per provider per session is noticeable). ``_resolved`` maps a model
-    id to the ``(provider, display)`` that last reported it and survives a
-    cleared fetch, because between a key change and the new list landing it
-    is the only thing that can resolve a model for ``get_model_entry``, which
-    runs on the Step thread and cannot itself ask.
+    fetch per provider per session is noticeable).
     """
 
     models_changed = Signal(list)
@@ -61,7 +57,6 @@ class _ProviderManager(QObject):
         self._fetched: dict = {}
         self._threads: dict = {}
         self._fetched_with: dict = {}
-        self._resolved: dict = {}
 
         from bridge import settings_manager
         settings_manager.instance().api_keys_changed.connect(self._on_keys_changed)
@@ -74,13 +69,12 @@ class _ProviderManager(QObject):
 
         return settings_manager.instance().get_providers()
 
-    def _configured(self, provider: str) -> tuple:
+    def _credentials(self, provider: str) -> tuple:
         """
-        (api_key, base_url) when *provider* is usable at all, else None. A
-        local server is configured by its address and may want no token; a
-        hosted provider is configured by its key. A provider that holds its
-        own credential is configured by having the CLI signed in, which this
-        page never stores, so its Test button is what says whether it really is.
+        (api_key, base_url) when *provider* is configured, else None. A
+        provider that holds its own credential is configured by having the CLI
+        signed in, which this page never stores, so its Test button is what
+        says whether it really is.
         """
         from core import model_catalog
         from bridge import settings_manager
@@ -88,11 +82,7 @@ class _ProviderManager(QObject):
         sm = settings_manager.instance()
         key = sm.get_api_key_for_provider(provider)
         base = sm.get_base_url_for_provider(provider)
-        if model_catalog.needs_no_key(provider):
-            return ("", "")
-        if model_catalog.needs_base_url(provider):
-            return (key, base) if base else None
-        return (key, base) if key else None
+        return (key, base) if model_catalog.configured(provider, key, base) else None
 
     def _ensure_fetched(self, provider: str):
         """
@@ -104,7 +94,7 @@ class _ProviderManager(QObject):
         """
         if provider in self._fetched or provider in self._threads or provider not in self._providers:
             return
-        credentials = self._configured(provider)
+        credentials = self._credentials(provider)
         if credentials is None:
             return
         key, base = credentials
@@ -122,23 +112,8 @@ class _ProviderManager(QObject):
         if self.sender() is not self._threads.get(provider):
             return
         self._fetched[provider] = models
-        self._fetched_with[provider] = self._configured(provider)
-        self._remember(provider, models)
+        self._fetched_with[provider] = self._credentials(provider)
         self.models_changed.emit(self.get_available_models())
-
-    def _remember(self, provider: str, models: list):
-        """
-        Where each of these models came from, kept past the next key change.
-        A model the provider stops reporting stays remembered, so a run
-        against it fails at the provider rather than here. Also recorded on
-        `core.model_registry`, which `core.settings` reads instead of
-        reaching back into this Qt-touching cache.
-        """
-        from core import model_registry
-
-        for model in models:
-            self._resolved[model["id"]] = (provider, model["display"])
-            model_registry.remember(model["id"], provider, model["display"], model.get("max_output"))
 
     def _on_fetch_failed(self, provider: str, error: str):
         """
@@ -176,7 +151,7 @@ class _ProviderManager(QObject):
         check is against what each list was fetched with.
         """
         for provider in list(self._providers):
-            if self._fetched_with.get(provider) == self._configured(provider):
+            if self._fetched_with.get(provider) == self._credentials(provider):
                 continue
             self._fetched.pop(provider, None)
             self._fetched_with.pop(provider, None)
@@ -191,7 +166,7 @@ class _ProviderManager(QObject):
         """
         result = []
         for provider in self._providers:
-            if self._configured(provider) is None:
+            if self._credentials(provider) is None:
                 continue
             for m in self._entries_for(provider):
                 result.append({"id": m["id"], "display": m["display"], "provider": provider})
@@ -207,26 +182,7 @@ class _ProviderManager(QObject):
         """
         return any(provider not in self._fetched
                    for provider in self._providers
-                   if self._configured(provider) is not None)
-
-    def get_model_entry(self, model_id: str) -> dict | None:
-        """
-        Find a model entry by its ``id`` across all providers, falling back to
-        what a provider last reported. A model that resolved once keeps its
-        provider until a fetch says otherwise, so a fetched-only model stays
-        resolvable between a key change and the new list landing. Deliberately
-        does not trigger a fetch: this runs on the Step thread.
-        """
-        for provider in self._providers:
-            for m in self._known(provider):
-                if m["id"] == model_id:
-                    return {"id": m["id"], "display": m["display"], "provider": provider}
-
-        remembered = self._resolved.get(model_id)
-        if remembered:
-            provider, display = remembered
-            return {"id": model_id, "display": display, "provider": provider}
-        return None
+                   if self._credentials(provider) is not None)
 
     def get_all_providers(self) -> list:
         """Return list of all provider names the addon can reach."""

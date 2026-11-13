@@ -17,22 +17,19 @@ from core import settings as _settings
 class _SettingsManager(QObject):
     """
     Internal singleton implementation, reached via ``settings_manager.instance()``.
-    ``api_keys_changed``, ``base_urls_changed``, ``default_model_changed``,
-    ``last_model_changed`` and ``role_table_changed`` fire after their matching
-    write, whoever makes it -- `sdk` included -- and every read and write is
+    ``api_keys_changed``, ``base_urls_changed`` and ``last_model_changed`` fire
+    after their matching write, whoever makes it -- `sdk` included -- and every read and write is
     `core.settings.Settings`'s own method, reached here through `__getattr__`.
     """
 
     api_keys_changed    = Signal(list)
     base_urls_changed   = Signal(dict)
-    default_model_changed = Signal(str)
-    last_model_changed  = Signal(str)
-    role_table_changed  = Signal(list)
+    last_model_changed  = Signal(object)
 
     def __init__(self):
         super().__init__()
         self._persist = _settings.instance()
-        for name in ("api_keys", "base_urls", "default_model", "last_model", "role_table"):
+        for name in ("api_keys", "base_urls", "last_model"):
             self._persist.subscribe(name, getattr(self, name + "_changed").emit)
 
     def __getattr__(self, name):

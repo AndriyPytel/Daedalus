@@ -416,8 +416,8 @@ measured as sixteen `QObject::setParent` (different thread) warnings, one
 QObject gives Qt that QObject as the context instead, which is what makes
 the hop queued, and `Qt.QueuedConnection` on the lambda does not help since
 it still posts to the context's thread, which is still this object. The
-client is held rather than built per run, and is dropped so that the next
-run rebuilds it from settings when the model changes.
+client is held rather than built per run, and builds its own model client
+from settings on every send.
 """
 
     finished = QtCore.Signal(object, str)
@@ -440,18 +440,6 @@ run rebuilds it from settings when the model changes.
     def document(self, value):
         self._document = value
         self.sdk_client = None
-
-    @property
-    def client(self):
-        """The LLM client, for the panel to clear when the model changes."""
-        if self.sdk_client is None:
-            return None
-        return self.sdk_client._llm
-
-    @client.setter
-    def client(self, value):
-        if self.sdk_client is not None:
-            self.sdk_client.llm = value
 
     @property
     def pipeline(self):
@@ -497,8 +485,7 @@ run rebuilds it from settings when the model changes.
     def _get_sdk_client(self):
         """
         The SDK Client for this Document, its own `Kernel()` (`Client`'s
-        default) and all: created once, reused for every Intent, and dropped
-        only when the model changes so the next run rebuilds it from settings.
+        default) and all: created once and reused for every Intent.
         """
         if self.sdk_client is None:
             from bridge.main_thread import on_main_thread
@@ -566,15 +553,14 @@ class _TitleThread(QtCore.QThread):
 
     titled = QtCore.Signal(str)
 
-    def __init__(self, intent: str, model_id: str, parent=None):
+    def __init__(self, intent: str, parent=None):
         super().__init__(parent)
         self._intent = intent
-        self._model_id = model_id
 
     def run(self):
         from sdk import generate
 
-        self.titled.emit(generate(self._intent, self._model_id))
+        self.titled.emit(generate(self._intent))
 
 
 RESTORE_CHUNK = 25
@@ -1021,31 +1007,33 @@ dark theme.
             button.setIcon(UIHelpers.get_icon(icon, size=size, on=button))
 
     def _refresh_models(self, models=None):
-        """Recompute which model the button shows: the stored id once its
+        """Recompute which model the button shows: the stored pick once its
         provider confirms it, held bare mid-fetch, else `_retire_model`'s
         fallback once every provider answered and none offers it, else the
-        first model on offer. Nothing stored is only shown, never written --
-        a display refresh must not overwrite a choice the run's own fallback
-        would otherwise read honestly.
+        first model on offer, which is then stored, since the run reads the
+        stored pick and nothing else.
         """
+        from sdk import get_last_model
+
         if models is None:
             models = provider_manager.instance().get_available_models()
         self._models = models
-        last_id = self._orchestrator_row().get("model", "")
+        last_provider, last_id = get_last_model()
 
         if not models:
             self._set_current_model(None, "No models — add API key")
             return
 
-        entry = next((m for m in models if m["id"] == last_id), None) if last_id else None
+        entry = (next((m for m in models if (m["provider"], m["id"]) == (last_provider, last_id)), None)
+                 if last_id else None)
         if entry is None and last_id:
             if provider_manager.instance().awaiting_model_lists():
-                entry = {"id": last_id, "display": last_id, "provider": ""}
+                entry = {"id": last_id, "display": last_id, "provider": last_provider}
             else:
-                fallback_id = self._retire_model(last_id)
-                entry = next((m for m in models if m["id"] == fallback_id), None)
+                entry = self._retire_model(last_id)
         if entry is None:
             entry = models[0]
+            self._store_model(entry["provider"], entry["id"])
 
         self._set_current_model(entry["id"], entry["display"])
 
@@ -1086,108 +1074,47 @@ left over is what the name is elided to.
         self.model_button.setText(
             metrics.elidedText(self._model_display, QtCore.Qt.ElideRight, room))
 
-    def _retire_model(self, model_id: str) -> str:
-        """
-        Every provider has answered and none offers ``model_id``. Say so.
-
-        The fallback is the Preferences default, or the first model on offer,
-        because that default is only a preference and may never have been set.
-        """
-        from sdk import get_default_model
-
-        fallback = get_default_model() or self._models[0]["id"]
-        self._store_model(fallback)
+    def _retire_model(self, model_id: str) -> dict:
+        """Every provider has answered and none offers *model_id*. Say so, and switch to the first model on offer."""
+        fallback = self._models[0]
+        self._store_model(fallback["provider"], fallback["id"])
         self._queue_widget.now(
             "%s is no longer offered by its provider — switched to %s."
-            % (model_id, fallback))
+            % (model_id, fallback["id"]))
         return fallback
-
-    def _orchestrator_row(self) -> dict:
-        """
-        The orchestrator's row of the Preferences role table -- the one row
-        the composer's two pills edit; every other role is set in Preferences
-        alone.
-        """
-        from sdk import ORCHESTRATOR, get_role_model
-
-        return get_role_model(ORCHESTRATOR) or {}
-
-    def _store_on_the_orchestrator(self, **fields):
-        """
-        Write *fields* onto that row.
-
-        Through `set_role_table`, whose write the Preferences page hears while
-        it is open.
-        """
-        from sdk import ORCHESTRATOR, get_role_table, set_role_table
-
-        table = get_role_table()
-        for row in table:
-            if row.get("role") == ORCHESTRATOR:
-                row.update(fields)
-        set_role_table(table)
 
     def _open_model_selector(self):
         self.model_selector.open_at(self._models, self.model_button)
 
-    def _store_model(self, model_id: str):
-        """Where a chosen model is kept: the orchestrator's row of the role
-        table, and the shared last-used model any role-less caller falls
-        back to (`settings.get_llm_credentials`).
-        The row carries the provider too: a model resolves only through the
-        provider that offers it, and is read back with no model list to hand.
-        """
-        entry = next((m for m in self._models if m["id"] == model_id), None)
-        self._store_on_the_orchestrator(
-            model=model_id, provider=(entry or {}).get("provider", ""))
+    def _store_model(self, provider: str, model_id: str):
+        """The one place a chosen model is kept: the provider and the model together, which is all the run builds its client from."""
         from sdk import set_last_model
 
-        set_last_model(model_id)
+        set_last_model(provider, model_id)
 
-    def _on_model_selected(self, model_id: str):
-        """Drops the client so the next send rebuilds it from settings."""
-        self._store_model(model_id)
-        if getattr(self, "worker", None):
-            self.worker.client = None
-        entry = next((m for m in self._models if m["id"] == model_id), None)
+    def _on_model_selected(self, provider: str, model_id: str):
+        self._store_model(provider, model_id)
+        entry = next((m for m in self._models
+                      if (m["provider"], m["id"]) == (provider, model_id)), None)
         self._set_current_model(model_id, entry["display"] if entry else model_id)
 
     def _open_effort_selector(self):
-        """
-        Offers the levels the routes take, unless this model cannot reason at
-        all: a picker that changes nothing is a picker that lies, so the
-        trigger says so in its tooltip and does not open.
-        """
-        from sdk import EFFORTS, effort_is_honoured
+        from sdk import EFFORTS
 
-        if not effort_is_honoured(self._orchestrator_row().get("model", "")):
-            return
         self.effort_selector.open_at(list(EFFORTS), self.effort_button)
 
     def _on_effort_selected(self, level: str):
-        """Drops the client so the next send is asked to think the new way."""
-        self._store_on_the_orchestrator(effort=level)
-        if getattr(self, "worker", None):
-            self.worker.client = None
+        from sdk import set_effort
+
+        set_effort(level)
         self._show_effort()
 
     def _show_effort(self):
-        """The pill carries the level the orchestrator's row is set to, and
-        says when the model will ignore it.
-        An empty or outdated level falls back to the single stored dial,
-        same as `client_from_settings`. A model with no reasoning to spend
-        cannot honour it, so the pill says so (`core.llm.effort_is_honoured`).
-        """
-        from sdk import EFFORTS, effort_is_honoured, get_effort
+        """The pill carries the Effort the next run is asked for."""
+        from sdk import get_effort
 
-        row = self._orchestrator_row()
-        honoured = effort_is_honoured(row.get("model", ""))
-        level = row.get("effort", "")
-        self.effort_button.setText(level if level in EFFORTS else get_effort())
-        self.effort_button.setEnabled(honoured)
-        self.effort_button.setToolTip(
-            "How hard the model is asked to think" if honoured
-            else "This model does no reasoning of its own")
+        self.effort_button.setText(get_effort())
+        self.effort_button.setToolTip("How hard the model is asked to think")
         self.effort_button.setIcon(
             UIHelpers.get_icon("chevron_down", size=ICON_DENSE, on=self.effort_button))
 
@@ -1441,16 +1368,13 @@ switched away from is abandoned rather than rendered.
         the model changed — and the same Intent sent again. A settings lookup
         that fails is not the user's problem here; the run reports it.
         """
-        from sdk import selected_model_name, unusable_attachments
+        from sdk import litellm_model_name, unusable_attachments
 
         attached = self.chip_bar.files()
-        if not attached:
+        entry = next((m for m in self._models if m["id"] == self._current_model_id), None)
+        if not attached or entry is None:
             return []
-        try:
-            model = selected_model_name(self._current_model_id)
-        except Exception:
-            return []
-        return unusable_attachments(attached, model)
+        return unusable_attachments(attached, litellm_model_name(entry["provider"], entry["id"]))
 
     def on_send(self):
         """
@@ -1544,9 +1468,7 @@ switched away from is abandoned rather than rendered.
         Qt owns the thread, so it is kept in a list: without a reference it is
         collected mid-flight.
         """
-        from sdk import get_naming_model
-
-        thread = _TitleThread(intent, get_naming_model(), self)
+        thread = _TitleThread(intent, self)
         thread.titled.connect(lambda title: self._title_arrived(session_id, title))
         self._title_threads.append(thread)
         thread.finished.connect(lambda: self._title_threads.remove(thread))

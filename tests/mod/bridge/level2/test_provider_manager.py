@@ -77,31 +77,10 @@ def manager(monkeypatch):
 def _fetched(manager, provider, models):
     """A fetch landing, without the thread that would have carried it."""
     manager._fetched[provider] = models
-    manager._fetched_with[provider] = manager._configured(provider)
-    manager._remember(provider, models)
+    manager._fetched_with[provider] = manager._credentials(provider)
 
 
 LIVE_ONLY = [{"id": "gpt-5.6-terra", "display": "GPT-5.6 Terra"}]
-
-
-@pytest.mark.freecad
-def test_a_fetched_only_model_still_resolves_after_a_key_change(manager):
-    """
-    The reported bug. `_on_keys_changed` cleared `_fetched`; `get_model_entry`
-    deliberately does not fetch — it runs on the Step thread — so it fell back
-    to a bundled list, which cannot know about a model only the provider reports.
-    Changing a key and sending straight away is what a user does after topping
-    up a quota.
-    """
-    _fetched(manager, "OpenAI", LIVE_ONLY)
-    assert manager.get_model_entry("gpt-5.6-terra")["provider"] == "OpenAI"
-
-    manager._on_keys_changed([])
-
-    entry = manager.get_model_entry("gpt-5.6-terra")
-    assert entry is not None, "the run would end in a crash report here"
-    assert entry["provider"] == "OpenAI"
-    assert entry["display"] == "GPT-5.6 Terra"
 
 
 @pytest.mark.freecad
@@ -124,21 +103,12 @@ def test_only_the_provider_whose_credentials_changed_is_invalidated(manager):
 
 
 @pytest.mark.freecad
-def test_a_model_nobody_ever_reported_is_still_unknown(manager):
-    """
-    Remembering a resolution must not invent one. An id that never resolved
-    stays unresolvable, and the run says so rather than guessing a provider.
-    """
-    assert manager.get_model_entry("no-such-model") is None
-
-
-@pytest.mark.freecad
 def test_a_failed_fetch_lets_the_next_ensure_fetched_retry(manager, monkeypatch):
     """
     `_threads` was never cleared on failure, so it kept doubling as
     an "already asked" mark and `_ensure_fetched` returned silently forever.
     """
-    monkeypatch.setattr(manager, "_configured", lambda provider: ("key", ""))
+    monkeypatch.setattr(manager, "_credentials", lambda provider: ("key", ""))
     starts = []
 
     class _FakeThread:

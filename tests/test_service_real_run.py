@@ -52,7 +52,7 @@ def test_a_real_run_with_server_secrets_and_the_owners_model_produces_events(wor
     choice = {"provider": os.environ["DAE_REAL_PROVIDER"], "model": os.environ["DAE_REAL_MODEL"]}
     try:
         with TestClient(app, headers=AUTH) as api:
-            api.patch("/v1/users/usr_owner/preferences", json={"default_model": choice, "budget_usd": 0.25})
+            api.patch("/v1/users/usr_owner/preferences", json={**choice, "budget_usd": 0.25})
             run = api.post("/v1/runs", json={"prompt": "Add a 10mm cube"}).json()
             done = until(lambda: (lambda r: r if r["state"] in FINAL else None)(api.get("/v1/runs/%s" % run["id"]).json()),
                          seconds=420)

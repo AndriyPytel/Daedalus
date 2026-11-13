@@ -1,15 +1,14 @@
 """
 The Domain a run builds under: the Document's own Assembly or Arch objects decide first, one short model call decides otherwise, and the user's pick skips both.
-The call carries the Intent and a summary of the Document's object types, takes no tools and is asked at the lowest effort; an answer that is neither "assembly" nor "bim" is Part.
+The call carries the Intent and a summary of the Document's object types, takes no tools and is asked with the run's own model and Effort; an answer that is neither "assembly" nor "bim" is Part.
 """
 import collections
-import copy
 
 from core.agent.domain import ASSEMBLY, BIM, PART
 import time
 
 from core.events import COST, DOMAIN
-from core.llm import EFFORTS, TEXT
+from core.llm import TEXT
 from core.prompts import read_prompt
 from core.settings import AUTO
 
@@ -31,17 +30,15 @@ def summary(types):
 
 def classify(intent, types, llm, events=None):
     """The Domain *llm* names for *intent* and a Document of *types*, its cost said on *events*; `PART` where the answer cannot be read."""
-    client = copy.copy(llm)
-    client.effort = EFFORTS[0]
     start = time.time()
-    said = "".join(chunk.text for chunk in client.stream(
+    said = "".join(chunk.text for chunk in llm.stream(
         [{"role": "system", "content": read_prompt("domain.md").strip()},
          {"role": "user", "content": "Request: %s\n\nThe Document holds: %s" % (intent, summary(types))}])
         if chunk.kind == TEXT)
     if events is not None:
-        spent = getattr(client, "last_cost", None) or {}
+        spent = getattr(llm, "last_cost", None) or {}
         events.emit(COST, phase="domain", seconds=time.time() - start,
-                    model=spent.get("model", getattr(client, "model", "")),
+                    model=spent.get("model", getattr(llm, "model", "")),
                     **{k: v for k, v in spent.items() if k != "model"})
     answer = said.strip().strip(".!\"'").lower()
     return answer if answer in (ASSEMBLY, BIM) else PART
