@@ -3,9 +3,8 @@ Settings -- Qt-free persistence for Daedalus's preferences.
 
 Everything here reads and writes through `FreeCAD.ParamGet` and nothing else:
 no `PySide` import, so any `core/` module can read or write a setting without
-pulling in Qt at load time. `bridge/settings_manager.py` wraps this class in a
-`QObject` for the call sites that connect to a change signal; every plain
-read/write goes through here directly.
+pulling in Qt at load time. A caller that wants to hear a write subscribes to
+the setting by name.
 """
 import json
 from functools import lru_cache
@@ -35,8 +34,7 @@ def migrate_legacy_preferences(old, new):
 
 class Settings:
     """
-    The persistence half of the old `_SettingsManager`, reached via
-    ``instance()``. A local server's address is not a secret and is not a
+    The persistence of every preference, reached via ``instance()``. A local server's address is not a secret and is not a
     key. It lives in its own setting so it is never password-masked, never
     stored beside the keys, and a server that wants both an address and a
     token has room for both.

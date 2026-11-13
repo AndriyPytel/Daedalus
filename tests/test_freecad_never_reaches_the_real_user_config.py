@@ -1,5 +1,5 @@
 """
-FreeCAD's whole configuration directory, not just the group `SettingsManager`
+FreeCAD's whole configuration directory, not just the group `Settings`
 owns inside it, must never resolve to the user's real preferences directory
 during a test run.
 `tests/conftest.py` redirects it with `FREECAD_USER_HOME` before FreeCAD is
