@@ -68,8 +68,13 @@ def manager(monkeypatch):
 
     monkeypatch.setattr(model_catalog, "fetch", lambda *args, **kwargs: [])
 
+    from bridge import settings_manager
+
     built = _ProviderManager()
     yield built
+    for signal in (settings_manager.instance().api_keys_changed,
+                   settings_manager.instance().base_urls_changed):
+        signal.disconnect(built._on_keys_changed)
     for thread in built.findChildren(QThread):
         thread.wait()
 
