@@ -10,7 +10,8 @@ import math
 
 import pytest
 
-from core.freecad_apply import build_registry, description, fit_view
+from core.document_tools import build_registry, description
+from core.freecad_apply import fit_view
 from core.tools import ToolError
 
 pytestmark = pytest.mark.freecad
@@ -40,6 +41,14 @@ def part(doc):
 @pytest.fixture
 def tools(doc):
     return build_registry(doc)
+
+
+def test_the_registered_tools_are_the_document_tools_and_apply_step(doc):
+    read_only = {"snapshot", "base_inventory", "overall_size", "document_copy", "dependencies",
+                 "describe_object", "describe_type", "supported_types", "materials"}
+
+    assert set(build_registry(doc).names()) == read_only
+    assert set(build_registry(doc, pipeline=object()).names()) == read_only | {"apply_step"}
 
 
 def test_snapshot_reports_what_exists_without_dumping_the_tree(tools, part):
