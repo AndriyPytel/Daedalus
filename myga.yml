@@ -1,4 +1,4 @@
-stall_timeout_minutes: 10
+stall_timeout_minutes: 25
 max_attempts_per_ticket: 3
 
 check:
