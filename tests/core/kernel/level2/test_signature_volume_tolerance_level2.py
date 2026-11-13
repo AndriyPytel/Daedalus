@@ -8,7 +8,7 @@ import pytest
 
 from core.freecad_apply import SignatureMismatch, run_in_transaction
 from core.kernel import Kernel, find_freecadcmd
-from core.kernel.kernel_worker import signature_of
+from core.kernel.step_namespace import signature_of
 
 pytestmark = pytest.mark.freecad
 
@@ -64,7 +64,7 @@ def test_the_drift_a_live_fillet_replay_measured_still_matches():
     Two OCC processes built the same fillet 4.4e-3 mm3 apart on a 275,674
     mm3 part, a relative 1.6e-8 with count, names and links identical.
     """
-    from core.kernel.kernel_worker import signatures_match
+    from core.kernel.step_namespace import signatures_match
 
     same = {"count": 3, "names": ["Body", "Fillet", "Pad"], "links": {}}
     assert signatures_match(dict(same, volume=275673.872855),

@@ -19,8 +19,8 @@ and a fake carries both.
 """
 from core.agent.agent import _feedback
 from core.kernel.kernel import KernelResult
-from core.kernel.kernel_worker import (_idle_feature_report, _volume_moved,
-                                       introspect, run_step)
+from core.kernel.kernel_worker import introspect, run_step
+from core.kernel.step_rules import _idle_feature_report, _volume_moved
 
 
 class FakeShape:

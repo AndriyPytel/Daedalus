@@ -46,10 +46,10 @@ def test_a_mixed_selection_is_split_by_concavity(worker):
 
 def test_no_returned_group_mixes_concavities(worker):
     code = A_PLATE_WITH_TWO_BOSSES + (
-        "from core.kernel import kernel_worker\n"
+        "from core.kernel import step_namespace\n"
         "top = body.Tip\n"
         "groups = edges_by_concavity(top.Shape, ['Edge10', 'Edge9'])\n"
-        "facts = [len(set(kernel_worker._edge_concavity_sign(top.Shape, top.Shape.getElement(n))\n"
+        "facts = [len(set(step_namespace._edge_concavity_sign(top.Shape, top.Shape.getElement(n))\n"
         "                for n in g)) for g in groups]\n"
     ) + PRINT_FACTS
     assert worker.seed().ok
@@ -85,7 +85,7 @@ def test_a_single_concavity_selection_comes_back_as_one_group(worker):
 
 def test_a_step_builds_one_fillet_per_group_and_none_is_left_mixed(worker):
     code = A_PLATE_WITH_TWO_BOSSES + (
-        "from core.kernel import kernel_worker\n"
+        "from core.kernel import step_rules\n"
         "top = body.Tip\n"
         "groups = edges_by_concavity(top.Shape, ['Edge10', 'Edge9'])\n"
         "for at, names in enumerate(groups):\n"
@@ -94,7 +94,7 @@ def test_a_step_builds_one_fillet_per_group_and_none_is_left_mixed(worker):
         "    fillet.Base = (top, names)\n"
         "    fillet.Radius = 1.0\n"
         "    doc.recompute()\n"
-        "facts = kernel_worker._fillets_with_mixed_concavity(doc)\n"
+        "facts = step_rules._fillets_with_mixed_concavity(doc)\n"
     ) + PRINT_FACTS
     assert worker.seed().ok
 
@@ -157,8 +157,8 @@ def test_a_transitional_tangent_edge_has_no_concavity_sign(worker):
     with no resolvable sign rather than call it convex.
     """
     code = A_BOX_WITH_ONE_FILLETED_EDGE + (
-        "from core.kernel import kernel_worker\n"
-        "facts = [kernel_worker._edge_concavity_sign(tip.Shape, tip.Shape.getElement(n))\n"
+        "from core.kernel import step_namespace\n"
+        "facts = [step_namespace._edge_concavity_sign(tip.Shape, tip.Shape.getElement(n))\n"
         "        for n in transitional]\n"
     ) + PRINT_FACTS
     assert worker.seed().ok

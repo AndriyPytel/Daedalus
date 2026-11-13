@@ -53,3 +53,16 @@ def test_a_bare_import_app_resolves_to_the_pre_bound_freecad_module(kernel):
     )
 
     assert result.ok, result.traceback
+
+
+def test_a_step_sees_the_ten_helpers_plus_its_document_and_its_name_map(kernel):
+    result = kernel.probe(
+        "import types\n"
+        "print(sorted(k for k, v in globals().items()\n"
+        "             if not k.startswith('__') and not isinstance(v, types.ModuleType)))"
+    )
+
+    assert result.ok, result.traceback
+    assert eval(result.stdout.strip()) == sorted([
+        "bbox", "built_ok", "by_label", "cylinder_face", "doc", "edges_between", "edges_by_concavity",
+        "names", "pick_edges", "pick_faces", "plane_face", "sketch_at"])

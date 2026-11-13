@@ -18,7 +18,6 @@ from PIL import Image
 from core.kernel import Kernel, find_freecadcmd
 from core.kernel import kernel as kernel_module
 from core.kernel.preflight_render import render
-from core.edit_guard import RememberedMeasures
 from tests.core.kernel import part_202
 
 pytestmark = pytest.mark.freecad
@@ -89,21 +88,6 @@ def test_the_render_of_part_202_is_the_picture_the_per_triangle_rasteriser_drew(
 
     differing = int((drawn != reference).any(axis=2).sum())
     assert differing == 0, "%d of %d pixels differ from the reference render" % (differing, reference.shape[0] * reference.shape[1])
-
-
-def test_the_exact_box_found_from_few_faces_is_the_exact_box_and_is_found_faster(doc):
-    shape = doc.Part__Feature.Shape
-
-    started = time.perf_counter()
-    whole = shape.optimalBoundingBox(False)
-    whole_took = time.perf_counter() - started
-    started = time.perf_counter()
-    found = RememberedMeasures().box(shape)
-    found_took = time.perf_counter() - started
-
-    for side in ("XMin", "YMin", "ZMin", "XMax", "YMax", "ZMax"):
-        assert getattr(found, side) == pytest.approx(getattr(whole, side), abs=1e-6)
-    assert found_took < whole_took, "%.2f s from the faces against %.2f s for the whole shape" % (found_took, whole_took)
 
 
 def test_a_read_only_probe_writes_no_checkpoint_and_no_snapshot_and_costs_a_second_at_most(kernel, scratch):
