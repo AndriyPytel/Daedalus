@@ -1,7 +1,7 @@
 """
 FreeCAD puts the installed addon's directory on the import path, and once,
-while `Mod` symlinked at a second checkout, `core.sheets.sheet_reader` and
-`core.sheets.sketch_check` kept resolving from that checkout's flat `core`,
+while `Mod` symlinked at a second checkout, `core.sheets.sheet_reader` kept
+resolving from that checkout's flat `core`,
 so a call site asking for a name this branch had moved found it anyway and
 the suite stayed green on the wrong tree. This is the check that would have
 caught it: every one of our top-level packages already imported in a run,

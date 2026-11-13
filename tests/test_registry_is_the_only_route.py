@@ -10,9 +10,6 @@ The Document is reached from exactly these places, and each has a reason:
     the Document to hand it to. This is the sanctioned route.
   - core/kernel/kernel_worker.py: Runs inside the kernel's own process, against its
     own checkpointed Document. It never touches the user's Document.
-  - core/sheets/sketch_check.py: Builds the reading as a sketch in a document of its
-    own, to ask the solver whether what was read can be true at once, and
-    closes it in a `finally`. It reads a drawing and never the user's Document.
   - core/equipment.py: `place_library` opens a library file in a document of its own to copy
     its shape, closes it in a `finally` and makes the user's Document active again. The guard
     allows a file, not a function, so the rest of the module is covered by this line too.
@@ -36,7 +33,6 @@ from tests.source_tree import ROOT, sources
 ALLOWED = {
     "src/core/freecad_apply.py",
     "src/core/kernel/kernel_worker.py",
-    "src/core/sheets/sketch_check.py",
     "src/core/equipment.py",
     "src/sdk.py",
     "src/tools/run.py",

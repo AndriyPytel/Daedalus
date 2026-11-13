@@ -189,15 +189,13 @@ class ApplyPipeline:
     """
 
     def __init__(self, document=None, worker=None, dispatch=None,
-                 transaction=None, render_dir=None, confirm=None, owned=None,
+                 transaction=None, confirm=None, owned=None,
                  events=None, main_window=None, unattended=False, clock=time.monotonic):
         self._clock = clock
         self._document = document
         self._worker = worker
         self._dispatch = dispatch or _direct
         self._transaction = transaction or run_in_transaction
-        self._render_dir = render_dir
-        self._renders = 0
         self._confirm = confirm or refuse_without_asking
         self.owned = set(owned or ())
         self._unattended = unattended
@@ -266,18 +264,6 @@ class ApplyPipeline:
         """
         return self._document() if callable(self._document) else self._document
 
-    def _render_path(self):
-        """
-        The next render's path, in a directory of this pipeline's own, so two
-        runs at once never overwrite or review each other's pictures.
-        """
-        if self._render_dir is None:
-            import tempfile
-
-            self._render_dir = tempfile.mkdtemp(prefix="fcc-renders-")
-        self._renders += 1
-        return os.path.join(self._render_dir, "daedalus_step_%d.png" % self._renders)
-
     def apply(self, code, selection=None, label="Daedalus Step", op=None,
               kernel_result=None, design_model=True) -> ApplyResult:
         """
@@ -344,75 +330,6 @@ class ApplyPipeline:
         self.owned.update(created)
         return ApplyResult(ok=True, description=described, created=created,
                            modified=list(kernel_result.get("modified") or ()))
-
-    def undo_step(self):
-        """
-        Undo the last Step's transaction on the live Document -- the same
-        undo entry `apply` committed. A Plan revision that drops the Step
-        it belongs to calls this once per Step dropped; nothing else does.
-        """
-        doc = self._dispatch(self._active)
-        if doc is not None:
-            self._dispatch(doc.undo)
-        return {"object_count": len(doc.Objects) if doc is not None else 0}
-
-    def undo_depth(self):
-        """
-        How many Steps the live Document could still undo -- `UndoMode`'s
-        stack drops its oldest entries once `MaxUndoSize` is spent, so this
-        can be smaller than every Step ever applied this run.
-        """
-        doc = self._dispatch(self._active)
-        return len(doc.UndoNames) if doc is not None else 0
-
-    def check_assertions(self, code):
-        """
-        Run read-only checks against a copy of the finished Document.
-
-        The copy is what makes it read-only — this process never touches the
-        live Document, so even a check that tried to write could not.
-        """
-        doc = self._dispatch(self._active)
-        if doc is None:
-            return {"ok": False, "traceback": "There is no open Document to check."}
-
-        copy = self._dispatch(lambda: copy_of(doc))
-        try:
-            checked = self.worker.check(code, document=copy, ephemeral=True, geometry=True)
-        finally:
-            discard(copy)
-        return {"ok": bool(checked.ok), "traceback": checked.traceback or "",
-                "held": checked.held,
-                "geometry": checked.geometry}
-
-    def review_views(self):
-        """
-        The views Review judges, captured once at the end of a run.
-        """
-        doc = self._dispatch(self._active)
-        paths = [self._render_path() for _ in REVIEW_VIEWS]
-        views = capture_review_views(paths, doc, dispatch=self._dispatch)
-        return views or self._rasterised()
-
-    def _rasterised(self):
-        """
-        The headless fallback: the Worker draws the Document once.
-
-        A Step of `pass` because the Worker renders what a Step left behind,
-        and what this wants a picture of is the Document as it now stands. One
-        call per run rather than one per Step, which is the whole point.
-        """
-        doc = self._dispatch(self._active)
-        if doc is None:
-            return []
-        copy = self._dispatch(lambda: copy_of(doc))
-        try:
-            drawn = self.worker.check("pass", document=copy,
-                                      render_path=self._render_path(),
-                                      ephemeral=True)
-        finally:
-            discard(copy)
-        return [drawn.render] if drawn.ok and drawn.render else []
 
     def _narrate(self, kind, **data):
         """Say it on the stream, if a run is listening. Headless, nobody is."""
@@ -951,26 +868,6 @@ def _selection(dispatch=_direct):
     ]
 
 
-_OPPOSITE_ISOMETRIC = "viewIsometricOpposite"
-"""
-Not a `FreeCADGui` button — `libFreeCADGui` names `viewFront`, `viewTop`,
-`viewRight`, `viewRear`, `viewBottom`, `viewLeft`, `viewIsometric`,
-`viewDimetric` and `viewTrimetric`, and none of them is the corner
-diagonally across from isometric's. `capture_review_views` builds it instead,
-from whatever orientation `viewIsometric` is already holding.
-"""
-
-_SECTION_VIEW = "section"
-"""
-Not a `FreeCADGui` orientation either — `capture_review_views` builds the
-cutaway itself, clipping through whatever `_section_plane` finds to be the
-part's own interior, the way FreeCAD's own View > Cross-sections does
-(`View3DInventorPy.toggleClippingPlane`).
-"""
-
-REVIEW_VIEWS = ("viewIsometric", _OPPOSITE_ISOMETRIC, "viewTop", "viewFront", _SECTION_VIEW)
-
-
 _A_3D_VIEW = "Gui::View3DInventor"
 
 
@@ -1066,110 +963,6 @@ def fit_view(document=None):
     finally:
         for view_object in hidden:
             view_object.Visibility = True
-
-
-def _cavity_center(box, material):
-    """
-    The centre of mass of the largest void inside `box`, or None.
-
-    Measured: ~0.11s for a 200x200x30 plate cut by forty 8mm bores.
-    """
-    import FreeCAD
-    import Part
-
-    solid = Part.makeBox(box.XLength, box.YLength, box.ZLength,
-                          FreeCAD.Vector(box.XMin, box.YMin, box.ZMin))
-    try:
-        voids = [void for void in solid.cut(material).Solids if void.Volume > 1e-6]
-    except Part.OCCError:
-        return None
-    if not voids:
-        return None
-    return max(voids, key=lambda void: void.Volume).CenterOfMass
-
-
-def _section_plane(document):
-    """
-    A placement that cuts through the part's real interior, not one of its
-    faces — what a shell, bore or blind pocket needs to become visible.
-
-    The plane sits at the centre of the largest actual void the modelled
-    geometry has, not a guess at where a cavity usually sits.
-    """
-    import FreeCAD
-
-    doc = document if document is not None else FreeCAD.ActiveDocument
-    if doc is None:
-        return None
-    box = None
-    material = None
-    for obj in doc.Objects:
-        bound = _measurable(obj)
-        if bound is None:
-            continue
-        box = bound if box is None else box.united(bound)
-        if not obj.InList:
-            material = obj.Shape if material is None else material.fuse(obj.Shape)
-    if box is None:
-        return None
-    center = _cavity_center(box, material) or box.Center
-    return FreeCAD.Placement(center, FreeCAD.Rotation(FreeCAD.Vector(1, 0, 0), -90))
-
-
-def capture_review_views(paths, document=None, size=(800, 600), dispatch=_direct):
-    """
-    The five views Review judges, one dispatched call each: two isometrics
-    from opposite corners, plus top, front and a section, which makes a
-    shell, bore or blind pocket visible that the others miss. A dispatched
-    call holds the Qt main thread until it returns, and five renders in one
-    is the longest block a run has, so the event loop runs between captures
-    and each stands alone.
-    """
-    view = dispatch(lambda: _active_view(document))
-    if view is None:
-        return []
-
-    return [path for name, path in zip(REVIEW_VIEWS, paths)
-            if dispatch(lambda name=name, path=path: _capture_view(view, name, path,
-                                                                  document, size))]
-
-
-def _capture_view(view, name, path, document, size):
-    """
-    Write one of Review's views to *path*, or say there was none to write.
-
-    Scaffolding past `_SCAFFOLDING` is hidden for the `fitAll()` this makes,
-    the same as `fit_view`, so an Origin plane never frames the shot in the
-    part's place. The camera, the clip plane and that visibility are all put
-    back before this returns, whichever way it goes.
-    """
-    import FreeCAD
-
-    camera = view.getCamera()
-    sectioned = False
-    hidden = _hide_scaffolding(document) if document is not None and hasattr(document, "Objects") else []
-    try:
-        if name == _OPPOSITE_ISOMETRIC:
-            view.viewIsometric()
-            view.setCameraOrientation(view.getCameraOrientation().multiply(
-                FreeCAD.Rotation(FreeCAD.Vector(0, 1, 0), 180)))
-        elif name == _SECTION_VIEW:
-            plane = _section_plane(document)
-            if plane is None:
-                return False
-            view.toggleClippingPlane(1, False, True, plane)
-            sectioned = True
-        else:
-            getattr(view, name)()
-        view.fitAll()
-        view.saveImage(path, size[0], size[1], "Current")
-    finally:
-        if sectioned:
-            view.toggleClippingPlane(0)
-        view.setCamera(camera)
-        for view_object in hidden:
-            view_object.Visibility = True
-    return True
 
 
 def _active_body(doc, dispatch=_direct):
@@ -1434,21 +1227,6 @@ def _base_feature(doc):
     return base if base is not None and _measurable(base) is not None else None
 
 
-def base_addresses(doc):
-    """
-    The face addresses of the base part with their areas, and of the Body as it stands, or None where no Body has a BaseFeature.
-
-    A face is gone when its address is in `base` and not in `now`; an address that stays with another area is not gone.
-    """
-    base = _base_feature(doc)
-    if base is None:
-        return None
-    body = next(obj for obj in doc.Objects
-                if obj.TypeId == "PartDesign::Body" and obj.BaseFeature is not None)
-    return {"base": {address: round(area, 3) for address, area in sorted(_addresses_of(base.Shape).items())},
-            "now": sorted(_addresses_of(body.Shape))}
-
-
 def _addresses_of(shape):
     """Every face address of *shape* with the area summed over the faces that share it."""
     found = {}
@@ -1692,14 +1470,6 @@ def _register_document(registry, active, dispatch=_direct):
         return {"inventory": base_inventory(active())}
 
     @registry.tool(
-        "base_addresses",
-        "The face addresses of the base part and of the Body as it stands. Driven by "
-        "the loop to find what a Step removed, never by a phase.",
-    )
-    def base_addresses_tool():
-        return base_addresses(active()) or {"base": {}, "now": []}
-
-    @registry.tool(
         "overall_size",
         "How big the finished part is. Driven by the loop once before Review, "
         "never by a phase.",
@@ -1938,46 +1708,6 @@ def _register_apply(registry, pipeline, selection):
         return pipeline.apply(code, selection=selection(), label=label,
                               op=op, kernel_result=kernel_result,
                               design_model=design_model).as_tool_result()
-
-    @registry.tool(
-        "undo_step",
-        "Undo the last Step's transaction on the live Document -- the same undo entry "
-        "apply_step committed. Driven by a Plan revision that drops that Step, never by "
-        "a phase.",
-    )
-    def undo_step():
-        return pipeline.undo_step()
-
-    @registry.tool(
-        "undo_depth",
-        "How many Steps the live Document could still undo. Driven by a Plan "
-        "revision before it drops any Step, never by a phase.",
-    )
-    def undo_depth():
-        return {"depth": pipeline.undo_depth()}
-
-    @registry.tool(
-        "check_assertions",
-        "Run read-only checks against a throwaway copy of the finished Document. "
-        "Driven by the loop once per run, never by a phase.",
-        {
-            "type": "object",
-            "properties": {"code": {"type": "string"}},
-            "required": ["code"],
-        },
-    )
-    def check_assertions(code):
-        return pipeline.check_assertions(code)
-
-    @registry.tool(
-        "review_views",
-        "Capture the four views Review judges. Driven by the loop at the end of a "
-        "run, never by a phase.",
-        {"type": "object", "properties": {}},
-    )
-    def review_views():
-        return {"views": pipeline.review_views()}
-
 
 
 def _readable(value):

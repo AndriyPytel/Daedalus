@@ -58,14 +58,13 @@ def doc():
 
 
 @pytest.fixture
-def pipeline(doc, worker, tmp_path):
+def pipeline(doc, worker):
     """
     An ApplyPipeline for testing. Already on the main thread here, so the
     dispatcher is a straight call.
     """
     pipeline = ApplyPipeline(document=doc, worker=worker,
-                             dispatch=lambda func, timeout=None: func(),
-                             render_dir=str(tmp_path))
+                             dispatch=lambda func, timeout=None: func())
     pipeline.apply = functools.partial(pipeline.apply, design_model=False)
     return pipeline
 
@@ -83,20 +82,6 @@ def test_a_step_brings_back_a_description_of_what_is_now_there(pipeline, doc, wo
     assert described["Box"]["parameters"]["Length"] == "10.0 mm"
     assert result.description["geometry"] == {"solids": 1, "volume_mm3": 1000.0,
                                               "surfaces": [{"kind": "Plane", "count": 6}]}
-
-
-def test_the_headless_fallback_still_draws_the_document_once(pipeline, doc, worker):
-    """
-    The Worker's rasteriser survives as the fallback, so the render's per-pixel
-    depth test and edges are not thrown away — called once at the end of a run
-    rather than once per Step.
-    """
-    pipeline.apply(BOX,
-                   kernel_result=_kernel_result(worker, doc, BOX))
-    views = pipeline.review_views()
-
-    assert len(views) == 1, "the headless fallback is one isometry, not four"
-    assert os.path.getsize(views[0]) > 1000
 
 
 def test_a_provider_that_answers_none_beats_freecads_active_document(doc, worker):
@@ -158,14 +143,13 @@ def test_the_undo_entry_is_named_after_the_step(pipeline, doc, worker):
     assert "Add the base box" in doc.UndoNames
 
 
-def test_a_step_that_throws_leaves_the_document_untouched(doc, worker, tmp_path):
+def test_a_step_that_throws_leaves_the_document_untouched(doc, worker):
     """
     A Step that passes lint and Preflight but then fails for real (the object
     already exists) leaves the document untouched.
     """
     pipeline = ApplyPipeline(document=doc, worker=worker,
-                             dispatch=lambda func, timeout=None: func(),
-                             render_dir=str(tmp_path))
+                             dispatch=lambda func, timeout=None: func())
     pipeline.apply(BOX)
     before = [o.Name for o in doc.Objects]
 
@@ -208,14 +192,13 @@ def test_run_in_transactions_own_exec_frame_is_cut_from_the_traceback(doc):
     assert "run_in_transaction" not in formatted
 
 
-def test_apply_step_is_a_tool_and_carries_the_kernels_own_result(doc, worker, tmp_path):
+def test_apply_step_is_a_tool_and_carries_the_kernels_own_result(doc, worker):
     """
     There is no rehearsal behind this Tool any more: the loop already ran the
     Step through the kernel and hands its result straight through.
     """
     pipeline = ApplyPipeline(document=doc, worker=worker,
-                             dispatch=lambda func, timeout=None: func(),
-                             render_dir=str(tmp_path))
+                             dispatch=lambda func, timeout=None: func())
     tools = build_registry(doc, pipeline=pipeline)
 
     assert "apply_step" in tools
@@ -325,7 +308,7 @@ def document_with_a_cut(tmp_path):
         FreeCAD.closeDocument(document.Name)
 
 
-def test_the_users_own_object_is_protected_end_to_end(doc, worker, tmp_path):
+def test_the_users_own_object_is_protected_end_to_end(doc, worker):
     """The whole rule, against a real Document: refuse a deletion, then allow it."""
     users_box = doc.addObject("Part::Box", "UsersBox")
     users_box.Length = 12
@@ -334,7 +317,6 @@ def test_the_users_own_object_is_protected_end_to_end(doc, worker, tmp_path):
     answers = []
     pipeline = ApplyPipeline(document=doc, worker=worker,
                             dispatch=lambda func, timeout=None: func(),
-                            render_dir=str(tmp_path),
                             confirm=lambda kinds: answers.pop(0))
 
     delete_code = "doc.removeObject('UsersBox')"
@@ -371,20 +353,6 @@ def test_each_applied_step_lands_as_exactly_one_undo_transaction(pipeline, doc, 
     assert len(doc.UndoNames) == 2, (
         "two Steps landed but the undo stack holds %r -- something other "
         "than a Step's own transaction is on it" % list(doc.UndoNames))
-
-
-def test_undo_step_takes_back_exactly_the_last_steps_objects(pipeline, doc, worker):
-    CYLINDER = "cyl = doc.addObject('Part::Cylinder', 'Cyl')\n"
-
-    pipeline.apply(BOX, label="Add the box",
-                  kernel_result=_kernel_result(worker, doc, BOX))
-    pipeline.apply(CYLINDER, label="Add the cylinder",
-                  kernel_result=_kernel_result(worker, doc, CYLINDER))
-
-    pipeline.undo_step()
-
-    assert [o.Name for o in doc.Objects] == ["Box"]
-    assert len(doc.UndoNames) == 1
 
 
 _A_BLOCK_WITH_A_HOLE = """

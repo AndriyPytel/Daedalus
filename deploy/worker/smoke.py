@@ -27,7 +27,6 @@ def main(out):
         gui = {
             "selection": freecad_apply._selection(),
             "active_view": freecad_apply._active_view(client.document),
-            "review_views": freecad_apply.capture_review_views(["/tmp/view.png"], client.document),
         }
     finally:
         client.close()

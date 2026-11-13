@@ -15,11 +15,10 @@ class _FakeConfig:
         return self._dist
 
 
-def test_split_scope_merges_the_three_sheet_files_under_loadfile(monkeypatch):
+def test_split_scope_merges_the_sheet_files_under_loadfile(monkeypatch):
     """
-    The three files that share `tests/modelmania/*.pdf`
-    (test_sheet_reader.py, test_modelmania_evidence.py,
-    test_sketch_check_level2.py) must land in one xdist scope so
+    The files that share `tests/modelmania/*.pdf`
+    (test_sheet_reader.py, test_modelmania_evidence.py) must land in one xdist scope so
     `sheet_cache` is the same dict for all of them; an unrelated file keeps
     `loadfile`'s ordinary per-file scope.
     """
@@ -35,7 +34,6 @@ def test_split_scope_merges_the_three_sheet_files_under_loadfile(monkeypatch):
         for nodeid in (
             "tests/test_sheet_reader.py::test_something",
             "tests/test_modelmania_evidence.py::test_other",
-            "tests/test_sketch_check_level2.py::TestClass::test_method",
         )
     }
     assert sheet_scopes == {"sheets"}

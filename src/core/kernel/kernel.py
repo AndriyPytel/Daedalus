@@ -299,11 +299,6 @@ class Kernel:
         self._needs_resume = False
         return KernelResult.from_response(response)
 
-    def reading(self, request, timeout=None):
-        """Put one traced outline to the solver in the kernel, and hand back its reply."""
-        response, _ = self._ask(request, timeout or self.timeout, "the reading")
-        return response if response and response.get("ok") else None
-
     def _ask(self, request, timeout, doing):
         """
         One request down the pipe, one reply back, and a dead kernel replaced.

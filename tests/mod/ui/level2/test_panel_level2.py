@@ -2753,10 +2753,10 @@ def test_a_tool_call_row_carries_how_long_the_call_took(panel):
     from ui.accordion_widget import AccordionWidget
 
     panel.on_event(Event(kind=INTENT, data={"text": "a plain box"}))
-    panel.on_event(Event(kind=TOOL_CALL, data={"name": "review_views", "arguments": {}},
+    panel.on_event(Event(kind=TOOL_CALL, data={"name": "base_inventory", "arguments": {}},
                          at=1000.0))
     panel.on_event(Event(kind=TOOL_RESULT,
-                         data={"name": "review_views", "result": {"status": "done"}},
+                         data={"name": "base_inventory", "result": {"status": "done"}},
                          at=1003.2))
     QT_APP.processEvents()
 
