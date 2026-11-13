@@ -59,6 +59,18 @@ def test_a_step_that_leaves_no_solid_writes_nothing(tmp_path):
     assert os.listdir(tmp_path) == []
 
 
+def test_every_applied_step_is_recorded_once_its_step_is_written(tmp_path):
+    client = _Client()
+    path = str(tmp_path / "made.step")
+    recorded = []
+    run.save_each_step(client, path, record=lambda saved: recorded.append(open(saved).read()))
+
+    client.events.emit(APPLIED, step=1)
+    client.events.emit(APPLIED, step=2)
+
+    assert recorded == ["STEP 1", "STEP 2"]
+
+
 def test_a_save_that_is_not_a_step_is_left_to_the_final_export(tmp_path):
     client = _Client()
     run.save_each_step(client, str(tmp_path / "made.FCStd"))
@@ -131,4 +143,5 @@ def test_a_run_killed_after_two_applied_steps_leaves_a_step_holding_them(tmp_pat
 
     shape = Part.read(save)
     assert len(shape.Solids) == 2
-    assert set(os.listdir(tmp_path)) == {"driver.py", "run.jsonl", "run.step"}
+    assert json.load(open(str(tmp_path / "run.json")))["solids"] == 2
+    assert set(os.listdir(tmp_path)) == {"driver.py", "run.jsonl", "run.step", "run.json"}

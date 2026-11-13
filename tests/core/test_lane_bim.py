@@ -9,6 +9,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.insert(0, os.path.join(ROOT, "src", "tools"))
 
 import lane  # noqa: E402
+from task import Task  # noqa: E402
 
 
 def _task(root, label="create_01"):
@@ -20,41 +21,27 @@ def _task(root, label="create_01"):
     return folder
 
 
-def _command(monkeypatch, **extra):
-    seen = []
-    monkeypatch.setattr(lane.subprocess, "Popen", lambda cmd: seen.append(cmd))
-    lane.run_one("t", "", "opus", "medium", 8.0, "/tmp/t.jsonl", "Do it.", "Claude (subscription)",
-                 **extra)
-    return seen[0]
-
-
-def test_a_bim_run_names_its_domain_and_saves_an_ifc(monkeypatch):
-    cmd = _command(monkeypatch, domain="bim")
-
-    assert cmd[cmd.index("--domain") + 1] == "bim"
-    assert cmd[cmd.index("--save") + 1] == "/tmp/t.ifc"
-
-
 def test_a_task_is_its_text_and_its_plan_by_absolute_path(tmp_path):
     folder = _task(tmp_path)
 
-    intent, attachments = lane.bim_task(str(folder))
+    opened = Task.open(str(folder))
 
-    assert intent == "Model the flat on the plan."
-    assert attachments == [str(folder / "plan.png")]
+    assert opened.intent == "Model the flat on the plan."
+    assert opened.attachments == [str(folder / "plan.png")]
 
 
-def test_labels_are_read_back_from_an_earlier_sample(tmp_path):
+def test_labels_are_read_back_from_an_earlier_sample(tmp_path, monkeypatch):
+    monkeypatch.setenv("DAE_TEST_DATA_DIR", str(tmp_path))
     (tmp_path / "labels.txt").write_text("create_02 create_03\n")
 
     tasks = lane.sampled_bim_tasks("validation", None, str(tmp_path), str(tmp_path / "labels.txt"))
 
     assert [label for label, _ in tasks] == ["create_02", "create_03"]
-    assert tasks[0][1] == os.path.join(lane.BIM_DIR, "create", "create_02")
+    assert tasks[0][1] == os.path.join(lane.bim_dir(), "create", "create_02")
 
 
 def test_a_sample_is_drawn_from_the_split_and_its_labels_written(tmp_path, monkeypatch):
-    monkeypatch.setattr(lane, "BIM_DIR", str(tmp_path / "bim"))
+    monkeypatch.setenv("DAE_TEST_DATA_DIR", str(tmp_path))
     (tmp_path / "bim").mkdir()
     (tmp_path / "bim" / "split.json").write_text(json.dumps(
         {"create": {"validation": ["create_01", "create_11", "create_15"], "test": []}}))
@@ -83,31 +70,19 @@ def _edit_task(root, label="edit_02"):
     folder = root / "edit" / label
     folder.mkdir(parents=True)
     (folder / "task.json").write_text(json.dumps({"text": "Remove Window_WIN3.",
-                                                  "inputs": {"input": "input.FCStd", "edit": "remove_window"}}))
+                                                  "inputs": {"input": "input.FCStd", "input_ifc": "input.ifc", "edit": "remove_window"}}))
     (folder / "input.FCStd").write_bytes(b"x")
     return folder
 
 
 def test_an_edit_task_is_its_text_and_has_no_plan(tmp_path):
-    assert lane.bim_task(str(_edit_task(tmp_path))) == ("Remove Window_WIN3.", [])
+    opened = Task.open(str(_edit_task(tmp_path)))
 
-
-def test_a_bim_edit_run_opens_the_document_and_leaves_consent_to_the_intent(monkeypatch):
-    cmd = _command(monkeypatch, domain="bim", base_document="/d/edit_02/input.FCStd")
-
-    assert cmd[cmd.index("--base-document") + 1] == "/d/edit_02/input.FCStd"
-
-
-def test_a_native_ifc_edit_run_opens_the_input_ifc_and_saves_an_ifc(monkeypatch):
-    cmd = _command(monkeypatch, domain="bim", base_ifc="/d/edit_02/input.ifc")
-
-    assert cmd[cmd.index("--base-ifc") + 1] == "/d/edit_02/input.ifc"
-    assert "--base-document" not in cmd
-    assert cmd[cmd.index("--save") + 1] == "/tmp/t.ifc"
+    assert (opened.intent, opened.attachments) == ("Remove Window_WIN3.", [])
 
 
 def test_labels_are_drawn_from_the_edit_split(tmp_path, monkeypatch):
-    monkeypatch.setattr(lane, "BIM_DIR", str(tmp_path / "bim"))
+    monkeypatch.setenv("DAE_TEST_DATA_DIR", str(tmp_path))
     (tmp_path / "bim").mkdir()
     (tmp_path / "bim" / "split.json").write_text(json.dumps(
         {"edit": {"validation": ["edit_01", "edit_11"], "test": []}}))
@@ -127,7 +102,7 @@ def test_the_edit_rows_score_against_the_reference_and_the_input(monkeypatch, tm
     (out / "edit_02.ifc").write_text("saved")
     (out / "state.json").write_text(json.dumps({"runs": {"edit_02/opus": {
         "label": "edit_02", "log": str(log), "returncode": 0}}}))
-    monkeypatch.setattr(lane, "BIM_DIR", str(tmp_path / "bim"))
+    monkeypatch.setenv("DAE_TEST_DATA_DIR", str(tmp_path))
     seen = []
     sys.path.insert(0, os.path.join(ROOT, "harness"))
     import bim_score
@@ -139,27 +114,27 @@ def test_the_edit_rows_score_against_the_reference_and_the_input(monkeypatch, tm
     assert rows[0]["kind"] == "remove_window" and rows[0]["score"] == 0.5
 
 
-def test_the_task_folder_is_never_attached_to_a_run(monkeypatch, tmp_path):
+def test_a_native_ifc_edit_is_run_natively_and_saves_an_ifc(tmp_path):
     folder = _edit_task(tmp_path / "bim")
     seen = []
 
     class Done:
         returncode = 0
 
-    def fake_run_one(label, sheet, *args, **kwargs):
-        seen.append((sheet, kwargs.get("attach")))
-        open(args[3][:-len(".jsonl")] + ".ifc", "w").write("saved")
-        open(args[3], "w").close()
+    def fake_run_one(label, path, model, effort, budget_usd, log, intent, provider, native=False):
+        seen.append((path, native))
+        open(log[:-len(".jsonl")] + ".ifc", "w").write("saved")
+        open(log, "w").close()
         return Done()
 
-    monkeypatch.setattr(lane, "run_one", fake_run_one)
-    monkeypatch.setattr(lane, "watch", lambda *a, **k: "exited")
-
     lane.sweep([("edit_02", str(folder))], ["opus"], "medium", 3.0, "unused", str(tmp_path / "out"),
-               1800, 1, False, "Claude (subscription)", None, domain="bim",
-               task_folders={"edit_02": str(folder)})
+               1800, 1, False, "Claude (subscription)", None, native=True,
+               run_one=fake_run_one, watch=lambda *a, **k: "exited")
 
-    assert seen == [("", [])]
+    assert seen == [(str(folder), True)]
+    cmd = lane.run_command(str(folder), "opus", "medium", None, "/tmp/t.jsonl", "unused",
+                           "Claude (subscription)", native=True)
+    assert "--native" in cmd and cmd[cmd.index("--save") + 1] == "/tmp/t.ifc"
 
 
 def _storeys_task(root, label="storeys_02"):
@@ -172,7 +147,7 @@ def _storeys_task(root, label="storeys_02"):
 
 
 def test_labels_are_drawn_from_the_storeys_split(tmp_path, monkeypatch):
-    monkeypatch.setattr(lane, "BIM_DIR", str(tmp_path / "bim"))
+    monkeypatch.setenv("DAE_TEST_DATA_DIR", str(tmp_path))
     (tmp_path / "bim").mkdir()
     (tmp_path / "bim" / "split.json").write_text(json.dumps(
         {"storeys": {"validation": ["storeys_01", "storeys_11"], "test": []}}))
@@ -184,9 +159,9 @@ def test_labels_are_drawn_from_the_storeys_split(tmp_path, monkeypatch):
 
 
 def test_a_storeys_task_is_its_text_and_its_plan(tmp_path):
-    text, attach = lane.bim_task(str(_storeys_task(tmp_path)))
+    opened = Task.open(str(_storeys_task(tmp_path)))
 
-    assert text.startswith("Model a building of 3 storeys") and attach[0].endswith("plan.png")
+    assert opened.intent.startswith("Model a building of 3 storeys") and opened.attachments[0].endswith("plan.png")
 
 
 def test_the_storeys_table_has_the_storeys_mean_and_the_stairs_factor_per_task():
@@ -208,7 +183,7 @@ def test_the_storeys_rows_score_the_saved_building_against_the_reference(monkeyp
     (out / "storeys_02.ifc").write_text("saved")
     (out / "state.json").write_text(json.dumps({"runs": {"storeys_02/opus": {
         "label": "storeys_02", "log": str(log), "returncode": 0}}}))
-    monkeypatch.setattr(lane, "BIM_DIR", str(tmp_path / "bim"))
+    monkeypatch.setenv("DAE_TEST_DATA_DIR", str(tmp_path))
     seen = []
     sys.path.insert(0, os.path.join(ROOT, "harness"))
     import bim_score
