@@ -2545,40 +2545,23 @@ def _write_a_png(path):
     assert picture.save(path, "PNG")
 
 
-def test_a_review_that_passed_still_says_so_in_the_transcript(panel, tmp_path):
+def test_a_review_that_passed_still_says_so_in_the_transcript(panel):
     """The other half: nothing asks anything after a pass, so the line is all there is."""
-    _review_transcript_evidence(panel, tmp_path, verdict="pass",
-                                reason="it matches the drawing")
+    _review_transcript_evidence(panel, verdict="pass", reason="it matches the drawing")
 
     assert "it matches the drawing" in _said_in(panel)
 
     panel._reset_render_state()
 
 
-def _review_transcript_evidence(panel, tmp_path, verdict="fail",
-                                reason="the flange is mirrored"):
-    """
-    What `_update_review_evidence` reads off the stream before a Review
-    verdict's own `on_revision` is asked anything: the acceptance
-    checks, the four views `review_views` wrote, and the verdict itself.
-    """
-    from conftest import QtGui
-
-    from core.events import ASSERTION, Event, REVIEW_VERDICT, TOOL_RESULT
-
-    views = []
-    for name in ("iso.png", "front.png", "top.png", "right.png"):
-        path = str(tmp_path / name)
-        QtGui.QPixmap(40, 30).save(path)
-        views.append(path)
+def _review_transcript_evidence(panel, verdict="fail", reason="the flange is mirrored"):
+    """What the stream carries before a Review verdict: the acceptance checks, then the verdict."""
+    from core.events import ASSERTION, Event, REVIEW_VERDICT
 
     panel.on_event(Event(ASSERTION, {"ok": True, "code": "assert True",
                                      "confirmed": ["the bore is centred"],
                                      "uncovered": [], "traceback": ""}))
-    panel.on_event(Event(TOOL_RESULT, {"name": "review_views",
-                                       "result": {"views": views}}))
     panel.on_event(Event(REVIEW_VERDICT, {"verdict": verdict, "reason": reason}))
-    return views
 
 
 def test_reasoning_streams_inline_and_never_pins_to_the_queue(panel):
@@ -2887,10 +2870,10 @@ def test_a_tool_call_row_carries_how_long_the_call_took(panel):
     from ui.accordion_widget import AccordionWidget
 
     panel.on_event(Event(kind=INTENT, data={"text": "a plain box"}))
-    panel.on_event(Event(kind=TOOL_CALL, data={"name": "review_views", "arguments": {}},
+    panel.on_event(Event(kind=TOOL_CALL, data={"name": "base_inventory", "arguments": {}},
                          at=1000.0))
     panel.on_event(Event(kind=TOOL_RESULT,
-                         data={"name": "review_views", "result": {"status": "done"}},
+                         data={"name": "base_inventory", "result": {"status": "done"}},
                          at=1003.2))
     QT_APP.processEvents()
 

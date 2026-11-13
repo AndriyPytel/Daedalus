@@ -4,7 +4,7 @@ Level 1 — which view the camera work moves when the Document has more than one
 `ActiveDocument.ActiveView` is whichever tab is in front, and a Spreadsheet or
 a TechDraw page is a tab of the same Document. Neither has a camera: reading
 one as the viewport raised AttributeError out of a Step that had already
-landed, and out of the Review capture at the end of a run.
+landed.
 
 The recovery is the one FreeCAD's own Show module makes — ask the view for a
 camera, and where there is none take the Document's 3D view instead. Faked
@@ -16,70 +16,24 @@ import types
 
 import pytest
 
-from core.freecad_apply import REVIEW_VIEWS, _OPPOSITE_ISOMETRIC, _SECTION_VIEW, capture_review_views, fit_view
-
-TURNED = ["viewIsometric", "viewIsometric", _OPPOSITE_ISOMETRIC, "viewTop", "viewFront"]
-"""
-The camera moves a capture makes, in order, for a Document that has a section
-to cut.
-
-`viewIsometric` twice because each capture is dispatched on its own and puts
-the camera back after itself: the opposite isometric turns to isometric first
-and mirrors that, rather than mirroring whatever the capture before it left.
-"""
+from core.freecad_apply import fit_view
 
 
 class SpreadsheetView:
     """A tab with no camera: what a Spreadsheet or a TechDraw page offers."""
 
 
-class FakeRotation:
-    """Enough of `Base.Rotation` for the opposite isometric's own multiply."""
-
-    def __init__(self, note):
-        self.note = note
-
-    def multiply(self, other):
-        return FakeRotation((self.note, "*", other))
-
-
 class View3D:
-    """Enough of View3DInventorPy for the three things that move the camera."""
+    """Enough of View3DInventorPy for the one thing that moves the camera."""
 
     def __init__(self):
-        self.camera = "wherever the user left it"
-        self.orientation = FakeRotation("front-right-top")
         self.fits = 0
-        self.turned = []
-        self.saved = []
-        self.clipped = []
 
     def getCamera(self):
-        return self.camera
-
-    def setCamera(self, camera):
-        self.camera = camera
-
-    def getCameraOrientation(self):
-        return self.orientation
-
-    def setCameraOrientation(self, orientation):
-        self.orientation = orientation
-        self.turned.append(_OPPOSITE_ISOMETRIC)
+        return "wherever the user left it"
 
     def fitAll(self):
         self.fits += 1
-
-    def saveImage(self, path, width, height, background):
-        self.saved.append(path)
-
-    def toggleClippingPlane(self, toggle=-1, beforeEditing=False, noManip=True, pla=None):
-        self.clipped.append((toggle, pla))
-
-    def __getattr__(self, name):
-        if name not in REVIEW_VIEWS:
-            raise AttributeError(name)
-        return lambda: self.turned.append(name)
 
 
 class GuiDocument:
@@ -99,7 +53,7 @@ class BoundDocument:
 
 
 @pytest.fixture
-def gui(monkeypatch, section):
+def gui(monkeypatch):
     def open_tabs(in_front, views):
         module = types.ModuleType("FreeCADGui")
         module.ActiveDocument = GuiDocument(in_front, views)
@@ -109,21 +63,7 @@ def gui(monkeypatch, section):
 
 
 @pytest.fixture
-def section(monkeypatch):
-    """
-    A section plane to clip against, without a real Document to compute one
-    from — this file fakes the Gui layer only. `_section_plane`'s own read of
-    real geometry is Level 2's job (`test_freecad_tools_level2.py`).
-    """
-    import FreeCAD
-
-    plane = FreeCAD.Placement()
-    monkeypatch.setattr("core.freecad_apply._section_plane", lambda document: plane)
-    return plane
-
-
-@pytest.fixture
-def two_documents_open(monkeypatch, section):
+def two_documents_open(monkeypatch):
     """
     Two Documents open at once, one of them in front — the case no headless
     FreeCAD can have, which is exactly the case a Session bound to the
@@ -164,85 +104,6 @@ def test_a_document_showing_no_3d_view_at_all_is_not_a_failure(gui):
     assert fit_view() is None
 
 
-def test_review_captures_from_the_3d_view_with_a_spreadsheet_in_front(gui, tmp_path):
-    viewport = View3D()
-    gui(SpreadsheetView(), [viewport])
-    paths = [str(tmp_path / (name + ".png")) for name in REVIEW_VIEWS]
-
-    written = capture_review_views(paths)
-
-    assert written == paths
-    assert viewport.turned == TURNED
-    assert viewport.camera == "wherever the user left it"
-
-
-def test_each_review_view_is_a_job_of_its_own(gui, tmp_path):
-    """
-    Every dispatched job holds the Qt main thread until it returns. Five
-    renders in one job is the longest block a run has, and the GUI can neither
-    repaint nor take a click for the whole of it — so each view is dispatched
-    on its own and the main thread gets its event loop back between them.
-    """
-    gui(SpreadsheetView(), [View3D()])
-    paths = [str(tmp_path / (name + ".png")) for name in REVIEW_VIEWS]
-    jobs = []
-
-    def dispatch(func):
-        jobs.append(func)
-        return func()
-
-    capture_review_views(paths, dispatch=dispatch)
-
-    assert len(jobs) == len(REVIEW_VIEWS) + 1, "the view is read in a job of its own too"
-
-
-def test_review_with_no_3d_view_leaves_the_rasteriser_to_it(gui, tmp_path):
-    gui(SpreadsheetView(), [])
-
-    assert capture_review_views([str(tmp_path / "iso.png")]) == []
-
-
-def test_the_section_view_clips_through_the_part_and_the_clip_plane_comes_off(gui, tmp_path):
-    """
-    A clip plane left on is the camera-restore guarantee's own failure mode
-    one step further along: not a moved camera, but a viewport that still
-    shows a cutaway of the user's part after the run.
-    """
-    viewport = View3D()
-    gui(SpreadsheetView(), [viewport])
-    paths = [str(tmp_path / (name + ".png")) for name in REVIEW_VIEWS]
-
-    capture_review_views(paths)
-
-    assert [toggle for toggle, _ in viewport.clipped] == [1, 0]
-
-
-def test_the_clip_plane_comes_off_even_when_the_section_capture_raises(gui, tmp_path):
-    """
-    The camera-restore guarantee names the clip plane in the same
-    breath as the camera, but `saveImage` can raise mid-section — a bad
-    path is exactly what a Preflight run can hit. A `finally` that only
-    calls `view.setCamera` leaves the plane on for the rest of the user's
-    session.
-    """
-    viewport = View3D()
-    gui(SpreadsheetView(), [viewport])
-    paths = [str(tmp_path / (name + ".png")) for name in REVIEW_VIEWS]
-
-    def raise_on_section(path, width, height, background):
-        if path == paths[REVIEW_VIEWS.index(_SECTION_VIEW)]:
-            raise RuntimeError("saveImage failed")
-        viewport.saved.append(path)
-
-    viewport.saveImage = raise_on_section
-
-    with pytest.raises(RuntimeError):
-        capture_review_views(paths)
-
-    assert [toggle for toggle, _ in viewport.clipped] == [1, 0]
-    assert viewport.camera == "wherever the user left it"
-
-
 def test_fit_view_moves_the_bound_documents_camera_not_the_focused_tabs(two_documents_open):
     """
     A Session bound to a Document fits that Document's own view
@@ -255,15 +116,3 @@ def test_fit_view_moves_the_bound_documents_camera_not_the_focused_tabs(two_docu
     fit_view(BoundDocument("Background"))
 
     assert (background.fits, focused.fits) == (1, 0)
-
-
-def test_capture_review_views_reads_the_bound_documents_view(two_documents_open, tmp_path):
-    focused, background = View3D(), View3D()
-    two_documents_open(focused, background)
-    paths = [str(tmp_path / (name + ".png")) for name in REVIEW_VIEWS]
-
-    written = capture_review_views(paths, BoundDocument("Background"))
-
-    assert written == paths
-    assert background.turned == TURNED
-    assert focused.turned == []

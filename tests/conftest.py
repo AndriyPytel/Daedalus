@@ -267,13 +267,12 @@ def pytest_collection_modifyitems(config, items):
 _SHEET_TEST_FILES = {
     "test_sheet_reader.py",
     "test_modelmania_evidence.py",
-    "test_sketch_check_level2.py",
 }
 
 
 def pytest_xdist_make_scheduler(config, log):
     """
-    Puts the three files that share `tests/modelmania/*.pdf` on one worker
+    Puts the two files that share `tests/modelmania/*.pdf` on one worker
     under `--dist loadfile`.
 
     `@pytest.mark.xdist_group("sheets")` on those files, as the ticket asks
@@ -283,7 +282,7 @@ def pytest_xdist_make_scheduler(config, log):
     scopes every *other*, unmarked test to itself instead of its file —
     switching the whole suite's `--dist` would cost every other module the
     file-level batching it already relies on. This scheduler keeps
-    `loadfile`'s behaviour for every file except these three, which it
+    `loadfile`'s behaviour for every file except these two, which it
     merges into one scope so `sheet_cache`'s session fixture is the same
     dict for all of them.
     """

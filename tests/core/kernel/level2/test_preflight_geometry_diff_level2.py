@@ -10,7 +10,7 @@ have a different Shape within one Preflight call (`core/kernel_worker.py`),
 so a per-Step "untouched but moved" check can only ever fire on a legitimate
 dependency cascade (`tests/test_apply_level2.py::
 test_a_dependent_recompute_is_not_reported_as_a_modification`). What
-Preflight can measure, and what `check_assertions` hands the Assertion phase
+Preflight can measure, and what a check hands the Assertion phase
 every time it runs, is the current fingerprint -- Volume and BoundBox, read
 straight off `KernelResult.geometry` (`core/kernel_worker.py::
 _geometry_snapshot`). This is that wiring, proved against a real Document;

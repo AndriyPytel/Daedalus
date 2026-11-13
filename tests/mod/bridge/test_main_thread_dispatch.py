@@ -264,7 +264,6 @@ def _core_sources():
 
 MAKES_A_DOCUMENT = {
     "kernel_worker.py": "is the child",
-    "sketch_check.py": "runs in the child",
     "freecad_apply.py": "hidden=True, temp=True, and known",
 }
 
@@ -273,8 +272,7 @@ def test_only_the_child_makes_a_document():
     """
     The rule `core/freecad_apply.py` states, checked against the source rather than
     trusted: a Document mutation off the main thread is how FreeCAD gets taken
-    down, and the loop's phases all run on the worker thread. Adding
-    `sketch_check` to `_describe_the_part` once made the window disappear mid-run.
+    down, and the loop's phases all run on the worker thread.
 
     An allowlist, so a new caller has to come and argue with this test.
     """
@@ -291,32 +289,6 @@ def test_only_the_child_makes_a_document():
     assert found <= set(MAKES_A_DOCUMENT), \
         "these make a Document in the addon's own process: %s" % sorted(
             found - set(MAKES_A_DOCUMENT))
-
-
-def test_the_loop_never_builds_the_reading_itself():
-    """
-    `sketch_check.checked` is the child's entry point. The loop's is
-    `checked_by`, which sends the outline down the pipe — and the difference
-    between them is the FreeCAD window staying open.
-    """
-    import ast
-    import os
-
-    loop_dir = os.path.join(os.path.abspath(list(core.__path__)[0]), "loop")
-    called = []
-    for filename in os.listdir(loop_dir):
-        if filename.endswith(".py"):
-            path = os.path.join(loop_dir, filename)
-            with open(path, encoding="utf-8") as handle:
-                tree = ast.parse(handle.read(), path)
-            called.extend(
-                node.func.attr for node in ast.walk(tree)
-                if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "sketch_check"
-            )
-
-    assert "checked" not in called, "the loop builds the reading in its own process"
 
 
 def _install_fake_freecad_console(tmp_path):

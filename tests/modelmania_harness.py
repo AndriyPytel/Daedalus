@@ -79,15 +79,3 @@ def the_2023_clamp_as_read():
     """
     with READING_2023.open(encoding="utf-8") as reading:
         return json.load(reading)
-
-
-def verdicts(sheets):
-    """Build every traced outline against the dimensions its sheet supplies."""
-    from core.sheets import sketch_check
-
-    return [
-        (name, sketch_check.checked(outline, view.view, sheet.between))
-        for name, sheet in sheets.items()
-        for view in sheet.drawn
-        for outline in view.outlines
-    ]
