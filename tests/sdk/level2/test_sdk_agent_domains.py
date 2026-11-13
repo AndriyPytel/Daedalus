@@ -119,13 +119,13 @@ def test_the_domain_comes_from_the_documents_assembly_with_no_call_and_from_the_
     llm = ScriptedLLMClient(["part"])
     client = _client(llm, kernel)
 
-    assert client.domain_for("Make a bracket.") == "part"
-    assert len(llm.calls) == 1
-
+    client.send("Make a bracket.", route_first=False, cancelled=lambda: len(llm.calls) >= 1)
     client.document.addObject("Assembly::AssemblyObject", "Assembly")
+    client.send("Make a bracket.", route_first=False, cancelled=lambda: len(llm.calls) >= 1)
 
-    assert client.domain_for("Make a bracket.") == ASSEMBLY
+    assert [e.data["domain"] for e in client.seen if e.kind == DOMAIN] == ["part", ASSEMBLY]
     assert len(llm.calls) == 1
+    client.close()
 
 
 def test_a_subscribed_but_still_empty_stream_receives_the_domain_and_its_cost(kernel):
@@ -133,7 +133,7 @@ def test_a_subscribed_but_still_empty_stream_receives_the_domain_and_its_cost(ke
     seen = []
     stream = EventStream([seen.append])
 
-    client.domain_for("Make a bracket.", events=stream)
+    client.send("Make a bracket.", route_first=False, events=stream, cancelled=lambda: True)
     client.close()
 
     assert {DOMAIN, COST} <= {event.kind for event in seen}

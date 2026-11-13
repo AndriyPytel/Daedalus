@@ -14,6 +14,9 @@ import threading
 from sdk import Client, set_api_keys, set_base_urls, set_effort, set_last_model
 
 
+AFFIRMATIVE = ("y", "yes", "ok", "true")
+
+
 def artifacts(client, directory):
     """The `(kind, name, bytes)` of what a Run leaves: its STEP when the model has a solid, then its FCStd checkpoint."""
     found = []
@@ -65,21 +68,25 @@ def apply_settings(settings):
 def main():
     channel, sys.stdout = sys.stdout, sys.stderr
     write = threading.Lock()
-    jobs, answers, cancelled, current = queue.Queue(), queue.Queue(), threading.Event(), {"confirm": False}
+    jobs, answers, cancelled = queue.Queue(), queue.Queue(), threading.Event()
+    current = {"confirm": False, "interactive": False}
 
     def put(**message):
         with write:
             channel.write(json.dumps(message, default=str) + "\n")
             channel.flush()
 
-    def ask(question):
-        put(op="question", text=question)
+    def confirm(kinds):
+        if not current["interactive"]:
+            return current["confirm"]
+        put(op="question", text="Allow the assistant to delete %s?" % ", ".join(
+            name for names in kinds.values() for name in names))
         while not cancelled.is_set():
             try:
-                return answers.get(timeout=0.2)
+                return answers.get(timeout=0.2).strip().lower() in AFFIRMATIVE
             except queue.Empty:
                 continue
-        return ""
+        return False
 
     def listen():
         for line in sys.stdin:
@@ -107,8 +114,7 @@ def main():
             path = os.path.join(directory, "restored.FCStd")
             with open(path, "wb") as out:
                 out.write(base64.b64decode(restore["checkpoint"]))
-        opened = Client(document=path, confirm=lambda kinds: current["confirm"])
-        opened.session.messages.extend(restore.get("history") or ())
+        opened = Client(document=path, confirm=confirm, history=restore.get("history") or ())
         opened.watch(budget.watch)
         opened.watch(lambda event: put(op="event", kind=event.kind, at=event.at, data=event.data))
         return opened
@@ -121,6 +127,7 @@ def main():
             break
         answers.queue.clear()
         current["confirm"] = job.get("confirm") is True
+        current["interactive"] = job.get("interactive") is True
         settings = job.get("settings") or {}
         apply_settings(settings)
         budget.start(settings.get("budget_usd"))
