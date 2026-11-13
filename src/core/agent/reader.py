@@ -27,7 +27,7 @@ THIN_FAMILIES = ("cover/tray", "cored casting")
 NO_CHANGE = 1e-4
 MESH_CHECK_TIMEOUT = 90
 
-PART_FACTS = """
+FACTS_CHECK = """
 import json
 from core.agent.solids import top_solids
 from core.manifold import mesh_facts_fc
@@ -65,7 +65,7 @@ UNMEASURABLE = "The Document could not be measured. Check that it recomputes, th
 
 def unfinished_part(kernel):
     """Why the Part Domain is not finished: the feature tree, the solid count and the grader's mesher and STEP reader, or `None`."""
-    return domain_unfinished(kernel, PART_FACTS, lambda facts: refusals(facts, None, asserting=False),
+    return domain_unfinished(kernel, FACTS_CHECK, lambda facts: refusals(facts, None, asserting=False),
                              "Part", UNMEASURABLE, MESH_CHECK_TIMEOUT)
 
 
@@ -242,7 +242,7 @@ def assert_part(kernel, sheet, table, renders, events):
     """
     What to send back at the first `finish`: the differences found, the part in each view the table names beside that view's crop, and the order to compare them, with the names of the views drawn; `None` where there is neither a difference nor a picture to compare.
     """
-    facts = kernel.measure(PART_FACTS, timeout=MESH_CHECK_TIMEOUT)
+    facts = kernel.measure(FACTS_CHECK, timeout=MESH_CHECK_TIMEOUT)
     found = refusals(facts, table) if facts else []
     blocks, drawn_views = [], {}
     for entry in (table or {}).get("views") or ():

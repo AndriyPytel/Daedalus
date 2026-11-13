@@ -82,11 +82,11 @@ doc.recompute()
 
 
 def _facts(kernel, code):
-    from core.agent.reader import PART_FACTS
+    from core.agent.reader import FACTS_CHECK
 
     built = kernel.rehearse(code)
     assert built.ok, built.traceback
-    return kernel.measure(PART_FACTS, timeout=90)
+    return kernel.measure(FACTS_CHECK, timeout=90)
 
 
 def test_a_good_solid_is_measured_meshable_and_reads_back_valid(kernel):

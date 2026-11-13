@@ -2,7 +2,7 @@
 The Part Domain refuses `finish` over one facts dict: the feature tree, the solid count, the grader's mesher and the STEP's read-back.
 """
 from core.agent import reader
-from core.agent.reader import PART_FACTS, refusals
+from core.agent.reader import FACTS_CHECK, refusals
 from tests.fake_kernel import FakeKernel
 
 GOOD = {"solid": True, "solids": 1, "tree_faults": [], "extents": [100.0, 50.0, 10.0], "volume": 40000.0,
@@ -83,8 +83,8 @@ def test_part_finish_makes_one_measure_call():
     reader.unfinished_part(refused)
     reader.assert_part(asserted, None, None, "/tmp", None)
 
-    assert [script for script, _ in refused.measured] == [PART_FACTS]
-    assert [script for script, _ in asserted.measured] == [PART_FACTS]
+    assert [script for script, _ in refused.measured] == [FACTS_CHECK]
+    assert [script for script, _ in asserted.measured] == [FACTS_CHECK]
 
 
 def test_the_part_domain_speaks_no_second_protocol():
