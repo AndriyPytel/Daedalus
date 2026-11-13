@@ -40,7 +40,8 @@ body.Tip = feat
 
 
 def test_a_step_that_makes_a_tangent_contact_names_the_two_faces(worker):
-    result = worker.check(BODY_WITH_A_POCKET % {"r": 8, "y": 52}, None)
+    assert worker.seed().ok
+    result = worker.rehearse(BODY_WITH_A_POCKET % {"r": 8, "y": 52})
 
     assert not result.ok
     assert "is tangent to face" in result.traceback
@@ -49,6 +50,7 @@ def test_a_step_that_makes_a_tangent_contact_names_the_two_faces(worker):
 
 
 def test_the_same_pocket_moved_off_the_wall_passes(worker):
-    result = worker.check(BODY_WITH_A_POCKET % {"r": 8, "y": 40}, None)
+    assert worker.seed().ok
+    result = worker.rehearse(BODY_WITH_A_POCKET % {"r": 8, "y": 40})
 
     assert result.ok, result.traceback

@@ -58,7 +58,7 @@ def a_box_with_a_fillet():
 
 
 def test_a_successful_check_carries_a_fingerprint_for_every_feature(worker, a_box_with_a_fillet):
-    result = worker.check("pass\n", a_box_with_a_fillet)
+    result = worker.seed(a_box_with_a_fillet)
 
     assert result.ok, result.traceback
     assert set(result.geometry) == {"Box", "Fillet"}
@@ -67,14 +67,14 @@ def test_a_successful_check_carries_a_fingerprint_for_every_feature(worker, a_bo
 
 
 def test_editing_the_box_moves_the_fillets_own_fingerprint_too(worker, a_box_with_a_fillet):
-    before = worker.check("pass\n", a_box_with_a_fillet).geometry["Fillet"]
+    before = worker.seed(a_box_with_a_fillet).geometry["Fillet"]
 
-    after = worker.check(
+    worker.seed(a_box_with_a_fillet)
+    after = worker.rehearse(
         "box = doc.getObject('Box')\n"
         "box.Length = 15\n"
         "box.Width = 15\n"
-        "box.Height = 15\n",
-        a_box_with_a_fillet,
+        "box.Height = 15\n"
     ).geometry["Fillet"]
 
     assert before != after, \
@@ -82,7 +82,7 @@ def test_editing_the_box_moves_the_fillets_own_fingerprint_too(worker, a_box_wit
 
 
 def test_a_check_that_touches_nothing_reports_the_same_fingerprint_twice(worker, a_box_with_a_fillet):
-    first = worker.check("pass\n", a_box_with_a_fillet).geometry
-    second = worker.check("pass\n", a_box_with_a_fillet).geometry
+    first = worker.seed(a_box_with_a_fillet).geometry
+    second = worker.seed(a_box_with_a_fillet).geometry
 
     assert first == second, "an unedited copy fingerprinted differently across two calls"

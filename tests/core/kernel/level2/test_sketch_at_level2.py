@@ -31,19 +31,22 @@ def test_a_circle_at_local_origin_lands_at_the_requested_coordinate(worker, norm
         "sketch.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 5), False)\n"
         "doc.recompute()\n"
         "centre = sketch.Placement.multVec(App.Vector(0, 0, 0))\n"
-        "held = [centre.x, centre.y, centre.z, sketch.Label]\n"
+        "import json\n"
+        "print('FACTS ' + json.dumps([centre.x, centre.y, centre.z, sketch.Label]))\n"
     ) % (normal, at)
 
-    result = worker.check(code, None)
+    assert worker.seed().ok
+    facts = worker.measure(code)
 
-    assert result.ok, result.traceback
+    assert facts is not None
     expected = [0.0, 0.0, 0.0]
     expected[AXES[normal]] = at
-    assert result.held[:3] == pytest.approx(expected, abs=1e-6)
-    assert result.held[3] == "S"
+    assert facts[:3] == pytest.approx(expected, abs=1e-6)
+    assert facts[3] == "S"
 
 
 def test_an_unknown_normal_is_refused(worker):
     code = "body = doc.addObject('PartDesign::Body', 'Body')\nsketch_at(body, 'S', 'w', 1)\n"
 
-    assert not worker.check(code, None).ok
+    assert worker.seed().ok
+    assert not worker.rehearse(code).ok

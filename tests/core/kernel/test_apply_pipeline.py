@@ -37,12 +37,15 @@ class FakeWorker:
     def __init__(self, result=None):
         self.result = result or KernelResult(ok=True, render="/tmp/step.png",
                                                 created=["Box"])
-        self.checked = []
+        self.rehearsed = []
+        self.seeded = []
 
-    def check(self, code, document=None, render_path=None, timeout=None, names=None,
-              ephemeral=False):
-        self.checked.append({"code": code, "document": document,
-                             "render_path": render_path})
+    def rehearse(self, code, timeout=None):
+        self.rehearsed.append(code)
+        return self.result
+
+    def seed(self, path=None):
+        self.seeded.append(path)
         return self.result
 
 
@@ -198,7 +201,7 @@ def test_lint_runs_once_with_the_selection(pipeline, monkeypatch):
 def test_the_kernel_is_asked_to_rehearse_only_what_lint_let_through(pipeline):
     applying(pipeline, "fillet.Base = (box, ['Edge12'])", rehearsal=_kernel_result())
 
-    assert pipeline.fake_worker.checked == []
+    assert pipeline.fake_worker.rehearsed == []
 
 
 def test_a_step_the_kernel_refuses_never_reaches_the_document(pipeline):
@@ -211,7 +214,7 @@ def test_a_step_the_kernel_refuses_never_reaches_the_document(pipeline):
     assert result.as_tool_result()["traceback"] == "boom"
     assert result.as_tool_result()["volume"] == {"before": 1.0, "after": 0.0}
     assert pipeline.trace == []
-    assert [step["code"] for step in pipeline.fake_worker.checked] == ["box.fail()"]
+    assert pipeline.fake_worker.rehearsed == ["box.fail()"]
 
 
 def test_a_step_that_changes_nothing_is_refused_with_the_prompt_message(pipeline):
@@ -220,7 +223,7 @@ def test_a_step_that_changes_nothing_is_refused_with_the_prompt_message(pipeline
     result = applying(pipeline, "print(1)", rehearsal=_kernel_result(created=[]))
 
     assert result.traceback == read_prompt("changed_nothing.md")
-    assert [step["code"] for step in pipeline.fake_worker.checked] == ["print(1)"]
+    assert pipeline.fake_worker.rehearsed == ["print(1)"]
 
 
 def test_a_refusal_resyncs_the_kernel(trace):
@@ -234,14 +237,14 @@ def test_a_refusal_resyncs_the_kernel(trace):
     result = pipeline.apply("doc.recompute()")
 
     assert not result.ok
-    assert [step["code"] for step in worker.checked] == ["doc.recompute()", "pass"]
-    assert worker.checked[-1]["document"] is not None
+    assert worker.rehearsed == ["doc.recompute()"]
+    assert worker.seeded[-1] is not None
 
 
 def test_a_step_that_lands_does_not_resync_the_kernel(pipeline):
     assert pipeline.apply("doc.recompute()").ok
 
-    assert [step["code"] for step in pipeline.fake_worker.checked] == ["doc.recompute()"]
+    assert pipeline.fake_worker.rehearsed == ["doc.recompute()"]
 
 
 def test_a_step_that_the_kernel_ran_but_fails_for_real_is_reported_as_such(trace):
@@ -394,7 +397,7 @@ def test_start_run_snapshots_the_document_into_the_kernel(pipeline):
     seeded = pipeline.start_run()
 
     assert len(seeded.objects) == len(pipeline.document.Objects)
-    assert pipeline.fake_worker.checked[-1]["document"] is not None
+    assert pipeline.fake_worker.seeded[-1] is not None
 
 
 def test_a_run_in_flight_locks_the_gui(pipeline):
@@ -452,4 +455,4 @@ def test_start_run_with_no_open_document_seeds_an_empty_one(pipeline):
     seeded = pipeline.start_run()
 
     assert seeded.objects == []
-    assert pipeline.fake_worker.checked[-1]["document"] is None
+    assert pipeline.fake_worker.seeded[-1] is None

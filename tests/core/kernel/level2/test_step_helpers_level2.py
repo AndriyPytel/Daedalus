@@ -51,18 +51,23 @@ def is_top_edge(edge):
 
 
 def test_pick_edges_finds_the_four_top_edges(worker):
-    code = A_BOX_PAD + "held = pick_edges(body.Shape, is_top_edge, 4)\n"
+    code = A_BOX_PAD + (
+        "import json\n"
+        "print('FACTS ' + json.dumps(pick_edges(body.Shape, is_top_edge, 4)))\n"
+    )
 
-    result = worker.check(code, None)
+    assert worker.seed().ok
+    edges = worker.measure(code)
 
-    assert result.ok, result.traceback
-    assert len(result.held) == 4
+    assert edges is not None
+    assert len(edges) == 4
 
 
 def test_pick_edges_with_the_wrong_expect_names_what_it_found(worker):
     code = A_BOX_PAD + "pick_edges(body.Shape, is_top_edge, 5)\n"
 
-    result = worker.check(code, None)
+    assert worker.seed().ok
+    result = worker.rehearse(code)
 
     assert not result.ok
     assert "Edge" in result.traceback
@@ -72,28 +77,34 @@ def test_pick_edges_with_the_wrong_expect_names_what_it_found(worker):
 def test_bbox_of_the_padded_box_is_exact(worker):
     code = A_BOX_PAD + (
         "box = bbox(body.Shape)\n"
-        "held = [box.XLength, box.YLength, box.ZLength]\n"
+        "import json\n"
+        "print('FACTS ' + json.dumps([box.XLength, box.YLength, box.ZLength]))\n"
     )
 
-    result = worker.check(code, None)
+    assert worker.seed().ok
+    lengths = worker.measure(code)
 
-    assert result.ok, result.traceback
-    assert result.held == pytest.approx([200.0, 120.0, 24.0], abs=1e-6)
+    assert lengths is not None
+    assert lengths == pytest.approx([200.0, 120.0, 24.0], abs=1e-6)
 
 
 def test_by_label_finds_the_one_object_with_that_label(worker):
-    code = A_BOX_PAD + "held = [by_label(doc, 'BasePad').Name]\n"
+    code = A_BOX_PAD + (
+        "import json\n"
+        "print('FACTS ' + json.dumps([by_label(doc, 'BasePad').Name]))\n"
+    )
 
-    result = worker.check(code, None)
+    assert worker.seed().ok
+    names = worker.measure(code)
 
-    assert result.ok, result.traceback
-    assert result.held == ["BoxPad"]
+    assert names == ["BoxPad"]
 
 
 def test_by_label_with_no_match_lists_the_labels_it_found(worker):
     code = A_BOX_PAD + "by_label(doc, 'NoSuchThing')\n"
 
-    result = worker.check(code, None)
+    assert worker.seed().ok
+    result = worker.rehearse(code)
 
     assert not result.ok
     assert "BasePad" in result.traceback

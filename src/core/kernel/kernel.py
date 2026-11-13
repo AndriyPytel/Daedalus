@@ -6,10 +6,10 @@ incident, a crash or a timeout restarts the process silently and comes
 back as a traceback the assistant can correct against. A Step's code
 runs directly against the kernel's live Document: a Step that succeeds
 is checkpointed (`saveCopy`, no reopen), a Step that fails leaves the
-Document exactly as it was by reopening the checkpoint, and `check`
-called with no `document` argument continues the kernel's running
-session, resuming on the last checkpoint or refusing where none exists
-yet, while handing it a `document` is always a fresh handoff. Nothing
+Document exactly as it was by reopening the checkpoint, and a Step run
+without a `seed` continues the kernel's running session, resuming on
+the last checkpoint or refusing where none exists yet, while a `seed`
+is always a fresh handoff. Nothing
 here imports FreeCAD: the parent is the addon's process, and the only
 FreeCAD in play is the child's.
 """
@@ -32,8 +32,6 @@ STARTUP_TIMEOUT = 60.0
 
 _WORKER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kernel_worker.py")
 
-_CONTINUE = object()
-
 _CANDIDATES = (
     "/Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd",
     "/usr/bin/freecadcmd",
@@ -53,7 +51,6 @@ class KernelResult:
     created: list = field(default_factory=list)
     deleted: list = field(default_factory=list)
     modified: list = field(default_factory=list)
-    held: list = None
     stdout: str = ""
     geometry: dict = field(default_factory=dict)
     volume: dict = field(default_factory=dict)
@@ -70,16 +67,11 @@ class KernelResult:
         The wire shape is read here and nowhere else -- a field the worker
         starts sending arrives at the parent through one spelling, since the
         two halves are separate processes and nothing else links them.
-
-        `held` is read on both branches -- an `AssertionError` carries the
-        measured list too, not only the `ok` branch.
         """
-        held = response.get("held")
         checkpoint = response.get("checkpoint")
         names = response.get("names") or {}
         if not response.get("ok"):
             return cls(ok=False, traceback=response.get("traceback", "the kernel failed"),
-                       held=held,
                        stdout=response.get("stdout", ""),
                        volume=response.get("volume") or {},
                        checkpoint=checkpoint, names=names)
@@ -89,7 +81,6 @@ class KernelResult:
                    created=response.get("created", []),
                    deleted=response.get("deleted", []),
                    modified=response.get("modified", []),
-                   held=held,
                    stdout=response.get("stdout", ""),
                    geometry=response.get("geometry") or {},
                    volume=response.get("volume") or {},
@@ -227,7 +218,7 @@ class Kernel:
         started is a request without an answer, not an exception thrown at
         a caller who asked for a Step: the Step may cost a Step and never
         the run, the kernel stays dead and the next request tries again.
-        `_needs_resume` marks the replacement as blank, for `check()` to
+        `_needs_resume` marks the replacement as blank, for the next Step to
         resume from checkpoint rather than continue onto it.
         """
         self._stop()
@@ -235,7 +226,7 @@ class Kernel:
         try:
             self.start()
         except Exception:
-            pass  # except-pass-allowed: check() retries from the checkpoint, this attempt need not succeed
+            pass  # except-pass-allowed: the next Step retries from the checkpoint, this attempt need not succeed
 
     def __enter__(self):
         self.start()
@@ -244,54 +235,58 @@ class Kernel:
     def __exit__(self, *_):
         self.kill()
 
-    def check(self, code, document=_CONTINUE, render_path=None, timeout=None, names=None,
-              ephemeral=False, exploring=False, builds=False, geometry=False, base_faces=None,
-              intent=None, outcome=None, render_view=None):
+    def rehearse(self, code, timeout=None):
         """
-        Run *code* as one Step in the kernel. `document` not given
-        continues the kernel's own session, resuming on the last
-        checkpoint if the worker restarted since, or refusing if no
-        checkpoint exists yet to resume onto; `document` given is a fresh
-        handoff from that path, always honoured; and
-        *exploring* marks *code* as a call no Step declares, rolled back to
-        the last checkpoint with the result naming what was undone where it
-        creates, deletes or modifies an object. *base_faces* is the base part's address -> area map, and *intent* and *outcome* are the Intent and the result's description, each for this one call and not remembered, *geometry* asks for the geometry snapshot a Step that changes nothing
-        otherwise skips, *builds* marks a Step or a fix that fails
-        where it changes nothing in the Document, and the return is always a
-        KernelResult, never a raise for anything the code did; *render_view* names the
-        view a *render_path* picture is drawn from, isometric where unset.
+        Run *code* as one Step and keep it: a Step that lands is checkpointed, one that fails leaves the Document as it was.
+        The result names what the Step created, modified and deleted; it never raises for anything the code did.
         """
-        if document is _CONTINUE and self._needs_resume:
+        return self._step({"code": code}, timeout)
+
+    def probe(self, code, timeout=None):
+        """Run *code* and roll the Document back to the last checkpoint, the result naming what the code touched and undid."""
+        return self._step({"code": code, "exploring": True}, timeout)
+
+    def seed(self, path=None):
+        """
+        Load the Document at *path* as the run's state, a new empty Document where *path* is `None`.
+        The seed is checkpointed, so a failed first Step reloads it and a restarted kernel resumes on it.
+        """
+        return self._step({"code": "pass", "document": path}, None)
+
+    def render(self, path, view=None):
+        """Draw the Document from *view*, isometric where unset, into the picture *path*; the result's `render` is where it landed."""
+        request = {"code": "pass", "render_path": path}
+        if view is not None:
+            request["render_view"] = view
+        return self._step(request, None)
+
+    def measure(self, script, timeout=None):
+        """
+        The facts *script* prints as its last `FACTS ` line, run against the Document and rolled back, or `None` where it printed none.
+        A line `FACTS @` says they are in the JSON file *script* wrote to `FACTS_PATH`, which the kernel's 4000 characters of output could not hold.
+        """
+        handle, path = tempfile.mkstemp(suffix=".json")
+        os.close(handle)
+        try:
+            result = self._step({"code": "FACTS_PATH = %r\n" % path + script, "exploring": True}, timeout)
+            for line in reversed((result.stdout or "").splitlines()):
+                if line == "FACTS @":
+                    with open(path, encoding="utf-8") as facts:
+                        return json.load(facts)
+                if line.startswith("FACTS "):
+                    return json.loads(line[len("FACTS "):])
+            return None
+        finally:
+            os.remove(path)
+
+    def _step(self, request, timeout):
+        if "document" not in request and self._needs_resume:
             if self._checkpoint is None:
                 return KernelResult(ok=False, traceback=(
                     "The kernel died before any Step had landed, so there is no "
-                    "checkpoint to resume from. Hand check() an explicit document "
+                    "checkpoint to resume from. Seed the kernel with a Document "
                     "to start a session."))
-            document = self._checkpoint
-
-        request = {"code": code}
-        if document is not _CONTINUE:
-            request["document"] = document
-        if render_path is not None:
-            request["render_path"] = render_path
-        if render_view is not None:
-            request["render_view"] = render_view
-        if names:
-            request["names"] = names
-        if ephemeral:
-            request["ephemeral"] = True
-        if exploring:
-            request["exploring"] = True
-        if base_faces is not None:
-            request["base_faces"] = base_faces
-        if intent is not None:
-            request["intent"] = intent
-        if outcome is not None:
-            request["outcome"] = outcome
-        if builds:
-            request["builds"] = True
-        if geometry:
-            request["geometry"] = True
+            request["document"] = self._checkpoint
         response, why = self._ask(request, timeout or self.timeout, "the Step")
         if response is None:
             return KernelResult(ok=False, traceback=why)

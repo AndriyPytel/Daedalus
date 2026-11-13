@@ -6,7 +6,7 @@ The solver returns 0 for some inconsistent joints and leaves one unsatisfied, so
 import json
 import os
 
-from core.agent.domain import ASSEMBLY, Domain, measured as domain_measured, unfinished as domain_unfinished
+from core.agent.domain import ASSEMBLY, Domain, unfinished as domain_unfinished
 from core.agent.solo import run_solo
 from core.loop.prompt import _attached
 from core.prompts import read_prompt
@@ -69,11 +69,6 @@ if len(assemblies) == 1:
                                        "smaller": min(one.Shape.Volume, other.Shape.Volume)})
 print("FACTS " + json.dumps(facts))
 """
-
-
-def measured(kernel):
-    """The Assembly's facts as the kernel's solver leaves them, or `None` where the measuring itself failed."""
-    return domain_measured(kernel, FACTS_CHECK)
 
 
 def refusals(facts):
@@ -164,7 +159,7 @@ def part_call(build_part):
 
 def run_assembly(intent, *, llm, kernel, tools, events, attachments=(), cancelled=None,
                  build_part=None, edit=False):
-    """Build the Assembly *intent* asks for from the parts in the Document and *attachments*, under the Assembly Domain; *build_part* builds a part the Document lacks in a Session of its own, and *edit* says the Document already holds the Assembly the intent changes."""
+    """Build the Assembly *intent* asks for from the parts in the Document and *attachments*, under the Assembly Domain; *build_part* makes a part the Document lacks in a Session of its own, and *edit* says the Document already holds the Assembly the intent changes."""
     system = read_prompt("assembly.md") + ("\n\n" + read_prompt("assembly_edit.md") if edit else "")
     domain = Domain(ASSEMBLY, system, opening(intent, list(attachments)),
                     lambda: None, unfinished,

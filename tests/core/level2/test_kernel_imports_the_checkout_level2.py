@@ -29,7 +29,7 @@ def kernel():
 
 
 def test_a_core_module_a_step_imports_comes_from_this_checkout(kernel):
-    result = kernel.check(
+    result = kernel.rehearse(
         "import core.loop\n"
         "where = core.loop.__file__\n"
         "assert where.startswith(%r), where" % (CHECKOUT + os.sep,)
@@ -39,7 +39,7 @@ def test_a_core_module_a_step_imports_comes_from_this_checkout(kernel):
 
 
 def test_a_module_deleted_on_this_branch_does_not_resolve_from_the_installed_addon(kernel):
-    result = kernel.check("import core.freecad_tools")
+    result = kernel.rehearse("import core.freecad_tools")
 
     assert not result.ok
     assert "ModuleNotFoundError" in result.traceback

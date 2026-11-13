@@ -191,7 +191,7 @@ def test_a_lint_rejected_step_never_reaches_the_kernels_checkpoint(pipeline, wor
     checkpoint -- it never reaches the kernel at all. Established against a
     real checkpoint file's mtime, not the kernel's own claim about itself.
     """
-    baseline = worker.check("doc.addObject('Part::Box', 'Baseline')")
+    baseline = worker.rehearse("doc.addObject('Part::Box', 'Baseline')")
     assert baseline.ok, baseline.traceback
     before = os.path.getmtime(baseline.checkpoint)
 
@@ -203,7 +203,8 @@ def test_a_lint_rejected_step_never_reaches_the_kernels_checkpoint(pipeline, wor
 
 
 def test_preflight_reports_what_the_step_actually_created(worker):
-    result = worker.check("doc.addObject('Part::Box', 'Box')", document=None)
+    assert worker.seed().ok
+    result = worker.rehearse("doc.addObject('Part::Box', 'Box')")
 
     assert result.ok, result.traceback
     assert result.created == ["Box"]
@@ -212,8 +213,8 @@ def test_preflight_reports_what_the_step_actually_created(worker):
 
 
 def test_preflight_reports_a_modified_object_the_step_did_not_create(worker, saved_document):
-    result = worker.check("doc.getObject('ExistingBox').Length = 99",
-                          document=saved_document)
+    assert worker.seed(saved_document).ok
+    result = worker.rehearse("doc.getObject('ExistingBox').Length = 99")
 
     assert result.ok, result.traceback
     assert result.modified == ["ExistingBox"]
@@ -221,7 +222,8 @@ def test_preflight_reports_a_modified_object_the_step_did_not_create(worker, sav
 
 
 def test_preflight_reports_a_deleted_object(worker, saved_document):
-    result = worker.check("doc.removeObject('ExistingBox')", document=saved_document)
+    assert worker.seed(saved_document).ok
+    result = worker.rehearse("doc.removeObject('ExistingBox')")
 
     assert result.ok, result.traceback
     assert result.deleted == ["ExistingBox"]
@@ -233,10 +235,8 @@ def test_a_dependent_recompute_is_not_reported_as_a_modification(worker, documen
     Only ExistingBox was modified; reporting Cut as well would make the Owned
     Object rule fire on almost every Step that touches anything upstream.
     """
-    result = worker.check(
-        "doc.getObject('ExistingBox').Length = 99\ndoc.recompute()",
-        document=document_with_a_cut,
-    )
+    assert worker.seed(document_with_a_cut).ok
+    result = worker.rehearse("doc.getObject('ExistingBox').Length = 99\ndoc.recompute()")
 
     assert result.ok, result.traceback
     assert result.modified == ["ExistingBox"], "a recompute cascade looked like a modification"

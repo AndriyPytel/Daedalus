@@ -9,7 +9,7 @@ import pytest
 
 import sdk
 from core import nativeifc
-from core.agent.bim import native_measured, native_refusals
+from core.agent.bim import NATIVE_FACTS_CHECK, native_refusals
 from core.agent.domain import BIM
 from core.kernel import Kernel, find_freecadcmd
 from core.llm import ScriptedLLMClient
@@ -165,9 +165,9 @@ def opened(request, tmp_path):
 def test_nativeifc_edits_a_property_and_an_object_headless_and_ifcopenshell_reads_them_back(kernel, opened, tmp_path):
     ifc, seed = opened
     saved = str(tmp_path / "saved.ifc")
-    kernel.check("pass", document=seed)
+    kernel.seed(seed)
 
-    result = kernel.check("SAVED = %r\n" % saved + EDIT_PROPERTY_AND_OBJECT)
+    result = kernel.rehearse("SAVED = %r\n" % saved + EDIT_PROPERTY_AND_OBJECT)
 
     assert result.ok, result.traceback
     import ifcopenshell
@@ -247,7 +247,8 @@ def test_the_kernel_and_a_live_document_that_builds_shapes_agree_on_the_signatur
 
     seed = sdk.native_document(flat(str(tmp_path / "input.ifc")), str(tmp_path / "work.ifc"),
                                str(tmp_path / "input.FCStd"))
-    stepped = kernel.check(ADD_DOOR, document=seed)
+    assert kernel.seed(seed).ok
+    stepped = kernel.rehearse(ADD_DOOR)
     live = FreeCAD.openDocument(seed)
     exec(ADD_DOOR, {"doc": live, "App": FreeCAD})
     door = [o for o in live.Objects if getattr(o, "IfcClass", None) == "IfcDoor" and o.Label.startswith("Door_D2")][0]
@@ -279,11 +280,11 @@ def test_a_deletion_the_intent_does_not_name_is_refused(kernel, given):
     (UNPLACE_WALL1, "Wall_W1"),
 ])
 def test_each_condition_fails_the_assertion_by_name(kernel, given, code, refused):
-    kernel.check("pass", document=given[1])
-    edited = kernel.check(code)
+    kernel.seed(given[1])
+    edited = kernel.rehearse(code)
 
     assert edited.ok, edited.traceback
-    found = native_refusals(native_measured(kernel))
+    found = native_refusals(kernel.measure(NATIVE_FACTS_CHECK))
 
     assert any(refused in line for line in found), found
 

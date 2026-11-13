@@ -68,22 +68,25 @@ def rounding_the_top_face_at(radius):
 
 
 def test_a_fillet_that_will_not_fit_fails_preflight(worker):
-    result = worker.check(rounding_the_top_face_at(2.0), None)
+    assert worker.seed().ok
+    result = worker.rehearse(rounding_the_top_face_at(2.0))
 
     assert not result.ok, "a fillet OCC refused was passed to the Document"
 
 
 def test_the_failure_says_what_freecad_would_not(worker):
-    said = worker.check(rounding_the_top_face_at(2.0), None).traceback
+    assert worker.seed().ok
+    said = worker.rehearse(rounding_the_top_face_at(2.0)).traceback
 
     assert "Fillet (PartDesign::Fillet): " in said, said
     assert "is refused with" in said, "the OCC refusal is missing: %s" % said
     assert "Edge" in said, "no edge of the selection is named: %s" % said
-    assert "builds at 0.5 mm" in said, "the size that fits is not given: %s" % said
+    assert "goes through at 0.5 mm" in said, "the size that fits is not given: %s" % said
 
 
 def test_the_same_fillet_small_enough_passes(worker):
-    result = worker.check(rounding_the_top_face_at(0.4), None)
+    assert worker.seed().ok
+    result = worker.rehearse(rounding_the_top_face_at(0.4))
 
     assert result.ok, result.traceback
 
@@ -138,7 +141,8 @@ def test_a_full_round_at_half_the_thickness_is_refused(worker):
     face between them has no width left at the moment they touch, so a full
     round has to be built as the shape it is and cannot be filleted to.
     """
-    result = worker.check(rounding_the_rib_top_at(2.0), None)
+    assert worker.seed().ok
+    result = worker.rehearse(rounding_the_rib_top_at(2.0))
 
     assert not result.ok, "a full round OCC refused was passed to the Document"
 
@@ -148,6 +152,7 @@ def test_the_same_round_a_shade_under_half_the_thickness_builds(worker):
     What separates the two is the degeneracy alone. The round that stops
     0.001 mm short of meeting leaves a face between, and builds.
     """
-    result = worker.check(rounding_the_rib_top_at(1.999), None)
+    assert worker.seed().ok
+    result = worker.rehearse(rounding_the_rib_top_at(1.999))
 
     assert result.ok, result.traceback

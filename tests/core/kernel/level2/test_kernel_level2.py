@@ -42,15 +42,15 @@ def test_a_single_subprocess_lifecycle_serves_two_steps(kernel):
     """AC1: one Step costs one execution, not a spawn-per-check pattern."""
     pid = kernel.pid
 
-    first = kernel.check("doc.addObject('Part::Box', 'A')")
-    second = kernel.check("doc.addObject('Part::Box', 'B')")
+    first = kernel.rehearse("doc.addObject('Part::Box', 'A')")
+    second = kernel.rehearse("doc.addObject('Part::Box', 'B')")
 
     assert first.ok and second.ok
     assert kernel.pid == pid, "a Step cost a new subprocess instead of reusing the kernel"
 
 
 def test_a_passing_steps_checkpoint_contains_the_new_object(kernel):
-    result = kernel.check("doc.addObject('Part::Box', 'Box')")
+    result = kernel.rehearse("doc.addObject('Part::Box', 'Box')")
 
     assert result.ok, result.traceback
     assert result.checkpoint
@@ -58,11 +58,11 @@ def test_a_passing_steps_checkpoint_contains_the_new_object(kernel):
 
 
 def test_a_failing_steps_reload_leaves_the_prior_checkpoints_object_count_unchanged(kernel):
-    passed = kernel.check("doc.addObject('Part::Box', 'Box')")
+    passed = kernel.rehearse("doc.addObject('Part::Box', 'Box')")
     assert passed.ok, passed.traceback
     before = _objects_in(passed.checkpoint)
 
-    failed = kernel.check(
+    failed = kernel.rehearse(
         "doc.addObject('Part::Box', 'Extra')\nassert False, 'this Step is wrong'"
     )
 
@@ -77,13 +77,13 @@ def test_a_read_only_failing_step_does_not_rewind_the_kernel(kernel):
     AC5: a Step that raises without touching the Document must not undo an
     earlier, passing Step -- only a Step whose own diff is non-empty rewinds.
     """
-    passed = kernel.check("doc.addObject('Part::Box', 'Box')")
+    passed = kernel.rehearse("doc.addObject('Part::Box', 'Box')")
     assert passed.ok, passed.traceback
 
-    read_only_failure = kernel.check("print(doc.NotAnAttribute)")
+    read_only_failure = kernel.rehearse("print(doc.NotAnAttribute)")
     assert not read_only_failure.ok
 
-    still_there = kernel.check(
+    still_there = kernel.rehearse(
         "assert doc.getObject('Box') is not None, "
         "'a read-only failure rewound the kernel'"
     )
@@ -95,10 +95,10 @@ def test_a_second_step_sees_the_first_steps_object_in_the_live_document(kernel):
     The session continues across Steps: the second Step works against the same
     live Document the first one changed, without reopening it from disk.
     """
-    first = kernel.check("doc.addObject('Part::Box', 'FromFirst')")
+    first = kernel.rehearse("doc.addObject('Part::Box', 'FromFirst')")
     assert first.ok, first.traceback
 
-    second = kernel.check(
+    second = kernel.rehearse(
         "assert doc.getObject('FromFirst') is not None, "
         "'the first Step object is not in the live document'"
     )
@@ -112,10 +112,10 @@ def test_a_step_addresses_an_earlier_steps_object_through_the_name_map_after_a_c
     standing in for a user's hand-edit -- and the next Step still reaches the
     right object, through `names` rather than the literal string.
     """
-    first = kernel.check("doc.addObject('Part::Box', 'Box')")
+    first = kernel.rehearse("doc.addObject('Part::Box', 'Box')")
     assert first.ok, first.traceback
 
-    collided = kernel.check(
+    collided = kernel.rehearse(
         "box = doc.addObject('Part::Box', 'Box')\n"
         "box.Length = 42\n"
     )
@@ -123,7 +123,7 @@ def test_a_step_addresses_an_earlier_steps_object_through_the_name_map_after_a_c
     assert collided.created == ["Box001"], \
         "FreeCAD did not rename the colliding object the way this test assumes"
 
-    addressed = kernel.check(
+    addressed = kernel.rehearse(
         "target = doc.getObject(names['Box'])\n"
         "assert target.Length.Value == 42, 'reached the wrong Box'\n"
     )
@@ -132,29 +132,29 @@ def test_a_step_addresses_an_earlier_steps_object_through_the_name_map_after_a_c
 
 
 def test_a_name_map_addition_from_a_failed_step_does_not_survive_the_reload(kernel):
-    first = kernel.check("doc.addObject('Part::Box', 'Box')")
+    first = kernel.rehearse("doc.addObject('Part::Box', 'Box')")
     assert first.ok, first.traceback
 
-    failed = kernel.check(
+    failed = kernel.rehearse(
         "doc.addObject('Part::Box', 'Extra')\n"
         "assert False, 'this Step is wrong'\n"
     )
     assert not failed.ok
 
-    after = kernel.check("assert 'Extra' not in names, names")
+    after = kernel.rehearse("assert 'Extra' not in names, names")
     assert after.ok, after.traceback
 
 
 def test_a_worker_killed_mid_run_resumes_the_next_step_on_the_last_checkpoint(kernel):
-    first = kernel.check("doc.addObject('Part::Box', 'FromFirst')")
+    first = kernel.rehearse("doc.addObject('Part::Box', 'FromFirst')")
     assert first.ok, first.traceback
     doomed = kernel.pid
 
-    crashed = kernel.check(CRASHING_CODE)
+    crashed = kernel.rehearse(CRASHING_CODE)
     assert not crashed.ok, "the crash should be reported as this Step's own failure"
     assert kernel.pid != doomed, "the worker was not replaced"
 
-    second = kernel.check(
+    second = kernel.rehearse(
         "assert doc.getObject('FromFirst') is not None, "
         "'the resumed kernel does not see the checkpointed object'"
     )
@@ -163,15 +163,15 @@ def test_a_worker_killed_mid_run_resumes_the_next_step_on_the_last_checkpoint(ke
 
 
 def test_a_timeout_resumes_the_next_step_on_the_last_checkpoint_too(kernel):
-    first = kernel.check("doc.addObject('Part::Box', 'FromFirst')")
+    first = kernel.rehearse("doc.addObject('Part::Box', 'FromFirst')")
     assert first.ok, first.traceback
     hung = kernel.pid
 
-    timed_out = kernel.check("while True:\n    pass", timeout=0.5)
+    timed_out = kernel.rehearse("while True:\n    pass", timeout=0.5)
     assert not timed_out.ok
     assert kernel.pid != hung, "the worker was not replaced"
 
-    second = kernel.check(
+    second = kernel.rehearse(
         "assert doc.getObject('FromFirst') is not None, "
         "'the resumed kernel does not see the checkpointed object'"
     )
@@ -182,11 +182,11 @@ def test_a_timeout_resumes_the_next_step_on_the_last_checkpoint_too(kernel):
 def test_a_crash_before_any_step_lands_is_refused_not_served_as_an_empty_session(kernel):
     doomed = kernel.pid
 
-    crashed = kernel.check(CRASHING_CODE)
+    crashed = kernel.rehearse(CRASHING_CODE)
     assert not crashed.ok
     assert kernel.pid != doomed, "the worker was not replaced"
 
-    refused = kernel.check("doc.addObject('Part::Box', 'Box')")
+    refused = kernel.rehearse("doc.addObject('Part::Box', 'Box')")
 
     assert not refused.ok, \
         "an empty Document with no checkpoint behind it was served as if it were a session"
@@ -202,18 +202,18 @@ def test_a_stdin_write_failure_mid_step_resumes_the_next_step_on_the_last_checkp
     not reproduce here: the resumed kernel's Document still holds both
     objects an earlier Step had checkpointed.
     """
-    first = kernel.check("doc.addObject('Part::Box', 'RibPad')")
+    first = kernel.rehearse("doc.addObject('Part::Box', 'RibPad')")
     assert first.ok, first.traceback
-    second = kernel.check("doc.addObject('Part::Box', 'RibSketch')")
+    second = kernel.rehearse("doc.addObject('Part::Box', 'RibSketch')")
     assert second.ok, second.traceback
     doomed = kernel.pid
 
     kernel._process.stdin.close()
-    broken = kernel.check("doc.addObject('Part::Box', 'NeverLands')")
+    broken = kernel.rehearse("doc.addObject('Part::Box', 'NeverLands')")
     assert not broken.ok, "a write to a closed stdin should not have reached the worker"
     assert kernel.pid != doomed, "the worker was not replaced"
 
-    resumed = kernel.check(
+    resumed = kernel.rehearse(
         "assert doc.getObject('RibPad') is not None, "
         "'the resumed kernel forgot RibPad the live Document still had'\n"
         "assert doc.getObject('RibSketch') is not None, "

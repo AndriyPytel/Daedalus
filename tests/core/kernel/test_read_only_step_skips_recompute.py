@@ -34,11 +34,12 @@ def counting_session(monkeypatch):
     monkeypatch.setitem(kernel_worker._SESSION, "doc", doc)
     monkeypatch.setitem(kernel_worker._SESSION, "names", {})
     monkeypatch.setitem(kernel_worker._SESSION, "checkpoint", None)
+    monkeypatch.setattr(kernel_worker, "_save_checkpoint", lambda doc: None)
     return doc
 
 
 def test_a_step_that_creates_and_modifies_nothing_runs_no_recompute(counting_session):
-    response = kernel_worker.run_step({"code": "pass", "ephemeral": True})
+    response = kernel_worker.run_step({"code": "pass"})
 
     assert response["ok"], response.get("traceback")
     assert counting_session.recomputes == 0
@@ -46,7 +47,7 @@ def test_a_step_that_creates_and_modifies_nothing_runs_no_recompute(counting_ses
 
 def test_a_step_that_only_prints_still_runs_no_recompute(counting_session):
     response = kernel_worker.run_step(
-        {"code": "print(len(doc.Objects))", "ephemeral": True})
+        {"code": "print(len(doc.Objects))"})
 
     assert response["ok"], response.get("traceback")
     assert response["stdout"].strip() == "0"
@@ -62,7 +63,7 @@ def test_a_step_that_deletes_something_still_gets_the_full_recompute(counting_se
     counting_session.Objects = [type("Obj", (), {"Name": "Gone"})()]
 
     code = "doc.Objects.pop()"
-    response = kernel_worker.run_step({"code": code, "ephemeral": True})
+    response = kernel_worker.run_step({"code": code})
 
     assert response["ok"], response.get("traceback")
     assert counting_session.recomputes == 1

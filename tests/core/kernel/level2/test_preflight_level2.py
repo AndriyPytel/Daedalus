@@ -104,7 +104,7 @@ def saved_document(tmp_path):
 def test_the_workers_render_is_byte_identical_to_preflight_render_directly(warm, tmp_path):
     """
     `render` moved out of `preflight_worker` into `preflight_render`
-    with no change to its body. If the child process could not see the new module, `warm.check` below would come
+    with no change to its body. If the child process could not see the new module, `warm.render` below would come
     back `ok=False` with an ImportError traceback instead of a render.
     """
     import FreeCAD
@@ -112,11 +112,10 @@ def test_the_workers_render_is_byte_identical_to_preflight_render_directly(warm,
     from core.kernel.preflight_render import render as render_directly
 
     via_worker = str(tmp_path / "via_worker.png")
-    result = warm.check(
-        "box = doc.addObject('Part::Box', 'Box')\nbox.Length = 10",
-        render_path=via_worker,
-    )
+    result = warm.rehearse("box = doc.addObject('Part::Box', 'Box')\nbox.Length = 10")
     assert result.ok, result.traceback
+    rendered = warm.render(via_worker)
+    assert rendered.ok, rendered.traceback
 
     doc = FreeCAD.newDocument("DirectRender")
     box = doc.addObject("Part::Box", "Box")
@@ -132,10 +131,8 @@ def test_the_workers_render_is_byte_identical_to_preflight_render_directly(warm,
 
 
 def test_the_document_copy_is_opened_and_seen(warm, saved_document):
-    result = warm.check(
-        "assert doc.getObject('ExistingBox').Length.Value == 12",
-        document=saved_document,
-    )
+    assert warm.seed(saved_document).ok
+    result = warm.rehearse("assert doc.getObject('ExistingBox').Length.Value == 12")
 
     assert result.ok, result.traceback
     assert [o["name"] for o in result.objects] == ["ExistingBox"]
@@ -143,11 +140,12 @@ def test_the_document_copy_is_opened_and_seen(warm, saved_document):
 
 def test_the_document_is_reloaded_for_every_preflight(warm, saved_document):
     """No state may survive from one Preflight to the next."""
-    first = warm.check("doc.addObject('Part::Box', 'Leaked')", document=saved_document)
+    assert warm.seed(saved_document).ok
+    first = warm.rehearse("doc.addObject('Part::Box', 'Leaked')")
     assert first.ok, first.traceback
     assert sorted(o["name"] for o in first.objects) == ["ExistingBox", "Leaked"]
 
-    second = warm.check("pass", document=saved_document)
+    second = warm.seed(saved_document)
 
     assert second.ok, second.traceback
     assert [o["name"] for o in second.objects] == ["ExistingBox"]
@@ -155,7 +153,7 @@ def test_the_document_is_reloaded_for_every_preflight(warm, saved_document):
 
 def test_api_that_does_not_exist_comes_back_as_a_traceback(warm):
     """The removed-in-1.0 API this project exists to stop guessing about."""
-    result = warm.check("sketch = doc.addObject('Sketcher::SketchObject', 'S')\nsketch.Support = None")
+    result = warm.rehearse("sketch = doc.addObject('Sketcher::SketchObject', 'S')\nsketch.Support = None")
 
     assert not result.ok
     assert "Support" in result.traceback
@@ -167,7 +165,7 @@ def test_a_missing_attribute_comes_back_with_what_the_object_does_have(warm):
     The Origin planes: three attempts went on `body.Origin.XY_Plane`, which
     does not exist, because the AttributeError never mentioned OriginFeatures.
     """
-    result = warm.check(
+    result = warm.rehearse(
         "body = doc.addObject('PartDesign::Body', 'Body')\n"
         "doc.recompute()\n"
         "plane = body.Origin.XY_Plane\n"
@@ -184,7 +182,7 @@ def test_the_geometry_modules_are_in_scope_without_an_import(warm):
     out of the namespace it raised NameError, which read as "Part does not
     exist here" and sent the assistant off inventing Sketcher.Circle.
     """
-    result = warm.check(
+    result = warm.rehearse(
         "sketch = doc.addObject('Sketcher::SketchObject', 'Sketch')\n"
         "sketch.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 10), False)\n"
     )
@@ -194,7 +192,7 @@ def test_the_geometry_modules_are_in_scope_without_an_import(warm):
 
 def test_the_hint_names_a_class_by_its_name_not_a_descriptor_repr(warm):
     """TypeId on a class is an unbound descriptor; its repr named nothing usable."""
-    result = warm.check("Sketcher.GeometryFacade.addCircle(1)")
+    result = warm.rehearse("Sketcher.GeometryFacade.addCircle(1)")
 
     assert not result.ok
     assert "GeometryFacade has no 'addCircle'" in result.traceback
@@ -202,7 +200,7 @@ def test_the_hint_names_a_class_by_its_name_not_a_descriptor_repr(warm):
 
 
 def test_a_hint_is_not_offered_when_there_is_no_object_to_introspect(warm):
-    result = warm.check("raise ValueError('nothing to introspect here')")
+    result = warm.rehearse("raise ValueError('nothing to introspect here')")
 
     assert not result.ok
     assert "It has:" not in result.traceback
@@ -210,7 +208,7 @@ def test_a_hint_is_not_offered_when_there_is_no_object_to_introspect(warm):
 
 def test_a_recompute_that_leaves_an_object_in_error_is_a_failure(warm):
     """A Cut with neither Base nor Tool is what the recompute fails on."""
-    result = warm.check(
+    result = warm.rehearse(
         "box = doc.addObject('Part::Box', 'Box')\n"
         "box.Length = 10\n"
         "cut = doc.addObject('Part::Cut', 'Cut')"
@@ -227,7 +225,7 @@ def test_a_failed_recompute_names_the_reason_freecad_already_knows(warm):
 
     The sketch here is empty, so there is nothing for the Pad to pad.
     """
-    result = warm.check(
+    result = warm.rehearse(
         "body = doc.addObject('PartDesign::Body', 'Body')\n"
         "sketch = doc.addObject('Sketcher::SketchObject', 'Sketch')\n"
         "body.addObject(sketch)\n"
@@ -241,7 +239,7 @@ def test_a_failed_recompute_names_the_reason_freecad_already_knows(warm):
 
 
 def test_every_object_left_in_error_gets_its_own_line(warm):
-    result = warm.check(
+    result = warm.rehearse(
         "a = doc.addObject('Part::Cut', 'CutA')\n"
         "b = doc.addObject('Part::Cut', 'CutB')\n"
     )
@@ -260,7 +258,7 @@ def test_code_that_crashes_the_core_kills_the_worker_not_us(fresh):
     """
     doomed = fresh.pid
 
-    result = fresh.check(CRASHING_CODE)
+    result = fresh.rehearse(CRASHING_CODE)
 
     assert not result.ok
     assert "died" in result.traceback
@@ -284,11 +282,11 @@ def test_a_death_on_the_write_reports_the_dead_workers_stderr(fresh):
         def flush(self):
             pass
 
-    fresh.check("import sys; sys.stderr.write('the worker had something to say\\n')")
+    fresh.rehearse("import sys; sys.stderr.write('the worker had something to say\\n')")
     _wait_until(lambda: "the worker had something to say" in fresh._stderr_text())
     fresh._process.stdin = _Dead()
 
-    result = fresh.check("doc.addObject('Part::Box', 'Box')")
+    result = fresh.rehearse("doc.addObject('Part::Box', 'Box')")
 
     assert not result.ok
     assert "before it could start" in result.traceback
@@ -302,7 +300,7 @@ def test_a_step_that_writes_cyrillic_to_stderr_is_read_back_intact(fresh):
 
     `_wait_until` is what the drain thread gets to catch up.
     """
-    result = fresh.check(
+    result = fresh.rehearse(
         "import sys; sys.stderr.write('деталь не побудована\\n'); sys.stderr.flush()"
     )
 
@@ -321,12 +319,12 @@ def test_an_undecodable_byte_on_stderr_does_not_cost_us_the_diagnostics(fresh):
     that produces this (ascii, inside FreeCAD.app with no LANG) cannot be
     staged from a test: the parent's decoder is fixed at interpreter startup.
     """
-    fresh.check(
+    fresh.rehearse(
         r"import sys; sys.stderr.buffer.write(b'\xd0 broken\n'); sys.stderr.flush()"
     )
     _wait_until(lambda: "broken" in fresh._stderr_text())
 
-    result = fresh.check(
+    result = fresh.rehearse(
         "import sys; sys.stderr.write('and this still arrives\\n'); sys.stderr.flush()"
     )
 
@@ -343,7 +341,7 @@ def test_an_undecodable_byte_on_stdout_does_not_hang_the_request(fresh):
     """
     started = time.monotonic()
 
-    result = fresh.check(
+    result = fresh.rehearse(
         r"import sys; sys.stdout.buffer.write(b'\xd0 broken\n'); sys.stdout.flush()"
         "\ndoc.addObject('Part::Box', 'Box')",
         timeout=20,
@@ -361,7 +359,7 @@ def test_an_infinite_loop_is_killed_on_timeout(fresh):
     """
     hung = fresh.pid
 
-    result = fresh.check("while True:\n    pass", timeout=0.5)
+    result = fresh.rehearse("while True:\n    pass", timeout=0.5)
 
     assert not result.ok
     assert "timed out" in result.traceback
@@ -373,11 +371,11 @@ def test_the_worker_still_works_after_it_died(fresh):
     """
     A death with no checkpoint behind it leaves the replacement reachable
     and honest: it refuses the next call rather than answer against an
-    empty Document. An explicit `document` is how a caller starts over.
+    empty Document. A `seed` is how a caller starts over.
     """
-    fresh.check(CRASHING_CODE)
+    fresh.rehearse(CRASHING_CODE)
 
-    result = fresh.check("doc.addObject('Part::Box', 'Box')")
+    result = fresh.rehearse("doc.addObject('Part::Box', 'Box')")
 
     assert not result.ok
     assert fresh.alive
@@ -385,11 +383,11 @@ def test_the_worker_still_works_after_it_died(fresh):
 
 def test_worker_death_is_never_raised_at_the_caller(fresh):
     for _ in range(2):
-        result = fresh.check(CRASHING_CODE)
+        result = fresh.rehearse(CRASHING_CODE)
         assert not result.ok
 
-    assert not fresh.check("pass").ok
-    assert fresh.check("pass", document=None).ok
+    assert not fresh.rehearse("pass").ok
+    assert fresh.seed().ok
 
 
 def test_a_body_left_in_pieces_is_still_refused(warm):
@@ -409,7 +407,8 @@ def test_a_body_left_in_pieces_is_still_refused(warm):
         "pad.Profile = sketch\n"
         "pad.Length = 10\n")
 
-    result = warm.check(two_lumps, None)
+    assert warm.seed().ok
+    result = warm.rehearse(two_lumps)
 
     assert not result.ok
     assert "more than one piece" in result.traceback
