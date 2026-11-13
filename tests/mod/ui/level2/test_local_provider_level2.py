@@ -14,7 +14,7 @@ import json
 
 import pytest
 
-from conftest import NO_QT, QT_APP
+from conftest import NO_QT, QT_APP, drain_fetches
 
 pytestmark = pytest.mark.freecad
 
@@ -26,9 +26,9 @@ def settings_are_the_tests_own():
     """The developer's own keys and addresses are not the suite's to spend."""
     if QT_APP is None:
         pytest.skip(NO_QT)
-    from bridge import settings_manager
+    from core import settings
 
-    sm = settings_manager.instance()
+    sm = settings.instance()
     their_keys, their_urls = sm.get_api_keys(), sm.get_base_urls()
     sm.set_api_keys([])
     sm.set_base_urls({})
@@ -151,53 +151,22 @@ def test_clearing_the_address_removes_it(providers_page, settings_are_the_tests_
     assert sm.get_base_url_for_provider(LOCAL) == ""
 
 
-def _drain(manager, timeout_turns=400):
-    """
-    Let every fetch already in flight finish before a test starts recording.
-
-    The tests above save addresses nothing is listening on, so their fetches
-    fail late. Clearing `_threads` hides such a thread instead of waiting for
-    it, and its warning then lands in whichever test is recording at the time.
-
-    A worker thread posts its `fetched`/`failed` signal with a queued
-    connection and then returns, so `isRunning()` can go false before that
-    posted event is dispatched. Returning the instant it does would hand the
-    caller back before the event lands, so quiescence has to be seen twice
-    in a row before it is trusted.
-    """
-    quiet = 0
-    for _ in range(timeout_turns):
-        QT_APP.processEvents()
-        if not any(thread.isRunning() for thread in manager._threads.values()):
-            quiet += 1
-            if quiet >= 2:
-                return
-        else:
-            quiet = 0
-        QT_APP.thread().msleep(5)
-
-
 @pytest.fixture(autouse=True)
-def _provider_manager_threads_join_before_the_next_test():
+def _fetches_finish_before_the_next_test():
     """
     Wait out this test's own fetch threads before the next test installs its
     monkeypatch on the same process-wide `provider_manager.instance()`.
 
-    `_threads.clear()` above drops the dict entry without joining the thread;
-    a thread still in flight then lands its `fetched`/`failed` signal after a
-    later test's warnings list is being recorded, and that later test fails on
-    an address that is not its own.
+    A thread still in flight lands its `fetched`/`failed` signal after a later
+    test's warnings list is being recorded, and that later test fails on an
+    address that is not its own.
     """
     yield
     if QT_APP is None:
         return
     from bridge import provider_manager
 
-    manager = provider_manager.instance()
-    _drain(manager)
-    for thread in manager._threads.values():
-        thread.wait()
-    manager._threads.clear()
+    drain_fetches(provider_manager.instance())
 
 
 def test_no_address_means_no_fetch_and_nothing_said(settings_are_the_tests_own, monkeypatch):
@@ -208,21 +177,20 @@ def test_no_address_means_no_fetch_and_nothing_said(settings_are_the_tests_own, 
     """
     import FreeCAD
     from bridge import provider_manager
+    from core import model_catalog
 
     manager = provider_manager.instance()
-    _drain(manager)
+    drain_fetches(manager)
 
-    warnings = []
+    warnings, asked = [], []
     monkeypatch.setattr(FreeCAD.Console, "PrintWarning", warnings.append)
-
-    manager._fetched.clear()
-    manager._threads.clear()
+    monkeypatch.setattr(model_catalog, "fetch",
+                        lambda provider, *args, **kwargs: asked.append(provider) or [])
 
     manager.get_available_models()
-    for _ in range(40):
-        QT_APP.processEvents()
+    drain_fetches(manager)
 
-    assert LOCAL not in manager._threads, "a fetch was started with nothing to ask with"
+    assert LOCAL not in asked, "a fetch was started with nothing to ask with"
     assert not any(m["provider"] == LOCAL for m in manager.get_available_models())
     assert not [line for line in warnings if LOCAL in line], \
         "an empty address was reported as a failure: %s" % warnings
@@ -248,18 +216,16 @@ def test_an_unreachable_address_names_itself_and_leaves_the_rest_working(
     from core import model_catalog
 
     manager = provider_manager.instance()
-    _drain(manager)
+    drain_fetches(manager)
 
     warnings = []
     monkeypatch.setattr(FreeCAD.Console, "PrintWarning", warnings.append)
     monkeypatch.setattr(model_catalog, "fetch", _refused)
 
-    manager._fetched.clear()
-    manager._threads.clear()
     settings_are_the_tests_own.set_base_url_for_provider(LOCAL, "http://127.0.0.1:1")
 
     manager.get_available_models()
-    _drain(manager)
+    drain_fetches(manager)
 
     assert warnings, "an unreachable server failed silently"
     assert "127.0.0.1:1" in " ".join(warnings), \
@@ -287,9 +253,7 @@ def test_a_provider_added_by_name_lists_its_models_and_runs_them(
 
     monkeypatch.setattr(model_catalog, "fetch", _groq)
     manager = provider_manager.instance()
-    _drain(manager)
-    for cache in ("_fetched", "_fetched_with", "_threads"):
-        monkeypatch.setattr(manager, cache, {})
+    drain_fetches(manager)
 
     _add(providers_page, "Groq")
     _select(providers_page, "Groq")
@@ -297,7 +261,7 @@ def test_a_provider_added_by_name_lists_its_models_and_runs_them(
     providers_page.key_edit.setText("gsk-test")
     providers_page.saveSettings()
     manager.get_available_models()
-    _drain(manager)
+    drain_fetches(manager)
 
     assert ("Groq", "gsk-test", "https://api.groq.com/openai/v1") in asked
     assert {"id": "openai/gpt-oss-120b", "display": "GPT OSS 120B",

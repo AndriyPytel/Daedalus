@@ -56,96 +56,46 @@ def test_no_model_list_is_bundled_with_the_addon():
 @pytest.fixture
 def manager(monkeypatch):
     """
-    A real _ProviderManager. Needs FreeCAD for PySide and for the settings it
-    subscribes to, so this is Level 2 — the module imports neither without it.
-    The subscription is configured with no key at all, so every fetch is
-    answered here rather than by models.dev.
+    A manager of its own, listening to a Settings of its own, with every fetch
+    answered here rather than over the network. Needs FreeCAD for PySide, so
+    this is Level 2.
     """
     pytest.importorskip("FreeCAD")
-    from PySide.QtCore import QThread
     from bridge.provider_manager import _ProviderManager
-    from core import model_catalog
+    from conftest import drain_fetches
+    from core import model_catalog, settings
 
-    monkeypatch.setattr(model_catalog, "fetch", lambda *args, **kwargs: [])
+    asked = []
 
-    from bridge import settings_manager
+    def answer(provider, key, base_url=None):
+        asked.append(provider)
+        return [{"id": "gpt-x", "display": "GPT X"}] if provider == "OpenAI" else []
 
-    built = _ProviderManager()
-    yield built
-    for signal in (settings_manager.instance().api_keys_changed,
-                   settings_manager.instance().base_urls_changed):
-        signal.disconnect(built._on_keys_changed)
-    for thread in built.findChildren(QThread):
-        thread.wait()
-
-
-def _fetched(manager, provider, models):
-    """A fetch landing, without the thread that would have carried it."""
-    manager._fetched[provider] = models
-    manager._fetched_with[provider] = manager._credentials(provider)
-
-
-LIVE_ONLY = [{"id": "gpt-5.6-terra", "display": "GPT-5.6 Terra"}]
-
-
-@pytest.mark.freecad
-def test_only_the_provider_whose_credentials_changed_is_invalidated(manager):
-    """
-    A key change invalidates the list that key entitled you to, and no other.
-    Clearing every provider's list threw away answers that were still true.
-
-    The test sets OpenAI's credentials to be different from the ones it fetched
-    with, so the key change invalidates only OpenAI's list.
-    """
-    _fetched(manager, "OpenAI", LIVE_ONLY)
-    _fetched(manager, "Anthropic", [{"id": "claude-y", "display": "Claude Y"}])
-    manager._fetched_with["OpenAI"] = ("an-older-key", "")
-
-    manager._on_keys_changed([])
-
-    assert "OpenAI" not in manager._fetched
-    assert "Anthropic" in manager._fetched, "an untouched provider lost its list"
+    monkeypatch.setattr(model_catalog, "fetch", answer)
+    persisted = settings.Settings()
+    with monkeypatch.context() as patch:
+        patch.setattr(settings, "instance", lambda: persisted)
+        built = _ProviderManager()
+    persisted.set_api_keys([])
+    persisted.set_base_urls({})
+    built.get_available_models()
+    drain_fetches(built)
+    asked.clear()
+    yield built, persisted, asked
+    drain_fetches(built)
 
 
 @pytest.mark.freecad
-def test_a_failed_fetch_lets_the_next_ensure_fetched_retry(manager, monkeypatch):
-    """
-    `_threads` was never cleared on failure, so it kept doubling as
-    an "already asked" mark and `_ensure_fetched` returned silently forever.
-    """
-    monkeypatch.setattr(manager, "_credentials", lambda provider: ("key", ""))
-    starts = []
+def test_each_landed_list_is_announced_once(manager):
+    from conftest import drain_fetches
 
-    class _FakeThread:
-        def __init__(self, provider, api_key, base_url="", parent=None):
-            pass
+    built, persisted, asked = manager
+    heard = []
+    built.models_changed.connect(heard.append)
 
-        def start(self):
-            starts.append(1)
+    persisted.set_api_key_for_provider("OpenAI", "sk-1")
+    drain_fetches(built)
 
-        fetched = type("Signal", (), {"connect": lambda self, slot: None})()
-        failed = type("Signal", (), {"connect": lambda self, slot: None})()
-
-    monkeypatch.setattr(
-        "bridge.provider_manager._FetchThread", _FakeThread)
-
-    manager._ensure_fetched("OpenAI")
-    assert len(starts) == 1
-
-    monkeypatch.setattr(manager, "sender", lambda: manager._threads["OpenAI"])
-    manager._on_fetch_failed("OpenAI", "boom")
-
-    manager._ensure_fetched("OpenAI")
-    assert len(starts) == 2
-
-
-@pytest.mark.freecad
-def test_a_stale_fetch_failing_leaves_the_fetch_in_flight(manager, monkeypatch):
-    """A fetch that outlived its key fails into the slot of the one that replaced it."""
-    in_flight = object()
-    manager._threads["OpenAI"] = in_flight
-    monkeypatch.setattr(manager, "sender", lambda: object())
-
-    manager._on_fetch_failed("OpenAI", "boom")
-
-    assert manager._threads["OpenAI"] is in_flight
+    assert asked == ["OpenAI"]
+    assert [m["id"] for m in built.get_available_models() if m["provider"] == "OpenAI"] == ["gpt-x"]
+    assert len(heard) == 2, "one for the key change, one for the list that landed"
