@@ -31,24 +31,24 @@ def test_a_step_that_lands_between_two_failed_steps_survives_the_second_reload(k
     afterwards: a checkpoint write that silently no-ops between the two
     reloads would lose it.
     """
-    first = kernel.check(
+    first = kernel.rehearse(
         "doc.addObject('Part::Box', 'Junk1')\n"
         "doc.recompute()\n"
         "assert False, 'boom'\n"
     )
     assert not first.ok
 
-    second = kernel.check("doc.addObject('Part::Box', 'X')")
+    second = kernel.rehearse("doc.addObject('Part::Box', 'X')")
     assert second.ok
 
-    third = kernel.check(
+    third = kernel.rehearse(
         "doc.addObject('Part::Box', 'Junk2')\n"
         "doc.recompute()\n"
         "assert False, 'boom again'\n"
     )
     assert not third.ok
 
-    after = kernel.check("pass")
+    after = kernel.rehearse("pass")
     assert after.ok
     names = {o["name"] for o in after.objects}
     assert "X" in names, (

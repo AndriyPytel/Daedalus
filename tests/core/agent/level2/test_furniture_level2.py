@@ -9,7 +9,7 @@ import sys
 import pytest
 
 from core import furniture
-from core.agent.bim import measured, refusals, unfinished
+from core.agent.bim import FACTS_CHECK, refusals, unfinished
 from core.agent.domain import BIM
 from core.kernel import Kernel, find_freecadcmd
 from core.llm import ScriptedLLMClient
@@ -61,8 +61,8 @@ def library_file(tmp_path_factory):
 
 
 def _flat(kernel):
-    kernel.check("for o in list(doc.Objects):\n    doc.removeObject(o.Name)")
-    assert kernel.check(FLAT).ok
+    kernel.rehearse("for o in list(doc.Objects):\n    doc.removeObject(o.Name)")
+    assert kernel.rehearse(FLAT).ok
 
 
 def _place(path, provenance=PROV, x=1000, y=1000, rotation=0):
@@ -74,13 +74,13 @@ def _place(path, provenance=PROV, x=1000, y=1000, rotation=0):
 def test_a_library_item_is_placed_as_equipment_with_its_source_and_licence_under_the_level(kernel, library_file):
     _flat(kernel)
 
-    placed = kernel.check(_place(library_file))
+    placed = kernel.rehearse(_place(library_file))
     assert placed.ok, placed.traceback
-    facts = measured(kernel)
+    facts = kernel.measure(FACTS_CHECK)
 
     assert facts["equipment"] == [{"label": "Office chair", "source": PATH, "level": True}]
     assert refusals(facts, lambda: [PATH]) == [] and unfinished(kernel) is None
-    assert kernel.check(
+    assert kernel.rehearse(
         "o = doc.getObject('Office_chair') or doc.getObjectsByLabel('Office chair')[0]\n"
         "b = o.Shape.BoundBox\nprint(o.Licence, o.Title, round(b.XLength), round(b.YLength), round(b.ZMin), "
         "round(b.Center.x), round(b.Center.y))").stdout.split() == [
@@ -89,9 +89,9 @@ def test_a_library_item_is_placed_as_equipment_with_its_source_and_licence_under
 
 def test_the_ifc4_export_reopens_with_the_equipment_in_it(kernel, library_file):
     _flat(kernel)
-    assert kernel.check(_place(library_file)).ok
+    assert kernel.rehearse(_place(library_file)).ok
 
-    facts = measured(kernel)
+    facts = kernel.measure(FACTS_CHECK)
 
     assert facts["ifc"]["schema"] == "IFC4" and facts["ifc"]["IfcFurnishingElement"] == 1
 
@@ -102,21 +102,21 @@ def test_a_parametric_item_is_a_box_of_the_kinds_typical_size_with_source_parame
     code = ("from core.equipment import place_parametric\n"
             "place_parametric(doc, %r, 2000, 1500, 0, 'Level')\ndoc.recompute()" % kind)
 
-    assert kernel.check(code).ok
-    facts = measured(kernel)
+    assert kernel.rehearse(code).ok
+    facts = kernel.measure(FACTS_CHECK)
 
     assert facts["equipment"] == [{"label": kind.capitalize(), "source": "parametric", "level": True}]
     assert refusals(facts, lambda: []) == []
-    box = kernel.check("b = doc.getObjectsByLabel(%r)[0].Shape.BoundBox\n"
-                       "print(round(b.XLength), round(b.YLength), round(b.ZLength), round(b.ZMin))"
-                       % kind.capitalize()).stdout.split()
+    box = kernel.rehearse("b = doc.getObjectsByLabel(%r)[0].Shape.BoundBox\n"
+                          "print(round(b.XLength), round(b.YLength), round(b.ZLength), round(b.ZMin))"
+                          % kind.capitalize()).stdout.split()
     assert box == [str(v) for v in (*furniture.SIZES[kind], 0)]
 
 
 def test_equipment_with_a_source_outside_the_whitelist_is_refused_by_the_assertion(kernel, library_file):
     _flat(kernel)
     stray = _place(library_file, PROV | {"Source": "https://sketchfab.com/sofa.glb"})
-    assert kernel.check(stray).ok
+    assert kernel.rehearse(stray).ok
 
     found = unfinished(kernel)
 
@@ -125,9 +125,9 @@ def test_equipment_with_a_source_outside_the_whitelist_is_refused_by_the_asserti
 
 def test_equipment_under_no_level_is_refused_by_the_assertion(kernel, library_file):
     _flat(kernel)
-    assert kernel.check(_place(library_file)).ok
-    assert kernel.check("o = doc.getObjectsByLabel('Office chair')[0]\n"
-                        "level = doc.getObjectsByLabel('Level')[0]\nlevel.Group = [m for m in level.Group if m != o]\ndoc.recompute()").ok
+    assert kernel.rehearse(_place(library_file)).ok
+    assert kernel.rehearse("o = doc.getObjectsByLabel('Office chair')[0]\n"
+                           "level = doc.getObjectsByLabel('Level')[0]\nlevel.Group = [m for m in level.Group if m != o]\ndoc.recompute()").ok
 
     found = unfinished(kernel)
 
@@ -169,5 +169,5 @@ def test_the_real_library_has_a_bed_that_can_be_placed(kernel, tmp_path):
     bed, local = json.loads(fetched.stdout)
     _flat(kernel)
 
-    assert kernel.check(_place(local, PROV | {"Title": bed["title"], "Source": bed["url"]})).ok
-    assert refusals(measured(kernel), lambda: furniture.index(str(tmp_path), None)) == []
+    assert kernel.rehearse(_place(local, PROV | {"Title": bed["title"], "Source": bed["url"]})).ok
+    assert refusals(kernel.measure(FACTS_CHECK), lambda: furniture.index(str(tmp_path), None)) == []

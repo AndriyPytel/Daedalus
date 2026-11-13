@@ -243,7 +243,7 @@ def test_a_design_intent_goes_to_the_agent_unless_the_pipeline_is_asked_for(kern
     llm = ScriptedLLMClient([_say(code=BOX), _say(finish="done")])
     client = _client(llm, kernel)
 
-    result = client.send("Make a cube", route_first=False)
+    result = client.send("Make a cube", route_first=False, choice="part")
 
     assert result.ok
     client.close()
@@ -256,7 +256,7 @@ def test_a_run_given_its_own_stream_emits_every_event_into_it(kernel):
     client = _client(llm, kernel)
     run = []
 
-    client.send("Make a cube", route_first=False, events=EventStream([run.append]))
+    client.send("Make a cube", route_first=False, choice="part", events=EventStream([run.append]))
 
     kinds = [event.kind for event in run]
     assert APPLIED in kinds and COMPLETED in kinds
@@ -266,20 +266,19 @@ def test_a_run_given_its_own_stream_emits_every_event_into_it(kernel):
 
 def test_a_run_seeds_the_kernel_once(kernel, monkeypatch):
     seeds = []
-    real = kernel.check
+    real = kernel.seed
 
-    def recording(code, *args, **kwargs):
-        if "document" in kwargs:
-            seeds.append(code)
-        return real(code, *args, **kwargs)
+    def recording(*args, **kwargs):
+        seeds.append(args)
+        return real(*args, **kwargs)
 
-    monkeypatch.setattr(kernel, "check", recording)
+    monkeypatch.setattr(kernel, "seed", recording)
     llm = ScriptedLLMClient([_say(code=BOX), _say(code="print(1)"), _say(finish="done")])
     client = _client(llm, kernel)
 
     client.agent("Make a cube")
 
-    assert seeds == ["pass"]
+    assert len(seeds) == 1
     client.close()
 
 

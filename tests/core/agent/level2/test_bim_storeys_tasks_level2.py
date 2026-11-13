@@ -6,7 +6,7 @@ import sys
 
 import pytest
 
-from core.agent.bim import measured, refusals
+from core.agent.bim import FACTS_CHECK, refusals
 from core.kernel import Kernel, find_freecadcmd
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
@@ -34,8 +34,8 @@ def kernel():
 @pytest.mark.parametrize("name", sorted(os.listdir(ROOT)) if os.path.isdir(ROOT) else [])
 def test_the_reference_reopens_and_passes_the_assertion(kernel, name):
     folder = os.path.join(ROOT, name)
-    assert kernel.check("pass", document=os.path.join(folder, "reference.FCStd")).ok
+    assert kernel.seed(os.path.join(folder, "reference.FCStd")).ok
 
-    found = refusals(measured(kernel))
+    found = refusals(kernel.measure(FACTS_CHECK))
 
     assert found == [], found

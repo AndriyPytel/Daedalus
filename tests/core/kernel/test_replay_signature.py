@@ -39,11 +39,11 @@ class FakeWorker:
 
     def __init__(self, result=None):
         self.result = result
-        self.checked = []
 
-    def check(self, code, document=None, render_path=None, timeout=None, names=None,
-              ephemeral=False):
-        self.checked.append({"code": code, "document": document, "names": names})
+    def rehearse(self, code, timeout=None):
+        return self.result
+
+    def seed(self, path=None):
         return self.result
 
 

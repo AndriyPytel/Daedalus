@@ -3,11 +3,7 @@ Level 1 -- an edit is judged on the whole flat and on having changed the Documen
 """
 from types import SimpleNamespace
 
-import json
-import os
-
 from core.agent.bim import describe, opening, refusals
-from core.agent.domain import measured
 from core.arch import named_in
 from tests.bim_helpers import HOLDS
 
@@ -93,17 +89,3 @@ def test_a_label_inside_a_longer_label_is_not_named():
 
 def test_a_name_that_is_no_longer_in_the_document_is_skipped():
     assert named_in(EDIT_02, _document(_window()), ["Window008", "Gone"])
-
-
-def test_facts_too_long_for_the_kernels_output_are_read_from_the_file_named(tmp_path):
-    seen = []
-
-    def check(code, exploring):
-        namespace = {}
-        exec(code.split("\n")[0], namespace)
-        seen.append(namespace["FACTS_PATH"])
-        open(namespace["FACTS_PATH"], "w").write(json.dumps({"walls": ["x" * 9000]}))
-        return SimpleNamespace(stdout="noise\nFACTS @\n")
-
-    assert measured(SimpleNamespace(check=check), "check") == {"walls": ["x" * 9000]}
-    assert not os.path.exists(seen[0])

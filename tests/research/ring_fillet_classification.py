@@ -56,13 +56,13 @@ def _load(name):
 
 def _build_steps_1_to_26(kernel, design, steps, fillet_1730_code):
     """Body ready for Step 27 onward: Steps 1-16 plus the base/hook fillets 17-26."""
-    boot = kernel.check("doc.addObject('PartDesign::Body', 'Body')")
+    boot = kernel.rehearse("doc.addObject('PartDesign::Body', 'Body')")
     assert boot.ok, boot.traceback
     for n in range(1, 17):
-        result = kernel.check(with_design(design, steps[str(n)]))
+        result = kernel.rehearse(with_design(design, steps[str(n)]))
         assert result.ok, "Step %d failed: %s" % (n, result.traceback)
     base_and_hook = fillet_1730_code.split("def make_ring_predicates")[0]
-    result = kernel.check(HELPERS + base_and_hook)
+    result = kernel.rehearse(HELPERS + base_and_hook)
     assert result.ok, result.traceback
     return result
 
@@ -170,7 +170,7 @@ def classify_steps_27_to_34(kernel, design, steps, fillet_1730_code, bore_first)
     Rebuilds the base body, then attempts the 4 outside chains and the 4
     bore chains in the order *bore_first* selects. Returns `{label: result}`
     for all 8, `('OK', edge_count, built_ok, names)` or `('FAIL', message)`;
-    a fresh Python namespace is built per `kernel.check()` call, only the
+    a fresh Python namespace is built per `kernel.rehearse()` call, only the
     FreeCAD document itself persists across calls.
     """
     _build_steps_1_to_26(kernel, design, steps, fillet_1730_code)
@@ -197,7 +197,7 @@ def classify_steps_27_to_34(kernel, design, steps, fillet_1730_code, bore_first)
     for label, opening_expr, target_expr in order:
         lines.append("try_build(RESULTS, body, %r, %s, %s)" % (label, opening_expr, target_expr))
     lines.append("print(RESULTS)")
-    result = kernel.check(HELPERS + RING_PREDICATES_CODE + "\n" + "\n".join(lines))
+    result = kernel.rehearse(HELPERS + RING_PREDICATES_CODE + "\n" + "\n".join(lines))
     assert result.ok, result.traceback
     return eval(result.stdout.strip())
 
@@ -211,10 +211,10 @@ def reproduce_event_16094(kernel, design, steps):
     selection builds when Base is the Tip captured before
     `body.addObject(fillet)` runs.
     """
-    boot = kernel.check("doc.addObject('PartDesign::Body', 'Body')")
+    boot = kernel.rehearse("doc.addObject('PartDesign::Body', 'Body')")
     assert boot.ok, boot.traceback
     for n in range(1, 17):
-        result = kernel.check(with_design(design, steps[str(n)]))
+        result = kernel.rehearse(with_design(design, steps[str(n)]))
         assert result.ok, "Step %d failed: %s" % (n, result.traceback)
 
     event_code = _load("ring_fillet_event_selector.json")["code"]
@@ -224,7 +224,7 @@ def reproduce_event_16094(kernel, design, steps):
         "",
     )
 
-    with_body = kernel.check(selector + """
+    with_body = kernel.rehearse(selector + """
 f = doc.addObject('PartDesign::Fillet', 'FilletAllBody')
 body.addObject(f)
 f.Base = (body, convex_names)
@@ -232,7 +232,7 @@ f.Radius = 2.0
 doc.recompute()
 print('with body:', built_ok(f))
 """)
-    with_tip = kernel.check(selector + """
+    with_tip = kernel.rehearse(selector + """
 tip = body.Tip
 f = doc.addObject('PartDesign::Fillet', 'FilletAllTip')
 body.addObject(f)
@@ -247,7 +247,7 @@ print('with tip captured before addObject:', built_ok(f), 'edges:', convex_names
 def demonstrate_step_35_mixed_concavity(kernel, design, steps, fillet_1730_code):
     """An 18-edge front boundary loop mixing convex and concave edges is refused as one fillet Base."""
     _build_steps_1_to_26(kernel, design, steps, fillet_1730_code)
-    boundary = kernel.check(HELPERS + """
+    boundary = kernel.rehearse(HELPERS + """
 body = doc.getObject('Body')
 base = body.Tip
 shape = base.Shape
@@ -276,7 +276,7 @@ def build_step_35_split_by_concavity(kernel, design, steps, fillet_1730_code):
     every group rather than into the convex one.
     """
     _build_steps_1_to_26(kernel, design, steps, fillet_1730_code)
-    result = kernel.check(HELPERS + """
+    result = kernel.rehearse(HELPERS + """
 body = doc.getObject('Body')
 base = body.Tip
 shape = base.Shape
@@ -317,9 +317,9 @@ def check_step_27_and_31_exclude_each_other():
     steps = _load("ring_fillet_steps.json")
     fillet_1730_code = _load("ring_fillet_steps_17_30.json")["code"]
 
-    with Kernel() as kernel:
+    with Kernel(timeout=300) as kernel:
         outer_first = classify_steps_27_to_34(kernel, design, steps, fillet_1730_code, bore_first=False)
-    with Kernel() as kernel:
+    with Kernel(timeout=300) as kernel:
         bore_first = classify_steps_27_to_34(kernel, design, steps, fillet_1730_code, bore_first=True)
 
     outer_status, _count, outer_ok, _names = outer_first["27_out_L_lower"]
@@ -346,25 +346,25 @@ def main():
     print("  outer first:", outer_first["27_out_L_lower"], outer_first["31_bore_L_lower"])
     print("  bore first:", bore_first["31_bore_L_lower"], bore_first["27_out_L_lower"])
 
-    with Kernel() as kernel:
+    with Kernel(timeout=300) as kernel:
         plan_order = classify_steps_27_to_34(kernel, design, steps, fillet_1730_code, bore_first=False)
         print("Plan's own order (27-30 then 31-34):")
         for label, res in plan_order.items():
             print(" ", label, res)
 
-    with Kernel() as kernel:
+    with Kernel(timeout=300) as kernel:
         reordered = classify_steps_27_to_34(kernel, design, steps, fillet_1730_code, bore_first=True)
         print("Reordered (31-34 then 27-30):")
         for label, res in reordered.items():
             print(" ", label, res)
 
-    with Kernel() as kernel:
+    with Kernel(timeout=300) as kernel:
         with_body, with_tip = reproduce_event_16094(kernel, design, steps)
         print("Event 16094 reproduction:")
         print(" ", "Base=(body, ...):", "OK" if with_body.ok else "FAIL (%s)" % with_body.traceback.splitlines()[-1])
         print(" ", "Base=(tip captured pre-addObject, ...):", with_tip.stdout.strip() if with_tip.ok else "FAIL (%s)" % with_tip.traceback.splitlines()[-1])
 
-    with Kernel() as kernel:
+    with Kernel(timeout=300) as kernel:
         boundary = demonstrate_step_35_mixed_concavity(kernel, design, steps, fillet_1730_code)
         print("Step 35 (18-edge front boundary loop, unsplit):",
               "MIXED CONCAVITY -- refused before recompute" if not boundary.ok else "built")

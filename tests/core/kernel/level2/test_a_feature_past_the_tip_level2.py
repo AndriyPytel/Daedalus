@@ -49,19 +49,19 @@ def kernel():
 
 def test_a_pattern_the_tip_never_reaches_fails_and_names_the_tip(kernel):
     """FreeCAD's Body.addObject moves the Tip onto a Pad but not onto a PolarPattern; a recorded run probed the uncut Body for nine minutes."""
-    kernel.check("pass", document=None)
-    assert kernel.check(PADDED_WITH_A_HOLE, builds=True).ok
+    assert kernel.seed().ok
+    assert kernel.rehearse(PADDED_WITH_A_HOLE).ok
 
-    result = kernel.check(PATTERNED, builds=True)
+    result = kernel.rehearse(PATTERNED)
 
     assert not result.ok
     assert "body.Tip = doc.getObject('Pattern')" in result.traceback
 
 
 def test_a_pattern_made_the_tip_lands(kernel):
-    kernel.check("pass", document=None)
-    assert kernel.check(PADDED_WITH_A_HOLE, builds=True).ok
+    assert kernel.seed().ok
+    assert kernel.rehearse(PADDED_WITH_A_HOLE).ok
 
-    result = kernel.check(PATTERNED + "body.Tip = pattern\ndoc.recompute()\n", builds=True)
+    result = kernel.rehearse(PATTERNED + "body.Tip = pattern\ndoc.recompute()\n")
 
     assert result.ok, result.traceback

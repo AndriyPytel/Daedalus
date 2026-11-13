@@ -432,6 +432,7 @@ from settings on every send.
         self._document = None
         self._stop = threading.Event()
         self._abort = threading.Event()
+        self._transcript = ""
 
     @property
     def document(self):
@@ -441,13 +442,6 @@ from settings on every send.
     def document(self, value):
         self._document = value
         self.sdk_client = None
-
-    @property
-    def pipeline(self):
-        """The ApplyPipeline, for abort() to call shutdown()."""
-        if self.sdk_client is None:
-            return None
-        return self.sdk_client.pipeline
 
     def stop(self):
         """
@@ -462,24 +456,27 @@ from settings on every send.
         """
         self._stop.set()
         if self.sdk_client is not None:
-            self.sdk_client.kill_provider()
+            self.sdk_client.stop()
         self.ask.abandon()
+
+    def shutdown(self):
+        """Lets the headless FreeCAD go, the call a Session's own teardown makes."""
+        if self.sdk_client is not None:
+            self.sdk_client.shutdown()
 
     def abort(self):
         """Kills the kernel now, discarding whatever Step is in flight.
         Where `stop` lets the kernel checkpoint the Step on its own, this
-        also calls `pipeline.shutdown` -- the same call a Session's own
-        teardown makes -- so the `Kernel.check` call in flight comes back a
+        also calls `shutdown` -- the same call a Session's own teardown
+        makes -- so the Kernel call in flight comes back a
         crash and `core/kernel.py`'s reopen-the-checkpoint recovery keeps it
         out of the Document. `Kernel.kill` only drops the process, so the
-        next Step run restarts it; `sdk_client.kill_provider()` ends this
-        run's own `claude` process the same way `stop` does.
+        next Step run restarts it.
         """
         self._abort.set()
         if self.sdk_client is not None:
-            self.sdk_client.kill_provider()
-        if self.pipeline is not None:
-            self.pipeline.shutdown()
+            self.sdk_client.stop()
+            self.sdk_client.shutdown()
         self._stop.set()
         self.ask.abandon()
 
@@ -494,22 +491,30 @@ from settings on every send.
             self.sdk_client = Client(
                 document=self._document,
                 confirm=self.ask.about_objects_we_do_not_own,
-                dispatch=on_main_thread)
+                dispatch=on_main_thread,
+                on_document=self._name_the_document)
         return self.sdk_client
+
+    def _name_the_document(self, name):
+        try:
+            self.document_named.emit(self._transcript, name,
+                                     str(getattr(self._document, "Uid", "") or ""))
+        except Exception:
+            pass  # except-pass-allowed: the panel may already be closing, nothing needs the signal
 
     @QtCore.Slot(str, object, str)
     def do_work(self, intent: str, attachments: list, transcript: str):
         """Runs one Intent and emits the result: a missing transcript log must not
-cost the user their run, nor must a Session that cannot be named after its
-Document, so both fail quietly, and a model that cannot be resolved is a
+cost the user their run, and a model that cannot be resolved is a
 known outcome that belongs in the transcript as a sentence, not a
 traceback.
 """
-        from sdk import events as ev, EventStream, build_registry, get_domain
+        from sdk import events as ev, EventStream, get_domain
         from bridge.logger import generate_crash_report, logger
 
         self._stop.clear()
         self._abort.clear()
+        self._transcript = transcript
         events = EventStream([self.bridge.subscriber()])
         try:
             events.log_to(transcript)
@@ -520,35 +525,18 @@ traceback.
                          if event.kind in (ev.BLOCKED, ev.ERROR) else None)
 
         try:
-            sdk_client = self._get_sdk_client()
+            result = self._get_sdk_client().send(
+                intent, attachments=attachments, cancelled=self._stop.is_set,
+                events=events, choice=get_domain())
         except ValueError as exc:
             events.emit(ev.ERROR, message=str(exc))
-            self.finished.emit(None, transcript)
-            return
-
-        tools = build_registry(document=self._document, pipeline=sdk_client.pipeline,
-                              dispatch=sdk_client.dispatch)
-        try:
-            self.document_named.emit(transcript,
-                                     str(tools.call("snapshot").get("document") or ""),
-                                     str(getattr(self._document, "Uid", "") or ""))
-        except Exception:
-            pass  # except-pass-allowed: the panel may already be closing, nothing needs the signal
-
-        sdk_client.pipeline.lock()
-        try:
-            domain = sdk_client.domain_for(intent, get_domain(), events)
-            result = sdk_client.send(
-                intent,
-                attachments=attachments,
-                cancelled=self._stop.is_set,
-                events=events, domain=domain)
-            self.finished.emit(result, transcript)
+            result = None
         except Exception as exc:
-            events.emit("error", message=generate_crash_report(exc, "LoopWorker.do_work()"))
-            self.finished.emit(None, transcript)
-        finally:
-            sdk_client.pipeline.end_run()
+            events.emit(ev.ERROR, message=generate_crash_report(exc, "LoopWorker.do_work()"))
+            result = None
+        self.finished.emit(result, transcript)
+
+
 class _TitleThread(QtCore.QThread):
     """One short call naming a Session, off the UI thread so the run is not held up."""
 
@@ -584,7 +572,7 @@ Apply are bound to its own `worker.document`, set once from whichever
 Document is in focus when the Session's first Intent is sent, rather than
 to `FreeCAD.ActiveDocument` at the moment of the call, which is whichever
 Document the user happens to be looking at right then; a Preflight Worker
-comes along for free, living on `worker.pipeline`, this Session's own.
+comes along for free, living on the Client, this Session's own.
 `running` and `sent_attachments` are carried here so a
 Session backgrounded mid-run keeps its own state rather than sharing the
 one the panel happens to be looking at; `dirty` is set when an event lands for
@@ -629,8 +617,7 @@ composer, never queued here.
 
         with stopping():
             self.worker.stop()
-            if self.worker.pipeline is not None:
-                self.worker.pipeline.shutdown()
+            self.worker.shutdown()
             if self.thread.isRunning():
                 self.thread.quit()
                 if not self.thread.wait(grace_ms):
@@ -1930,8 +1917,7 @@ finish on its own before this panel stops tracking it.
         FreeCAD.removeDocumentObserver(self)
         for bundle in self._workers.values():
             bundle.worker.stop()
-            if bundle.worker.pipeline is not None:
-                bundle.worker.pipeline.shutdown()
+            bundle.worker.shutdown()
         for bundle in self._workers.values():
             if bundle.thread.isRunning():
                 bundle.thread.quit()

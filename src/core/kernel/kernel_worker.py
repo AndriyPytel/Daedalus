@@ -14,7 +14,6 @@ the idle-feature diagnosis and the Document's own objects, not only the
 traceback.
 """
 import contextlib
-import copy
 import difflib
 import functools
 import io
@@ -391,7 +390,7 @@ def sketch_at(body, label, normal, at):
     return sketch
 
 
-def step_namespace(doc, base_faces=None, intent=None, outcome=None):
+def step_namespace(doc):
     """
     What a Step's code runs with, built identically by the kernel and the GUI's
     replay or they run different programs. Sketch geometry lives outside
@@ -415,12 +414,6 @@ def step_namespace(doc, base_faces=None, intent=None, outcome=None):
                  "cylinder_face": cylinder_face,
                  "no_collateral": functools.partial(no_collateral, measures=measure),
                  "by_label": by_label, "sketch_at": sketch_at}
-    if base_faces is not None:
-        namespace["base_faces"] = dict(base_faces)
-    if intent is not None:
-        namespace["intent"] = copy.deepcopy(intent)
-    if outcome is not None:
-        namespace["outcome"] = copy.deepcopy(outcome)
     for module in STEP_MODULES:
         try:
             namespace[module] = __import__(module)
@@ -778,7 +771,7 @@ def _why_a_dressup_failed(obj):
             break
     for share in _SMALLER:
         if not _refusal(shape, made, size * share, [edge for _, edge in chosen]):
-            said += ". The whole selection builds at %s mm" % round(size * share, 3)
+            said += ". The whole selection goes through at %s mm" % round(size * share, 3)
             break
     return said
 
@@ -812,7 +805,7 @@ def _the_name_of(shape, edge):
 
 
 def _refusal(shape, made, size, edges):
-    """What the same dressup raises at Part level, or "" where it builds."""
+    """What the same dressup raises at Part level, or "" where it goes through."""
     try:
         getattr(shape, made)(size, edges)
     except Exception as exc:
@@ -1095,12 +1088,6 @@ def _printed(said):
     return text[:STDOUT_LIMIT] + "\n...cut here, %d characters in all" % len(text)
 
 
-def _held(namespace):
-    """A script's own `held` list, read from the namespace it ran in; `None` for a name never defined, so absent reads differently from empty."""
-    held = namespace.get("held")
-    return list(held) if isinstance(held, (list, tuple)) else None
-
-
 def register_step_source(code):
     """
     Put a Step's own source into `linecache` under the name `exec(compile(...))`
@@ -1280,13 +1267,10 @@ def _run_step_body(doc, namespace, touched, request):
         "created": sorted(touched.created),
         "deleted": sorted(touched.deleted),
         "modified": sorted(touched.modified()),
-        "geometry": _geometry_snapshot(doc) if changed or request.get("geometry") else {},
+        "geometry": _geometry_snapshot(doc) if changed else {},
         "volume": _volume_moved(doc, touched.created),
         "signature": signature_of(doc) if changed else {},
     }
-    held = _held(namespace)
-    if held is not None:
-        result["held"] = held
     render_path = request.get("render_path")
     if render_path:
         from core.kernel.preflight_render import render
@@ -1299,27 +1283,22 @@ def run_step(request):
     """
     Run one Step against the kernel's live Document. A `document` in
     *request* is a fresh handoff: the session starts over from that path,
-    with a name map seeded from *request*'s own `names`, and
-    `ephemeral=True` skips checkpoint writes. Pass writes the checkpoint;
+    with an empty name map. Pass writes the checkpoint;
     fail reopens the last checkpoint only when `_Touched.touched()` says
     the Step actually changed the Document, since a read-only probe that
     raises leaves it exactly as it was; `exploring=True` marks a call no
     Step declared, so a pass that touched the Document is reopened the
     same as a failed one, and the response names what was rolled back.
     """
-    ephemeral = request.get("ephemeral", False)
     exploring = request.get("exploring", False)
     if "document" in request or _SESSION["doc"] is None:
         _SESSION["doc"] = _open_document(request.get("document"))
-        _SESSION["names"] = dict(request.get("names") or {})
-        if not ephemeral:
-            _save_checkpoint(_SESSION["doc"])
+        _SESSION["names"] = {}
+        _save_checkpoint(_SESSION["doc"])
 
     doc = _SESSION["doc"]
     names = dict(_SESSION["names"])
-    namespace = step_namespace(_NamedDoc(doc, names),
-                               base_faces=request.get("base_faces"),
-                               intent=request.get("intent"), outcome=request.get("outcome"))
+    namespace = step_namespace(_NamedDoc(doc, names))
     namespace["names"] = names
 
     touched = _Touched(doc)
@@ -1332,9 +1311,6 @@ def run_step(request):
         response = {"ok": False,
                     "traceback": trimmed_traceback(exc) + _idle_feature_report(doc, touched.created),
                     "volume": _volume_moved(doc, touched.created)}
-        held = _held(namespace)
-        if held is not None:
-            response["held"] = held
     except BaseException as exc:
         touched.diff(doc)
         response = {"ok": False,
@@ -1350,15 +1326,15 @@ def run_step(request):
         response["ok"] = False
         response["traceback"] = (response.get("traceback") or "") + past
     if response.get("ok"):
-        if exploring and touched.touched() and not ephemeral:
+        if exploring and touched.touched():
             _reload_checkpoint()
             response["rolled_back"] = sorted(touched.created | touched.deleted | touched.modified())
         else:
-            if not ephemeral and (touched.touched() or not _checkpoint_exists()):
+            if touched.touched() or not _checkpoint_exists():
                 _save_checkpoint(doc)
             _SESSION["names"] = names
     else:
-        if not ephemeral and touched.touched():
+        if touched.touched():
             _reload_checkpoint()
     response["checkpoint"] = _SESSION["checkpoint"]
     response["names"] = dict(_SESSION["names"])

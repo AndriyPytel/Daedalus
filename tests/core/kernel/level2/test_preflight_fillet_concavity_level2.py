@@ -87,17 +87,19 @@ def a_fillet_on(names):
 
 
 def held_names(worker, expression):
-    probe = A_PLATE_WITH_A_SLOT + "held = %s\n" % expression
-    result = worker.check(probe, None)
-    assert result.ok, result.traceback
-    return result.held
+    assert worker.seed().ok
+    names = worker.measure(
+        A_PLATE_WITH_A_SLOT + "import json\nprint('FACTS ' + json.dumps(%s))\n" % expression)
+    assert names is not None
+    return names
 
 
 def test_a_fillet_mixing_a_plate_corner_and_a_slot_corner_is_refused(worker):
     mixed_names = held_names(
         worker, "['Edge%d' % (plate_corners[0] + 1), 'Edge%d' % (slot_corners[0] + 1)]")
 
-    result = worker.check(a_fillet_on(mixed_names), None)
+    assert worker.seed().ok
+    result = worker.rehearse(a_fillet_on(mixed_names))
 
     assert not result.ok, "a fillet mixing concave and convex Base edges was passed to the Document"
 
@@ -106,7 +108,8 @@ def test_the_mixed_concavity_failure_names_the_edges(worker):
     mixed_names = held_names(
         worker, "['Edge%d' % (plate_corners[0] + 1), 'Edge%d' % (slot_corners[0] + 1)]")
 
-    said = worker.check(a_fillet_on(mixed_names), None).traceback
+    assert worker.seed().ok
+    said = worker.rehearse(a_fillet_on(mixed_names)).traceback
 
     assert "Fillet" in said, said
     assert all(name in said for name in mixed_names), (
@@ -116,7 +119,8 @@ def test_the_mixed_concavity_failure_names_the_edges(worker):
 def test_a_fillet_on_the_plates_own_corners_is_accepted(worker):
     plate_names = held_names(worker, "['Edge%d' % (at + 1) for at in plate_corners]")
 
-    result = worker.check(a_fillet_on(plate_names), None)
+    assert worker.seed().ok
+    result = worker.rehearse(a_fillet_on(plate_names))
 
     assert result.ok, result.traceback
 
@@ -124,7 +128,8 @@ def test_a_fillet_on_the_plates_own_corners_is_accepted(worker):
 def test_a_fillet_on_the_slots_own_corners_is_accepted(worker):
     slot_names = held_names(worker, "['Edge%d' % (at + 1) for at in slot_corners]")
 
-    result = worker.check(a_fillet_on(slot_names), None)
+    assert worker.seed().ok
+    result = worker.rehearse(a_fillet_on(slot_names))
 
     assert result.ok, result.traceback
 
@@ -140,9 +145,10 @@ def test_the_guards_own_cost_stays_under_the_round_trip_it_rides_on(worker):
     from core.kernel import kernel_worker
 
     plate_names = held_names(worker, "['Edge%d' % (at + 1) for at in plate_corners]")
-    code = a_fillet_on(plate_names) + "held = ['ready']\n"
+    code = a_fillet_on(plate_names)
     started = time.perf_counter()
-    result = worker.check(code, None)
+    assert worker.seed().ok
+    result = worker.rehearse(code)
     round_trip = time.perf_counter() - started
     assert result.ok, result.traceback
 
@@ -152,10 +158,12 @@ def test_the_guards_own_cost_stays_under_the_round_trip_it_rides_on(worker):
         "for _ in range(20):\n"
         "    kernel_worker._fillets_with_mixed_concavity(doc)\n"
         "guard_cost = (time.perf_counter() - started) / 20.0\n"
-        "held = [guard_cost]\n"
+        "import json\n"
+        "print('FACTS ' + json.dumps(guard_cost))\n"
     )
-    guard_cost = worker.check(
-        "from core.kernel import kernel_worker\n" + probe, None).held[0]
+    assert worker.seed().ok
+    guard_cost = worker.measure("from core.kernel import kernel_worker\n" + probe)
+    assert guard_cost is not None
 
     assert guard_cost < round_trip, (
         "the guard (%.6fs) costs more than the round trip it rides on (%.6fs)"

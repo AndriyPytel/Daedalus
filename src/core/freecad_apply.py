@@ -236,10 +236,10 @@ class ApplyPipeline:
     def _seed(self) -> KernelResult:
         doc = self._dispatch(self._active)
         if doc is None:
-            return self.worker.check("pass", document=None)
+            return self.worker.seed()
         copy = self._dispatch(lambda: copy_of(doc))
         try:
-            return self.worker.check("pass", document=copy)
+            return self.worker.seed(copy)
         finally:
             discard(copy)
 
@@ -276,7 +276,7 @@ class ApplyPipeline:
         if not checked.ok:
             return ApplyResult(ok=False, traceback=checked.report(), gate="lint")
 
-        rehearsal = self.worker.check(code)
+        rehearsal = self.worker.rehearse(code)
         said = _said(rehearsal)
         if not rehearsal.ok:
             return ApplyResult(ok=False, traceback=rehearsal.traceback, said=said)
@@ -395,7 +395,9 @@ class ApplyPipeline:
         return self._dispatch(read)
 
     def _allowed(self, wanted, kinds):
-        """Put one deletion question to the user, and record both halves of it."""
+        """Put one deletion question to the user, and record both halves of it; a run with nobody to ask refuses without asking."""
+        if self._unattended:
+            return self._confirm(kinds) is True
         self._narrate(QUESTION, text="The assistant wants to " + wanted + ".")
         allowed = self._confirm(kinds) is True
         self._narrate(ANSWER, by="user",

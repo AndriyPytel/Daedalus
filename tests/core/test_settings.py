@@ -1,7 +1,7 @@
 """
 Level 1 (real FreeCAD present in this environment, but no run and no Qt
 event loop needed) — settings that are booleans stored in the same
-`FreeCAD.ParamGet` group as everything else `SettingsManager` owns.
+`FreeCAD.ParamGet` group as everything else `Settings` owns.
 """
 import os
 import subprocess
@@ -15,9 +15,8 @@ SRC = os.path.join(ROOT, "src")
 
 def test_core_settings_imports_without_pyside_or_freecad():
     """
-    `core/settings.py` is the persistence half split out of
-    `bridge/settings_manager.py`, so any `core/` module can read or write a
-    setting without needing `PySide` importable. A subprocess with a bare
+    Any `core/` module can read or write a setting without needing `PySide`
+    importable. A subprocess with a bare
     `sys.path` (no FreeCAD lib dir, no conftest fixtures) is what actually
     proves it: within this suite's own process FreeCAD is already imported
     by the time a test runs.
@@ -65,3 +64,21 @@ def test_the_domain_choice_defaults_to_auto_and_round_trips(the_settings_never_r
         assert sm.get_domain() == "assembly"
     finally:
         sm.set_domain(chosen)
+
+
+def test_each_sdk_write_notifies_its_subscribers_once(the_settings_never_reach_the_user_s_freecad):
+    import sdk
+    from core import settings
+
+    heard = {"api_keys": [], "base_urls": [], "last_model": []}
+    for name, got in heard.items():
+        settings.instance().subscribe(name, got.append)
+    keys = [{"provider": "Anthropic", "api_key": "k"}]
+    urls = {"Home server": "http://localhost:1"}
+
+    sdk.set_api_keys(keys)
+    sdk.set_base_urls(urls)
+    sdk.set_last_model("Anthropic", "l")
+
+    assert heard["api_keys"] == [keys] and heard["base_urls"] == [urls]
+    assert heard["last_model"].count(("Anthropic", "l")) == 1

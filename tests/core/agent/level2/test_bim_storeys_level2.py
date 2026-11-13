@@ -3,7 +3,7 @@ Level 2 -- a two-storey building with stairs, built by code in headless FreeCAD,
 """
 import pytest
 
-from core.agent.bim import measured, refusals, unfinished
+from core.agent.bim import FACTS_CHECK, refusals, unfinished
 from core.kernel import Kernel, find_freecadcmd
 from tests.bim_helpers import FLAT
 
@@ -55,20 +55,20 @@ def kernel():
 
 
 def _fresh(kernel):
-    kernel.check("for o in list(doc.Objects):\n    doc.removeObject(o.Name)")
+    kernel.rehearse("for o in list(doc.Objects):\n    doc.removeObject(o.Name)")
 
 
 def _found(kernel, code):
     _fresh(kernel)
-    assert kernel.check(code).ok
-    return refusals(measured(kernel))
+    assert kernel.rehearse(code).ok
+    return refusals(kernel.measure(FACTS_CHECK))
 
 
 def test_a_two_storey_building_with_stairs_passes(kernel):
     _fresh(kernel)
-    assert kernel.check(BUILDING).ok
+    assert kernel.rehearse(BUILDING).ok
 
-    facts = measured(kernel)
+    facts = kernel.measure(FACTS_CHECK)
 
     assert refusals(facts) == [], refusals(facts)
     assert unfinished(kernel) is None
@@ -88,7 +88,7 @@ def test_a_building_that_breaks_one_condition_is_refused_with_the_reason(kernel,
 
 def test_the_single_flat_assertion_is_unchanged_by_the_levels_it_measures(kernel):
     _fresh(kernel)
-    assert kernel.check(FLAT).ok
+    assert kernel.rehearse(FLAT).ok
 
-    assert refusals(measured(kernel)) == []
+    assert refusals(kernel.measure(FACTS_CHECK)) == []
     assert unfinished(kernel) is None

@@ -5,20 +5,20 @@ import pytest
 
 from core import settings
 from core.session_title import generate
-from chat_helpers import set_the_chat, say  # noqa: F401
+from chat_helpers import kernel, set_the_chat, say  # noqa: F401
 
 pytestmark = pytest.mark.freecad
 
 
-def test_every_call_a_prompt_makes_is_made_with_the_chats_model_and_effort(monkeypatch):
-    from sdk import NO_KERNEL, Client
+def test_every_call_a_prompt_makes_is_made_with_the_chats_model_and_effort(kernel, monkeypatch):
+    from sdk import Client
 
     asked = set_the_chat(monkeypatch, "haiku", "high",
                          ["run_question", "It finished.", "part", "Bracket"])
-    client = Client(kernel=NO_KERNEL)
+    client = Client(kernel=kernel)
 
     client.send("what happened to the last run?")
-    client.domain_for("Make a bracket.")
+    client.send("Make a bracket.", route_first=False, cancelled=lambda: len(asked) >= 3)
     generate("Make a bracket.")
     client.close()
 

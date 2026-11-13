@@ -1,5 +1,5 @@
 """
-The reader arm: the drawing is read once into a table, then one agent builds with the drawing and the table in front of it.
+The reader arm: the drawing is read once into a table, then one agent works with the drawing and the table in front of it.
 
 The Assertion, asked at the first `finish`, measures the solid against the table and returns the differences, never a verdict, because an agent told its part conforms stops looking. It asks once, so it cannot loop.
 """
@@ -61,7 +61,7 @@ for o in solids:
     features = [f.TypeId for f in o.Group if f.TypeId.startswith("PartDesign::")] if tip else []
     found.append({"name": o.Name, "type": o.TypeId, "tip": tip.TypeId if tip else None,
                   "features": features})
-print("TREE " + json.dumps(found))
+print("FACTS " + json.dumps({"solids": found}))
 """
 
 NO_TREE = ("The Document's solid is not a feature tree: %s. Build the part in a PartDesign::Body "
@@ -71,12 +71,8 @@ NO_TREE = ("The Document's solid is not a feature tree: %s. Build the part in a 
 
 def without_feature_tree(kernel):
     """Why the kernel's Document does not hold a PartDesign::Body whose Tip is a feature, or `None` where it does."""
-    result = kernel.check(TREE_CHECK, exploring=True)
-    found = None
-    for line in reversed((result.stdout or "").splitlines()):
-        if line.startswith("TREE "):
-            found = json.loads(line[len("TREE "):])
-            break
+    facts = kernel.measure(TREE_CHECK)
+    found = facts["solids"] if facts else None
     if not found:
         return NO_TREE % "the Document holds no solid"
     faults = []
@@ -96,17 +92,14 @@ solids = [o.Shape for o in doc.Objects
           if not o.InList and getattr(o, "Shape", None) is not None
           and not o.Shape.isNull() and o.Shape.Solids]
 shape = solids[0] if len(solids) == 1 else Part.Compound(solids)
-print("MESH " + json.dumps(unmeshable_fc(shape) if solids else None))
+print("FACTS " + json.dumps({"unmeshable": unmeshable_fc(shape) if solids else None}))
 """
 
 def unmeshable(kernel):
     """Why the grader's mesher would not get through the kernel's solid, or `None` where it would or where the check could not run."""
-    result = kernel.check(MESH_CHECK, exploring=True, timeout=MESH_CHECK_TIMEOUT)
-    for line in reversed((result.stdout or "").splitlines()):
-        if line.startswith("MESH "):
-            found = json.loads(line[len("MESH "):])
-            return "The grader could not tessellate this solid: %s. Fix this, then finish." % found if found else None
-    return None
+    facts = kernel.measure(MESH_CHECK, timeout=MESH_CHECK_TIMEOUT)
+    found = facts["unmeshable"] if facts else None
+    return "The grader could not tessellate this solid: %s. Fix this, then finish." % found if found else None
 
 
 def unfinished_part(kernel):
@@ -257,15 +250,6 @@ def mismatches(facts, table):
     return found
 
 
-def measured(kernel):
-    """The facts of the Document's solid as the kernel sees it, or `None` where the measuring itself failed."""
-    result = kernel.check(FACTS_CHECK, exploring=True)
-    for line in reversed((result.stdout or "").splitlines()):
-        if line.startswith("FACTS "):
-            return json.loads(line[len("FACTS "):])
-    return None
-
-
 COMPARE = ("Compare each view with the drawing. Name each feature of the drawing the part lacks or "
            "gets wrong, build it, then finish.")
 
@@ -283,7 +267,7 @@ def assert_part(kernel, sheet, table, renders, events):
     """
     What to send back at the first `finish`: the differences found, the part in each view the table names beside that view's crop, and the order to compare them, with the names of the views drawn; `None` where there is neither a difference nor a picture to compare.
     """
-    facts = measured(kernel)
+    facts = kernel.measure(FACTS_CHECK)
     found = mismatches(facts, table) if facts else []
     blocks, drawn_views = [], {}
     for entry in (table or {}).get("views") or ():
@@ -293,8 +277,7 @@ def assert_part(kernel, sheet, table, renders, events):
                                          "or no such crop on the sheet" % (entry.get("view"), entry.get("crop")))
             continue
         if view not in drawn_views:
-            drawn = kernel.check("pass", render_path=os.path.join(renders, "assertion-%s.png" % view),
-                                 render_view=view)
+            drawn = kernel.render(os.path.join(renders, "assertion-%s.png" % view), view)
             drawn_views[view] = _as_image(drawn.render) if drawn.ok else None
             if not drawn_views[view]:
                 events.emit(WARNING, message="the Assertion dropped the %s view: the part could not be drawn" % view)
