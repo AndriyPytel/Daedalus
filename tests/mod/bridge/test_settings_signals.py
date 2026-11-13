@@ -11,7 +11,7 @@ def heard(the_settings_never_reach_the_user_s_freecad):
 
     manager = settings_manager.instance()
     got = {}
-    for name in ("api_keys", "base_urls", "default_model", "last_model", "role_table"):
+    for name in ("api_keys", "base_urls", "last_model"):
         got[name] = []
         getattr(manager, name + "_changed").connect(got[name].append)
     return got
@@ -22,18 +22,15 @@ def test_each_sdk_write_reaches_the_engine_and_emits_once(heard):
 
     keys = [{"provider": "Anthropic", "api_key": "k"}]
     urls = {"Home server": "http://localhost:1"}
-    table = [{"role": "design", "provider": "Anthropic", "model": "m", "effort": "low"}]
 
     sdk.set_api_keys(keys)
     sdk.set_base_urls(urls)
-    sdk.set_default_model("d")
-    sdk.set_last_model("l")
-    sdk.set_role_table(table)
+    sdk.set_last_model("Anthropic", "l")
 
-    assert (sdk.get_api_keys(), sdk.get_base_urls(), sdk.get_default_model(),
-            sdk.get_last_model(), sdk.get_role_table()) == (keys, urls, "d", "l", table)
-    assert heard == {"api_keys": [keys], "base_urls": [urls], "default_model": ["d"],
-                     "last_model": ["l"], "role_table": [table]}
+    assert (sdk.get_api_keys(), sdk.get_base_urls(), sdk.get_last_model()) == (
+        keys, urls, ("Anthropic", "l"))
+    assert heard["api_keys"] == [keys] and heard["base_urls"] == [urls]
+    assert heard["last_model"].count(("Anthropic", "l")) == 1
 
 
 def test_an_upsert_through_sdk_emits_once(heard):
@@ -51,6 +48,6 @@ def test_an_upsert_through_sdk_emits_once(heard):
 def test_a_write_through_the_bridge_manager_emits_once(heard):
     from bridge import settings_manager
 
-    settings_manager.instance().set_default_model("viaBridge")
+    settings_manager.instance().set_last_model("Anthropic", "viaBridge")
 
-    assert heard["default_model"] == ["viaBridge"]
+    assert heard["last_model"].count(("Anthropic", "viaBridge")) == 1

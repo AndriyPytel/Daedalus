@@ -1,7 +1,7 @@
 """
 `deploy/compose.yaml` is the home-server stack: Postgres, the gateway and a worker-host, wired so that only the gateway is reachable and only from this machine and Tailscale.
 
-The assertions read the file and the tree: the roles the server defaults must cover come from `core.role_defaults`, and the modules the commands name are checked against `src/service/`.
+The assertions read the file and the tree: the modules the commands name are checked against `src/service/`.
 """
 import json
 import os
@@ -12,7 +12,6 @@ import yaml
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
-from core.role_defaults import ROLES  # noqa: E402
 from core.model_catalog import CLAUDE  # noqa: E402
 
 with open(os.path.join(ROOT, "deploy", "compose.yaml"), encoding="utf-8") as handle:
@@ -52,11 +51,9 @@ def test_the_two_secrets_are_podman_secrets_that_become_environment_variables():
     assert "ANTHROPIC_API_KEY" not in text("deploy", "compose.yaml")
 
 
-def test_the_server_defaults_put_every_role_on_the_claude_subscription():
+def test_the_server_defaults_put_the_run_on_the_claude_subscription():
     defaults = json.loads(SERVICES["gateway"]["environment"]["DAEDALUS_DEFAULTS"])
-    assert {row["role"] for row in defaults["role_table"]} == set(ROLES)
-    assert {row["provider"] for row in defaults["role_table"]} == {CLAUDE}
-    assert defaults["default_model"]["provider"] == defaults["naming_model"]["provider"] == CLAUDE
+    assert defaults["provider"] == CLAUDE
 
 
 def test_the_worker_image_pins_the_claude_cli_by_version_and_sha256():

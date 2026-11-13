@@ -20,25 +20,6 @@ sys.path.insert(0, _SRC)
 sys.path.insert(0, os.path.dirname(_SRC))
 
 
-def client_for(provider, model_id, effort):
-    """
-    The client for *model_id* at *provider*, in a process no panel ran in.
-
-    `core.model_registry` is filled by the panel's own fetch, which never runs
-    here, so the provider is named on the command line and recorded, and its
-    list asked for the output ceiling it names, before `client_from_settings`
-    is asked to resolve it. The service worker solves the same problem through `sdk.remember_model`.
-    """
-    import sdk
-
-    sdk.remember_model(model_id, provider)
-    try:
-        sdk.remember_listed(provider)
-    except Exception as exc:
-        print("model list    : %s did not list its models (%s), so no output ceiling is known" % (provider, exc))
-    return sdk.client_from_settings(model_id, effort)
-
-
 def base_document(step_path):
     """
     A saved Document whose one Body has *step_path*'s solid as its BaseFeature,
@@ -169,15 +150,14 @@ def main():
 
     import FreeCAD  # noqa: F401
 
+    import sdk
     from sdk import COST, EFFORTS, Client
 
     if args.effort not in EFFORTS:
         parser.error("--effort must be one of %s" % ", ".join(EFFORTS))
-    llm = client_for(args.provider, args.model, args.effort) if args.model else None
+    llm = sdk.client_for(args.provider, args.model, args.effort) if args.model else None
     seed = base_document(args.base_step) if args.base_step else args.base_document
     if args.base_ifc:
-        import sdk
-
         scratch = tempfile.mkdtemp(prefix="fcc-native-")
         seed = sdk.native_document(args.base_ifc, os.path.join(scratch, "work.ifc"), os.path.join(scratch, "seed.FCStd"))
     client = Client(document=seed, llm=llm)

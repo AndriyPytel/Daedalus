@@ -1,48 +1,34 @@
 """
-Level 1 -- the gateway session header `client_from_settings` builds a client with.
+Level 1 -- the gateway session header `client_for` builds a client with.
 
 OpenCode Go refuses every call that arrives without `x-opencode-session`, so
 the header is part of being configured for that provider, not an option.
 """
-import types
-
 import pytest
 
-from core import model_registry
+from core import model_catalog, settings
 from core.llm import factory
 
 
 @pytest.fixture(autouse=True)
-def a_model_is_listed(monkeypatch):
-    """`get_llm_credentials` answers only for a model a provider listed, so the faked one is listed too."""
-    monkeypatch.setattr(model_registry, "_resolved", {"a-model": ("", "a-model", None)})
+def the_providers_are_keyed(monkeypatch):
+    for provider in ("OpenCode Go", "OpenAI"):
+        settings.instance().set_api_key_for_provider(provider, "sk-key")
+    monkeypatch.setattr(model_catalog, "fetch", lambda *args, **kwargs: [])
 
 
-def _settings(provider, base_url=""):
-    return types.SimpleNamespace(
-        get_llm_credentials=lambda model_id=None: (provider, "a-model", "sk-key"),
-        get_base_url_for_provider=lambda name: base_url,
-    )
-
-
-def test_a_gateway_client_carries_the_session_header_the_gateway_routes_on(monkeypatch):
-    monkeypatch.setattr(factory.settings, "instance", lambda: _settings("OpenCode Go"))
-
-    client = factory.client_from_settings()
+def test_a_gateway_client_carries_the_session_header_the_gateway_routes_on():
+    client = factory.client_for("OpenCode Go", "a-model", "medium")
 
     assert client.extra_headers["x-opencode-session"]
 
 
-def test_one_process_is_one_gateway_session(monkeypatch):
-    monkeypatch.setattr(factory.settings, "instance", lambda: _settings("OpenCode Go"))
-
-    first = factory.client_from_settings()
-    second = factory.client_from_settings()
+def test_one_process_is_one_gateway_session():
+    first = factory.client_for("OpenCode Go", "a-model", "medium")
+    second = factory.client_for("OpenCode Go", "a-model", "medium")
 
     assert first.extra_headers == second.extra_headers
 
 
-def test_a_provider_that_routes_on_nothing_of_its_own_is_sent_no_header(monkeypatch):
-    monkeypatch.setattr(factory.settings, "instance", lambda: _settings("OpenAI"))
-
-    assert factory.client_from_settings().extra_headers is None
+def test_a_provider_that_routes_on_nothing_of_its_own_is_sent_no_header():
+    assert factory.client_for("OpenAI", "a-model", "medium").extra_headers is None

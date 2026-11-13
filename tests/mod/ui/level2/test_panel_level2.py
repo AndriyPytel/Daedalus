@@ -279,36 +279,29 @@ _TWO_PROVIDERS = [
 ]
 
 
-def _mock_role_table(monkeypatch, model=""):
+def _mock_the_pills(monkeypatch, model="", provider="", effort="medium"):
     """
-    The developer's own machine has a real role table, in real FreeCAD
+    The developer's own machine has a real last model, in real FreeCAD
     settings, that has nothing to do with `_TWO_PROVIDERS` below — read it
     back and `_refresh_models` reaches for `_retire_model`, which would
-    overwrite that real setting with one of this test's fake ids. The table
-    the panel reads and writes is handed back to whoever wants to assert on
-    it.
+    overwrite that real setting with one of this test's fake ids. The two
+    settings the pills read and write are handed back to whoever wants to
+    assert on them.
     """
-    import sdk as settings
+    import sdk
 
-    table = [{"role": "orchestrator", "provider": "", "model": model, "effort": "medium"}]
-    monkeypatch.setattr(settings, "get_last_model", lambda: "")
-    monkeypatch.setattr(settings, "set_last_model", lambda model_id: None)
-    monkeypatch.setattr(settings, "get_role_table", lambda: table)
-    monkeypatch.setattr(settings, "set_role_table",
-                        lambda rows: table.__setitem__(slice(None), rows))
-    monkeypatch.setattr(settings, "get_role_model",
-                        lambda role: next((r for r in table if r["role"] == role), None))
-    return table
+    stored = {"model": (provider, model), "effort": effort}
+    monkeypatch.setattr(sdk, "get_last_model", lambda: stored["model"])
+    monkeypatch.setattr(sdk, "set_last_model",
+                        lambda provider, model: stored.__setitem__("model", (provider, model)))
+    monkeypatch.setattr(sdk, "get_effort", lambda: stored["effort"])
+    monkeypatch.setattr(sdk, "set_effort", lambda level: stored.__setitem__("effort", level))
+    return stored
 
 
 def test_the_composer_carries_the_effort_in_force(panel, monkeypatch):
-    """
-    How hard the model thinks is a choice made where the model is chosen, so
-    it can be changed between two runs and compared. Both pills read the
-    orchestrator's row of the role table.
-    """
-    table = _mock_role_table(monkeypatch)
-    table[0]["effort"] = "high"
+    """How hard the model thinks is a choice made where the model is chosen, so it can be changed between two runs and compared."""
+    _mock_the_pills(monkeypatch, effort="high")
 
     panel._show_effort()
 
@@ -317,101 +310,67 @@ def test_the_composer_carries_the_effort_in_force(panel, monkeypatch):
 
 def test_picking_an_effort_stores_it_and_shows_it(panel, monkeypatch):
     """The pill says what the next run will be asked for, not what was stored."""
-    table = _mock_role_table(monkeypatch)
+    stored = _mock_the_pills(monkeypatch)
 
     panel._on_effort_selected("high")
 
-    assert table[0]["effort"] == "high"
+    assert stored["effort"] == "high"
     assert panel.effort_button.text() == "high"
 
 
-def test_picking_a_model_writes_the_orchestrators_row(panel, monkeypatch):
-    """
-    The composer edits one role, and the row carries the provider too: a
-    model is only resolvable through the provider that offers it.
-    """
-    table = _mock_role_table(monkeypatch)
+def test_picking_a_model_stores_it_with_its_provider(panel, monkeypatch):
+    """A model is only resolvable through the provider that offers it, so the pair is what is kept."""
+    stored = _mock_the_pills(monkeypatch)
     panel._refresh_models(_TWO_PROVIDERS)
 
-    panel._on_model_selected("claude-opus-4")
+    panel._on_model_selected("Anthropic", "claude-opus-4")
 
-    assert table[0]["model"] == "claude-opus-4"
-    assert table[0]["provider"] == "Anthropic"
+    assert stored["model"] == ("Anthropic", "claude-opus-4")
+
+
+def test_a_model_offered_by_two_providers_is_stored_with_the_one_picked(panel, monkeypatch):
+    stored = _mock_the_pills(monkeypatch)
+    both = _TWO_PROVIDERS + [{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenRouter"}]
+    panel._refresh_models(both)
+
+    panel._on_model_selected("OpenRouter", "gpt-4o")
+
+    assert stored["model"] == ("OpenRouter", "gpt-4o")
 
 
 def test_the_model_the_pill_falls_back_to_is_the_model_the_run_gets(panel, monkeypatch):
-    """
-    Nothing stored: the pill shows the first model on offer, but a display
-    refresh names nothing to the role table — only a pick through the
-    selector does that (`_on_model_selected`).
-    """
-    table = _mock_role_table(monkeypatch)
+    """Nothing stored: the pill shows the first model on offer, and stores it, since the run reads what is stored and nothing else."""
+    stored = _mock_the_pills(monkeypatch)
 
     panel._refresh_models(_TWO_PROVIDERS)
 
     assert panel._current_model_id == "gpt-4o"
-    assert table[0]["model"] == ""
+    assert stored["model"] == ("OpenAI", "gpt-4o")
 
 
 def test_a_fresh_refresh_does_not_overwrite_a_model_chosen_last_session(panel, monkeypatch):
-    """
-    A stored id already matching a live model must not be touched by a
-    refresh that only recomputes what the pill shows.
-    """
-    table = _mock_role_table(monkeypatch, model="claude-opus-4")
+    """A stored pick already matching a live model must not be touched by a refresh that only recomputes what the pill shows."""
+    stored = _mock_the_pills(monkeypatch, model="claude-opus-4", provider="Anthropic")
 
     panel._refresh_models(_TWO_PROVIDERS)
 
-    assert table[0]["model"] == "claude-opus-4"
+    assert stored["model"] == ("Anthropic", "claude-opus-4")
+    assert panel._current_model_id == "claude-opus-4"
 
 
-def test_a_background_model_list_refresh_does_not_touch_an_untouched_profile(panel, monkeypatch):
-    """
-    `models_changed` firing in the background, with nothing ever picked in
-    this panel, must not persist the fallback it only displays.
-    """
-    table = _mock_role_table(monkeypatch)
-
-    panel._refresh_models(_TWO_PROVIDERS)
+def test_an_effort_pill_is_never_disabled(panel, monkeypatch):
+    """The Effort is the run's, whatever the model: a pill that goes grey is a pill that says some runs ignore it."""
+    _mock_the_pills(monkeypatch)
     panel._refresh_models(_TWO_PROVIDERS)
 
-    assert table[0]["model"] == ""
-
-
-def test_a_picked_model_is_the_shared_fallback_too(panel, monkeypatch):
-    """
-    Every caller with no role of its own reads the last-used model
-    (`settings.get_llm_credentials`), so one pick answers those as well.
-    """
-    import sdk
-
-    _mock_role_table(monkeypatch)
-    shared = []
-    monkeypatch.setattr(sdk, "set_last_model", shared.append)
-
-    panel._on_model_selected("claude-opus-4")
-
-    assert shared == ["claude-opus-4"]
-
-
-def test_a_model_that_cannot_reason_is_not_offered_the_choice(panel, monkeypatch):
-    """A picker that changes nothing is a picker that lies."""
-    from ui import daedalus_panel
-
-    monkeypatch.setattr("sdk.effort_is_honoured", lambda model_id=None: False)
-    panel._show_effort()
-    panel._open_effort_selector()
-
-    assert not panel.effort_button.isEnabled()
-    assert not panel.effort_selector.isVisible()
-    assert "no reasoning" in panel.effort_button.toolTip()
+    assert panel.effort_button.isEnabled()
 
 
 def test_clicking_the_model_button_opens_the_provider_step(panel, monkeypatch):
     """The popup opens on a flat list of providers, not their models."""
     from ui.model_selector import PROVIDER_STEP
 
-    _mock_role_table(monkeypatch)
+    _mock_the_pills(monkeypatch)
     panel._refresh_models(_TWO_PROVIDERS)
     panel._open_model_selector()
     QT_APP.processEvents()
@@ -426,7 +385,7 @@ def test_choosing_a_provider_replaces_the_list_with_its_models(panel, monkeypatc
     """Not grouping — sequence: the provider list is gone once its models are up."""
     from ui.model_selector import MODEL_STEP
 
-    _mock_role_table(monkeypatch)
+    _mock_the_pills(monkeypatch)
     panel._refresh_models(_TWO_PROVIDERS)
     panel._open_model_selector()
     QT_APP.processEvents()
@@ -446,7 +405,7 @@ def test_the_picker_opens_above_the_button_that_opens_it(panel, monkeypatch):
     """
     from conftest import QtCore
 
-    _mock_role_table(monkeypatch)
+    _mock_the_pills(monkeypatch)
     panel._refresh_models(_TWO_PROVIDERS)
     panel._open_model_selector()
     QT_APP.processEvents()
@@ -462,7 +421,7 @@ def test_a_picker_with_more_models_than_room_scrolls_inside_itself(panel, monkey
     The list is capped by the room the screen has, and what does not
     fit is scrolled to — never a popup taller than the display it is on.
     """
-    _mock_role_table(monkeypatch)
+    _mock_the_pills(monkeypatch)
     panel._refresh_models([{"id": "m%d" % n, "display": "Model %d" % n,
                             "provider": "OpenAI"} for n in range(200)])
     panel._open_model_selector()
@@ -480,7 +439,7 @@ def test_a_picker_with_more_models_than_room_scrolls_inside_itself(panel, monkey
 
 
 def test_choosing_a_model_closes_the_popup_and_updates_the_panel(panel, monkeypatch):
-    table = _mock_role_table(monkeypatch)
+    stored = _mock_the_pills(monkeypatch)
 
     panel._refresh_models(_TWO_PROVIDERS)
     panel._open_model_selector()
@@ -493,7 +452,7 @@ def test_choosing_a_model_closes_the_popup_and_updates_the_panel(panel, monkeypa
     assert not panel.model_selector.isVisible()
     assert panel._current_model_id == "claude-opus-4"
     assert panel.model_button.text() == "Claude Opus 4"
-    assert table[0]["model"] == "claude-opus-4"
+    assert stored["model"] == ("Anthropic", "claude-opus-4")
 
 
 def test_reopening_the_selector_always_starts_at_the_provider_step(panel, monkeypatch):
@@ -503,7 +462,7 @@ def test_reopening_the_selector_always_starts_at_the_provider_step(panel, monkey
     """
     from ui.model_selector import PROVIDER_STEP
 
-    _mock_role_table(monkeypatch)
+    _mock_the_pills(monkeypatch)
 
     panel._refresh_models(_TWO_PROVIDERS)
     panel._open_model_selector()
@@ -529,7 +488,7 @@ def test_the_picker_has_no_window_frame(panel, monkeypatch):
     """
     from conftest import QtCore
 
-    _mock_role_table(monkeypatch)
+    _mock_the_pills(monkeypatch)
     panel._refresh_models(_TWO_PROVIDERS)
     panel._open_model_selector()
     QT_APP.processEvents()
@@ -546,7 +505,7 @@ def test_neither_popup_draws_a_border(panel, monkeypatch):
     the same read applies to the history popup — the opaque fill and its
     radius are the whole edge either popup has, not a hairline on top of it.
     """
-    _mock_role_table(monkeypatch)
+    _mock_the_pills(monkeypatch)
     panel._refresh_models(_TWO_PROVIDERS)
     panel._open_model_selector()
     QT_APP.processEvents()
@@ -576,7 +535,7 @@ def test_the_popups_own_fill_is_opaque_and_comes_from_the_anchor_theme(panel, mo
     from conftest import QtGui
     from ui.ui_helpers import UIHelpers
 
-    _mock_role_table(monkeypatch)
+    _mock_the_pills(monkeypatch)
     panel._refresh_models(_TWO_PROVIDERS)
 
     original = panel.styleSheet()
@@ -643,7 +602,7 @@ def test_the_current_model_is_marked_by_a_check_not_a_recolour(panel, monkeypatc
     """
     from ui.model_selector import _Row
 
-    _mock_role_table(monkeypatch)
+    _mock_the_pills(monkeypatch)
     panel._refresh_models(_TWO_PROVIDERS)
     panel.model_button.setText("GPT-4o")
     panel._open_model_selector()
@@ -682,7 +641,7 @@ def test_the_button_shows_a_stored_model_no_static_list_knows(panel, monkeypatch
     from bridge import provider_manager, settings_manager
 
     monkeypatch.setattr(provider_manager.instance(), "awaiting_model_lists", lambda: True)
-    _mock_role_table(monkeypatch, model="gpt-5.6-sol")
+    _mock_the_pills(monkeypatch, model="gpt-5.6-sol", provider="OpenAI")
 
     panel._refresh_models([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
 
@@ -711,33 +670,17 @@ def test_a_provider_list_without_the_stored_model_falls_back_and_says_so(panel, 
     Only a real list that has arrived can retire a model — and when it does the
     user is told, because the model they picked is not the one they get.
     """
-    import sdk as settings
     from bridge import provider_manager
 
-    table = _mock_role_table(monkeypatch, model="gpt-5.6-sol")
+    stored = _mock_the_pills(monkeypatch, model="gpt-5.6-sol", provider="OpenAI")
     monkeypatch.setattr(provider_manager.instance(), "awaiting_model_lists", lambda: False)
-    monkeypatch.setattr(settings, "get_default_model", lambda: "gpt-4o")
 
     panel._refresh_models([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
 
     assert panel._current_model_id == "gpt-4o"
-    assert table[0]["model"] == "gpt-4o"
+    assert stored["model"] == ("OpenAI", "gpt-4o")
     assert panel._queue_widget.isVisible()
     assert "gpt-5.6-sol" in _now_on(panel)
-
-
-def test_retiring_a_model_with_no_preferences_default_still_names_one(panel, monkeypatch):
-    """The default model is a preference, and it may never have been set."""
-    import sdk as settings
-    from bridge import provider_manager
-
-    _mock_role_table(monkeypatch, model="gpt-5.6-sol")
-    monkeypatch.setattr(provider_manager.instance(), "awaiting_model_lists", lambda: False)
-    monkeypatch.setattr(settings, "get_default_model", lambda: "")
-
-    panel._refresh_models([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
-
-    assert panel._current_model_id == "gpt-4o"
     assert "switched to gpt-4o" in _now_on(panel)
 
 
@@ -822,9 +765,8 @@ def test_an_unusable_attachment_stops_the_run_before_it_starts(panel, tmp_path, 
     on the bar, so the offending one can be taken off and the Intent sent
     again.
     """
-    import sdk
-
-    monkeypatch.setattr(sdk, "selected_model_name", lambda _=None: "openai/gpt-3.5-turbo")
+    _mock_the_pills(monkeypatch)
+    panel._refresh_models([{"id": "gpt-3.5-turbo", "display": "GPT-3.5", "provider": "OpenAI"}])
     drawing = tmp_path / "bracket.png"
     drawing.write_bytes(b"png")
     panel.chip_bar.add_file(str(drawing))
@@ -2317,7 +2259,7 @@ def test_stop_and_abort_kill_the_run_provider_process_without_waiting_the_ceilin
         pipeline = None
 
         def kill_provider(self):
-            kill(self._llm)
+            kill(self._live)
 
     a_turn = [{"role": "system", "content": "You are the Design phase."},
               {"role": "user", "content": "Make a 10mm plate"}]
@@ -2328,18 +2270,18 @@ def test_stop_and_abort_kill_the_run_provider_process_without_waiting_the_ceilin
 
         process = _StuckProcess()
         stub = _StubSdkClient()
-        stub._llm = ClaudeCodeClient(model="sonnet", spawn=lambda argv, cwd: process)
+        stub._live = ClaudeCodeClient(model="sonnet", spawn=lambda argv, cwd: process)
         bundle.worker.sdk_client = stub
 
         done = threading.Event()
 
         def drive():
-            list(bundle.worker.client.stream(a_turn))
+            list(stub._live.stream(a_turn))
             done.set()
 
         driver = threading.Thread(target=drive)
         driver.start()
-        while not stub._llm.run._live:
+        while not stub._live.run._live:
             time.sleep(0.01)
 
         started = time.monotonic()

@@ -97,7 +97,7 @@ def test_a_gateway_module_importing_freecad_or_sdk_is_caught():
 
 
 def test_the_worker_may_import_what_sdk_defines_publicly_and_nothing_else_of_the_engine():
-    assert violations("from sdk import Client, set_api_keys, remember_model", "worker") == []
+    assert violations("from sdk import Client, set_api_keys, set_last_model", "worker") == []
     for line in ("import sdk", "from sdk import Client, Other", "from sdk import run", "from sdk import _settings",
                  "from core.loop import execute", "import FreeCAD", "from tools import lane"):
         assert violations(line, "worker"), line
@@ -105,7 +105,7 @@ def test_the_worker_may_import_what_sdk_defines_publicly_and_nothing_else_of_the
 
 def test_the_public_names_are_the_ones_sdk_defines_and_not_the_ones_it_imports():
     names = sdk_public_names()
-    assert {"Client", "set_api_keys", "set_base_urls", "set_role_table", "get_model_entry", "remember_model"} <= names
+    assert {"Client", "set_api_keys", "set_base_urls", "set_last_model", "set_effort"} <= names
     assert not names & {"run", "Session", "events", "route", "Kernel"}
 
 

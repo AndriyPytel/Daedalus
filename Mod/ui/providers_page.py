@@ -58,18 +58,12 @@ class ProvidersPage(QtWidgets.QWidget):
         self._tinted = False
         self._build_ui()
 
-        from bridge import provider_manager
-        provider_manager.instance().models_changed.connect(self._on_models_changed)
-
     def getWidget(self):
         return self
 
     def _build_ui(self):
         """
         Lay the page out.
-
-        ``models_changed`` is connected to a bound method rather than a lambda,
-        because Qt drops the lambda when this page is destroyed.
 
         A local server's address is plain text, not a secret, so it gets its own
         field, shown only for a provider whose endpoint the addon does not
@@ -181,25 +175,6 @@ class ProvidersPage(QtWidgets.QWidget):
         
         self.right_layout.addLayout(test_row)
 
-        self.model_container = QtWidgets.QWidget()
-        model_vbox = QtWidgets.QVBoxLayout(self.model_container)
-        model_vbox.setContentsMargins(0, 0, 0, 0)
-        model_vbox.setSpacing(6)
-
-        model_vbox.addWidget(QtWidgets.QLabel("Default Model"))
-        self.default_model_combo = QtWidgets.QComboBox()
-        self.default_model_combo.setStyleSheet(UIHelpers.get_input_style())
-        model_vbox.addWidget(self.default_model_combo)
-
-        model_vbox.addWidget(QtWidgets.QLabel("Session Naming Model"))
-        self.naming_model_combo = QtWidgets.QComboBox()
-        self.naming_model_combo.setStyleSheet(UIHelpers.get_input_style())
-        self.naming_model_combo.setToolTip(
-            "Names a Session from its first message. Unset uses the chat model.")
-        model_vbox.addWidget(self.naming_model_combo)
-
-        self.right_layout.addWidget(self.model_container)
-
         self.right_layout.addStretch()
 
         splitter.addWidget(right)
@@ -236,14 +211,12 @@ reset the selection and throw away a key the user had typed but not saved.
         self.key_container.setEnabled(enabled)
         self.base_url_container.setEnabled(enabled)
         self.test_btn.setEnabled(enabled)
-        self.model_container.setEnabled(enabled)
         if not enabled:
             self.title_lbl.setText("Select a provider")
             self.key_edit.clear()
             self.base_url_edit.clear()
             self.base_url_container.setVisible(False)
             self.status_lbl.setText("")
-            self.default_model_combo.clear()
 
     def _remember_edits(self):
         """Carry what is typed but unsaved across a change of selection."""
@@ -305,53 +278,21 @@ reset the selection and throw away a key the user had typed but not saved.
         self.status_lbl.setText("")
 
         self._set_editor_enabled(True)
-        self._refresh_models()
-
-    def _on_models_changed(self, _models):
-        self._refresh_models()
-
-    def _refresh_models(self):
-        if not self._current_provider:
-            return
-        
-        from bridge import provider_manager
-        from sdk import get_default_model, get_naming_model
-
-        self.default_model_combo.clear()
-        models = provider_manager.instance().get_models_for_provider(self._current_provider)
-        for m in models:
-            self.default_model_combo.addItem(m['display'], userData=m['id'])
-            
-        current_default = get_default_model()
-        for i in range(self.default_model_combo.count()):
-            if self.default_model_combo.itemData(i) == current_default:
-                self.default_model_combo.setCurrentIndex(i)
-                break
-
-        self.naming_model_combo.clear()
-        self.naming_model_combo.addItem("Same as the chat model", userData="")
-        for m in models:
-            self.naming_model_combo.addItem(m['display'], userData=m['id'])
-        current_naming = get_naming_model()
-        for i in range(self.naming_model_combo.count()):
-            if self.naming_model_combo.itemData(i) == current_naming:
-                self.naming_model_combo.setCurrentIndex(i)
-                break
 
     def _run_test(self):
         """
         Test the connection the editor is showing.
 
         A local server is identified by its address, everything else by its
-        key — except the provider that has neither, where there is nothing to
-        be missing and the test is about who is signed in.
+        key — except the provider that has neither, where the test is about
+        who is signed in.
         """
         local = self._wants_base_url(self._current_provider)
         key = self.key_edit.text().strip()
         base = self.base_url_edit.text().strip() if local else ""
-        missing = (not base if local else not key) and not self._signs_itself_in(
-            self._current_provider)
-        if missing:
+        from sdk import configured
+
+        if not configured(self._current_provider, key, base):
             self.status_lbl.setText("No address" if local else "No key")
             self.status_lbl.setStyleSheet(_STATUS_STYLE)
             return
@@ -404,27 +345,16 @@ reset the selection and throw away a key the user had typed but not saved.
         self._populate_list()
 
     def saveSettings(self):
-        """
-        Persist the page: the combos are read before anything is written, since
-`set_api_keys` emits `api_keys_changed`, the provider manager answers by
-clearing its fetched lists and emitting `models_changed`, and this page
-answers that by rebuilding these very combos and re-selecting them from the
-settings as they still are, all of it synchronous inside this call. A
-choice read afterwards would be the old stored value, and the user's pick
-would be destroyed by the save meant to persist it.
-"""
+        """Persist the page: each edited address, then each edited key."""
         from sdk import get_api_keys, set_api_keys, set_base_url_for_provider
 
         self._remember_edits()
-
-        chosen = self._chosen_models()
 
         for provider, url in self._base_edits.items():
             set_base_url_for_provider(provider, url)
         self._base_edits.clear()
 
         if not self._edits:
-            self._save_models(chosen)
             return
 
         current_keys = get_api_keys()
@@ -438,30 +368,6 @@ would be destroyed by the save meant to persist it.
             else:
                 if existing:
                     current_keys.remove(existing)
-        
+
         set_api_keys(current_keys)
         self._edits.clear()
-
-        self._save_models(chosen)
-
-    def _chosen_models(self):
-        """What the two model combos are showing right now."""
-        return {"default": self.default_model_combo.currentData(),
-                "naming": self.naming_model_combo.currentData()}
-
-    def _save_models(self, chosen):
-        """
-        Store the two model choices and show what was stored.
-
-        An empty naming model is the "Same as the chat model" row, which is a
-        choice and has to be writable; ``None`` only means the combo has
-        nothing selected at all. The rebuild that runs mid-save re-selects the
-        old values, so the combos are refreshed afterwards.
-        """
-        from sdk import set_default_model, set_naming_model
-
-        if chosen["default"]:
-            set_default_model(chosen["default"])
-        if chosen["naming"] is not None:
-            set_naming_model(chosen["naming"])
-        self._refresh_models()

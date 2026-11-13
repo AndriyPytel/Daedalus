@@ -49,17 +49,7 @@ services:
       DAEDALUS_WORKER_ARGV: '["python", "-m", "service.relay", "worker-host:7000"]'
       DAEDALUS_BLOB_ROOT: /var/lib/daedalus/blobs
       DAEDALUS_DEFAULTS: >-
-        {"default_model": {"provider": "Claude (subscription)", "model": "haiku"},
-        "naming_model": {"provider": "Claude (subscription)", "model": "haiku"},
-        "role_table": [
-        {"role": "orchestrator", "provider": "Claude (subscription)", "model": "haiku"},
-        {"role": "design", "provider": "Claude (subscription)", "model": "haiku"},
-        {"role": "plan", "provider": "Claude (subscription)", "model": "haiku"},
-        {"role": "execute", "provider": "Claude (subscription)", "model": "haiku"},
-        {"role": "assertion", "provider": "Claude (subscription)", "model": "haiku"},
-        {"role": "review", "provider": "Claude (subscription)", "model": "haiku"},
-        {"role": "sub-agent worker", "provider": "Claude (subscription)", "model": "haiku"}
-        ]}
+        {"provider": "Claude (subscription)", "model": "haiku"}
     secrets:
       - source: daedalus-token
         target: DAEDALUS_TOKEN

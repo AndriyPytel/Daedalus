@@ -26,11 +26,11 @@ def fallback(intent: str) -> str:
     return intent[:LIMIT].rstrip() + "…"
 
 
-def generate(intent: str, model_id: str = None, client=None) -> str:
+def generate(intent: str, client=None) -> str:
     """
     The generated title, or "" when the provider gave nothing usable.
 
-    The client is built inside the try rather than before it: building it raises
+    The client is the run's own, built inside the try rather than before it: building it raises
     when the model cannot be resolved, and an exception escaping here leaves the
     Session silently unnamed.
     """
@@ -38,7 +38,7 @@ def generate(intent: str, model_id: str = None, client=None) -> str:
         if client is None:
             from core.llm import client_from_settings
 
-            client = client_from_settings(model_id)
+            client = client_from_settings()
         said = "".join(chunk.text for chunk in client.stream(
             [{"role": "system", "content": PROMPT},
              {"role": "user", "content": intent}])

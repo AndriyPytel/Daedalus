@@ -10,7 +10,7 @@ from typing import Callable, Iterator
 
 from core.llm.types import REASONING, Chunk
 from core.llm.exceptions import ProviderRefused
-from core.llm.effort_policy import _OUTPUT_BUDGET, _resolved_effort
+from core.llm.effort_policy import _OUTPUT_BUDGET, _SUBSCRIPTION_EFFORT
 from core.llm.stream import _deltas, _finished, _stopped_for_length, _cut_off, _truncated, _translate, _billed
 
 
@@ -70,7 +70,7 @@ class LiteLLMClient:
         if self.thinking_budget:
             kwargs["thinking"] = {"type": "enabled", "budget_tokens": self.thinking_budget}
         elif _may_reason(self.model):
-            kwargs.setdefault("reasoning_effort", _resolved_effort(self.effort))
+            kwargs.setdefault("reasoning_effort", self.effort or _SUBSCRIPTION_EFFORT)
             kwargs.setdefault("allowed_openai_params", ["reasoning_effort"])
         kwargs.setdefault("max_tokens",
                           _output_cap(self.model, (self.thinking_budget or _OUTPUT_BUDGET) * 4,

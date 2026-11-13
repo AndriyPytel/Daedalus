@@ -1,5 +1,5 @@
 """
-The worker puts server secrets and a Run's resolved settings into `sdk` before the engine builds its model clients, because a headless process has no panel to fill the model registry or the stored keys.
+The worker puts server secrets and a Run's resolved settings into `sdk` before the engine builds its model client, because a headless process has no panel to pick the model or store the keys.
 
 Keys and base URLs come from the worker's environment, never from a `send` message; the settings of a `send` come from the gateway.
 """
@@ -13,24 +13,18 @@ from service import worker
 KEYS = '{"Anthropic": "sk-test-1", "OpenAI": "sk-test-2"}'
 URLS = '{"Ollama": "http://ollama:11434"}'
 SETTINGS = {
-    "role_table": [{"role": "design", "provider": "Anthropic", "model": "claude-a", "effort": "high"}],
-    "default_model": {"provider": "Anthropic", "model": "claude-a"},
-    "naming_model": {"provider": "OpenAI", "model": "gpt-b"},
-    "effort": "medium", "interactive": False, "confirm": False, "budget_usd": 5.0,
+    "provider": "Anthropic", "model": "claude-a", "effort": "high", "interactive": False, "confirm": False, "budget_usd": 5.0,
 }
 
 
 @pytest.fixture
 def restored():
-    before = (sdk.get_api_keys(), sdk.get_base_urls(), sdk.get_role_table(), sdk.get_default_model(),
-              sdk.get_naming_model(), sdk.get_effort())
+    before = (sdk.get_api_keys(), sdk.get_base_urls(), sdk.get_last_model(), sdk.get_effort())
     yield
     sdk.set_api_keys(before[0])
     sdk.set_base_urls(before[1])
-    sdk.set_role_table(before[2])
-    sdk.set_default_model(before[3])
-    sdk.set_naming_model(before[4])
-    sdk.set_effort(before[5])
+    sdk.set_last_model(*before[2])
+    sdk.set_effort(before[3])
 
 
 def test_keys_and_base_urls_in_the_environment_reach_the_sdk_settings(restored):
@@ -46,13 +40,10 @@ def test_a_worker_with_no_secrets_in_its_environment_configures_nothing(restored
     assert sdk.get_api_keys() == []
 
 
-def test_the_settings_of_a_send_reach_the_sdk_and_the_registry(restored):
+def test_the_model_and_effort_of_a_send_reach_the_sdk(restored):
     worker.apply_settings(SETTINGS)
-    assert sdk.get_role_table() == SETTINGS["role_table"]
-    assert sdk.get_default_model() == "claude-a" and sdk.get_naming_model() == "gpt-b"
-    assert sdk.get_effort() == "medium"
-    assert sdk.get_model_entry("claude-a")["provider"] == "Anthropic"
-    assert sdk.get_model_entry("gpt-b")["provider"] == "OpenAI"
+    assert sdk.get_last_model() == ("Anthropic", "claude-a")
+    assert sdk.get_effort() == "high"
 
 
 def test_a_setting_the_send_does_not_name_is_left_as_it_was(restored):
@@ -61,15 +52,24 @@ def test_a_setting_the_send_does_not_name_is_left_as_it_was(restored):
     assert sdk.get_effort() == "low"
 
 
-def test_without_settings_and_keys_the_engine_has_no_model_and_with_them_it_builds_one(restored, monkeypatch):
+def test_a_run_started_with_provider_model_effort_keys_and_addresses_builds_with_that_model(restored):
     sdk.set_api_keys([])
-    sdk.set_default_model("")
-    sdk.set_role_table([])
+    sdk.set_last_model("", "")
     with pytest.raises(ValueError, match="No model selected"):
-        sdk.Client(kernel=sdk.NO_KERNEL).llm
-    worker.configure({"DAEDALUS_API_KEYS": KEYS})
+        sdk.Client(kernel=sdk.NO_KERNEL)._the_llm()
+    worker.configure({"DAEDALUS_API_KEYS": KEYS, "DAEDALUS_BASE_URLS": URLS})
     worker.apply_settings(SETTINGS)
-    assert sdk.Client(kernel=sdk.NO_KERNEL).llm is not None
+    built = sdk.Client(kernel=sdk.NO_KERNEL)._the_llm()
+    assert built.model == "anthropic/claude-a" and built.api_key == "sk-test-1" and built.effort == "high"
+
+
+def test_a_send_that_names_a_different_model_builds_a_different_client(restored):
+    worker.configure({"DAEDALUS_API_KEYS": KEYS})
+    client = sdk.Client(kernel=sdk.NO_KERNEL)
+    worker.apply_settings({**SETTINGS, "provider": "OpenAI", "model": "gpt-b", "effort": "low"})
+    assert client._the_llm().model == "openai/gpt-b"
+    worker.apply_settings(SETTINGS)
+    assert client._the_llm().model == "anthropic/claude-a"
 
 
 def test_the_budget_is_exhausted_by_the_cost_events_that_reach_it():
@@ -98,7 +98,6 @@ def test_the_run_stops_when_it_is_cancelled_or_when_its_budget_is_spent():
 
 
 def test_the_claude_subscription_provider_needs_no_key_in_a_worker(restored):
-    from core import settings
     sdk.set_api_keys([])
-    worker.apply_settings({"default_model": {"provider": "Claude (subscription)", "model": "haiku"}})
-    assert settings.instance().get_llm_credentials("haiku")[:2] == ("Claude (subscription)", "haiku")
+    worker.apply_settings({"provider": "Claude (subscription)", "model": "haiku"})
+    assert sdk.Client(kernel=sdk.NO_KERNEL)._the_llm().model == "haiku"

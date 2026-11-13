@@ -108,7 +108,8 @@ def box(name):
     return json.dumps({{"code": "box = doc.addObject('Part::Box', '%s')\\nbox.Placement.Base.x = %d\\ndoc.recompute()" % (name, 20 * len(name))}})
 
 
-run.client_for = lambda *args: DiesAtTheThirdCall([box("A"), box("BB")])
+import sdk
+sdk.client_for = lambda *args: DiesAtTheThirdCall([box("A"), box("BB")])
 sys.argv = ["run.py", "--intent", "Make two boxes.", "--model", "scripted", "--log", {log!r}, "--save", {save!r}]
 run.main()
 """

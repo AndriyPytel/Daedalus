@@ -7,7 +7,11 @@ is importable in tests. Uses httpx rather than vendor SDKs, since only
 litellm is a dependency of this addon and httpx ships with it, carrying
 certifi's trust store.
 """
+import logging
+
 import httpx
+
+_LOG = logging.getLogger(__name__)
 
 TIMEOUT = 10.0
 
@@ -44,9 +48,24 @@ def needs_no_key(provider: str) -> bool:
     The `claude` CLI is signed in to a subscription, so there is neither a key
     to store nor an address to type. Everywhere else in the addon "no key and
     no address" means "not configured yet", which would leave this provider out
-    of the model list, out of `get_llm_credentials` and out of every fetch.
+    of the model list and out of every fetch.
     """
     return provider == CLAUDE
+
+
+def configured(provider: str, api_key: str = "", base_url: str = "") -> bool:
+    """
+    Whether *provider* has what it needs to be asked anything.
+
+    A provider that holds its own credential needs nothing, a local server is
+    configured by its address and its token is optional, and a hosted provider
+    is configured by its key.
+    """
+    if needs_no_key(provider):
+        return True
+    if needs_base_url(provider):
+        return bool(base_url)
+    return bool(api_key)
 
 
 def api_base_for(provider: str, base_url: str = "") -> str | None:
@@ -156,6 +175,16 @@ def fetch(provider: str, api_key: str, base_url: str | None = None,
 
     return [model for model in found
             if _offerable(provider, model["id"], accepts_images)]
+
+
+def output_ceiling(provider: str, model_id: str, api_key: str, base_url: str | None = None) -> int | None:
+    """How much *model_id* may write, as *provider*'s own list names it, or `None` where the list names none or cannot be had."""
+    try:
+        listed = fetch(provider, api_key, base_url=base_url)
+    except (httpx.HTTPError, ValueError) as error:
+        _LOG.warning("%s did not list its models (%s), so no output ceiling is known", provider, error)
+        return None
+    return next((model.get("max_output") for model in listed if model["id"] == model_id), None)
 
 
 def _listed(entry: dict) -> dict:

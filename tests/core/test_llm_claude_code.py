@@ -42,12 +42,11 @@ from core.llm import (
     litellm_model_name,
     signed_in,
     unusable_attachments,
-    effort,
 )
 from core.llm import claude as llm_claude
 from core.llm.claude import _spawn_claude, _environment, _CLAUDE_CANDIDATES
 from core.llm.claude_stream import _user_turn
-from core.llm.effort_policy import _CEILING, _SUBSCRIPTION_EFFORT
+from core.llm.effort_policy import _CEILING
 from core.llm.attachments import _PREFIX
 from tests import modelmania_harness
 
@@ -557,19 +556,6 @@ def _stuck(client):
     return next(iter(client.run._live))
 
 
-def test_kill_reaches_a_claude_client_behind_a_role_table():
-    from core.llm.claude import kill
-    from core.llm.roles import RoleClient
-
-    client, spawn = client_over(_ProcessThatNeverAnswers())
-    process = _stuck(client)
-    table = RoleClient({"design": client}, caller=client)
-
-    kill(table)
-
-    assert process.killed.is_set()
-
-
 def test_kill_reaches_a_claude_client_behind_a_profile():
     from core.llm.claude import kill
 
@@ -725,7 +711,7 @@ def test_the_clis_plain_text_noise_survives_as_the_error_detail_once_merged():
 
 def test_the_ceiling_a_call_waits_under_is_the_one_its_own_effort_measured():
     """A call is made at one effort, and the wait it is allowed is that effort's."""
-    assert ClaudeCodeClient(MODEL).timeout == _CEILING[effort()]
+    assert ClaudeCodeClient(MODEL, effort="high").timeout == _CEILING["high"]
 
 
 def test_every_effort_the_dial_offers_leaves_room_for_the_design_call_it_buys():
@@ -803,44 +789,11 @@ def test_the_reply_is_asked_for_as_it_forms_rather_than_when_it_is_finished():
     assert "--include-partial-messages" in spawn.argv
 
 
-def test_the_call_is_made_at_the_effort_the_user_set(monkeypatch):
-    """The dial in the composer is what reaches the CLI, per call."""
-    from core import settings
-
-    monkeypatch.setattr(settings.instance(), "get_effort", lambda: "high")
-    client, spawn = client_replaying()
+def test_the_call_is_made_at_the_effort_the_client_was_built_with():
+    client, spawn = client_replaying(effort="high")
     collect(client.stream(a_turn()))
 
     assert spawn.argv[spawn.argv.index("--effort") + 1] == "high"
-
-
-def test_an_effort_the_dial_no_longer_offers_falls_back(monkeypatch):
-    """
-    A level stored by some older build is a flag no route can spell, and the
-    CLI answers a bad `--effort` by refusing the call.
-    """
-    from core import settings
-
-    monkeypatch.setattr(settings.instance(), "get_effort", lambda: "ultra")
-    client, spawn = client_replaying()
-    collect(client.stream(a_turn()))
-
-    assert spawn.argv[spawn.argv.index("--effort") + 1] == _SUBSCRIPTION_EFFORT
-
-
-def test_the_wait_a_call_is_allowed_moves_with_the_dial(monkeypatch):
-    """
-    A ceiling that does not move with the effort cuts the answer off rather
-    than bounding it: one sheet through Design is 52 s at low and 668 s at
-    high.
-    """
-    from core import settings
-
-    monkeypatch.setattr(settings.instance(), "get_effort", lambda: "low")
-    assert ClaudeCodeClient(MODEL).timeout == _CEILING["low"]
-
-    monkeypatch.setattr(settings.instance(), "get_effort", lambda: "high")
-    assert ClaudeCodeClient(MODEL).timeout == _CEILING["high"]
 
 
 def test_the_subscription_is_the_credential_rather_than_a_key():

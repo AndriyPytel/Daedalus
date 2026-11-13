@@ -9,12 +9,10 @@ more.
 from core.llm.types import REASONING, TEXT, Chunk
 from core.llm.exceptions import CallStalled, ProviderRefused, StreamCutOff
 from core.llm.effort_policy import EFFORTS, CALL_TIMEOUT, call_ceiling
-from core.role_defaults import ORCHESTRATOR, ROLES, DEFAULT_ROLE_TABLE
 from core.llm.session import Session
 from core.llm.client import LiteLLMClient
 from core.llm.claude import ClaudeCodeClient, find_claude, signed_in
 from core.llm.scripted import ScriptedLLMClient
-from core.llm.roles import RoleClient
 from core.llm.attachments import (
     IMAGE_SUFFIXES,
     PDF_SUFFIXES,
@@ -28,10 +26,8 @@ from core.llm.stream import _billed
 
 _FACTORY_NAMES = (
     "effort",
-    "effort_is_honoured",
-    "selected_model_name",
+    "client_for",
     "client_from_settings",
-    "client_from_roles",
 )
 
 
