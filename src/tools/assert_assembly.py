@@ -24,7 +24,7 @@ def verdicts(paths):
     found = {}
     with sdk.Kernel(timeout=180) as kernel:
         for path in paths:
-            opened = kernel.check("pass", document=os.path.abspath(path))
+            opened = kernel.seed(os.path.abspath(path))
             found[path] = sdk.unfinished(kernel) if opened.ok else opened.traceback
     return found
 

@@ -1,5 +1,5 @@
 """
-The Domain a run builds under: the Document's own Assembly or Arch objects decide first, one short model call decides otherwise, and the user's pick skips both.
+The Domain a run works under: the Document's own Assembly or Arch objects decide first, one short model call decides otherwise, and the user's pick skips both.
 The call carries the Intent and a summary of the Document's object types, takes no tools and is asked with the run's own model and Effort; an answer that is neither "assembly" nor "bim" is Part.
 """
 import collections

@@ -1,11 +1,9 @@
 """
 Level 1 -- the Assertion of an edit on native IFC reads the facts of the saved IFC: the five kinds present, each Door and Window filling an opening in a Wall, every element in a storey, the schema IFC4, and a file unlike the input.
 """
-import json
-from types import SimpleNamespace
-
 from core.agent import bim
 from core.agent.bim import native_refusals
+from tests.fake_kernel import FakeKernel
 
 HOLDS = {"signature": "base", "schema": "IFC4", "orphans": [], "labels": {"IfcWindow": ["Window_WIN1", "Window_WIN2"], "IfcDoor": ["Door_D1"]}, "openings": 3, "unfilled": [], "unplaced": [],
          "counts": {"IfcWall": 4, "IfcSlab": 1, "IfcDoor": 1, "IfcWindow": 2, "IfcSpace": 1}}
@@ -67,7 +65,7 @@ def test_an_opening_with_nothing_filling_it_is_named():
 def test_an_input_with_no_fills_and_no_storey_is_still_held_to_both(monkeypatch):
     saved = HOLDS | {"signature": "edited", "unfilled": ["Window_WIN2"], "unplaced": ["Wall_W3"]}
     answers = iter([HOLDS, saved])
-    kernel = SimpleNamespace(check=lambda code, exploring: SimpleNamespace(stdout="FACTS " + json.dumps(next(answers))))
+    kernel = FakeKernel(facts=answers)
     seen = {}
     monkeypatch.setattr(bim, "run_solo", lambda intent, domain, **_: seen.update(domain=domain))
 

@@ -3,7 +3,7 @@ Level 2 -- the Assembly Assertion measured on real Assemblies solved by FreeCAD'
 """
 import pytest
 
-from core.agent.assembly import measured, refusals, unfinished
+from core.agent.assembly import FACTS_CHECK, refusals, unfinished
 from core.kernel import Kernel, find_freecadcmd
 from tests.assembly_helpers import PARTS, SOLVED
 
@@ -32,13 +32,13 @@ def kernel():
 
 
 def _built(kernel, code):
-    assert kernel.check(code).ok
+    assert kernel.rehearse(code).ok
 
 
 def test_a_solved_assembly_with_a_joint_and_clear_parts_passes(kernel):
     _built(kernel, SOLVED)
 
-    facts = measured(kernel)
+    facts = kernel.measure(FACTS_CHECK)
 
     assert refusals(facts) == [], facts
     assert unfinished(kernel) is None
@@ -56,8 +56,8 @@ def test_each_way_to_fail_is_refused_with_its_reason(kernel, name):
 
 def test_asking_does_not_move_the_agents_assembly(kernel):
     _built(kernel, SOLVED + "print(b.Placement.Base.x)")
-    placed = kernel.check("print(doc.getObject('B').Placement.Base.x)", exploring=True).stdout.strip()
+    placed = kernel.probe("print(doc.getObject('B').Placement.Base.x)").stdout.strip()
 
     unfinished(kernel)
 
-    assert kernel.check("print(doc.getObject('B').Placement.Base.x)", exploring=True).stdout.strip() == placed
+    assert kernel.probe("print(doc.getObject('B').Placement.Base.x)").stdout.strip() == placed

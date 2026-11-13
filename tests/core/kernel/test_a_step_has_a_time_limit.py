@@ -18,7 +18,7 @@ class Doc:
 
 
 class Worker:
-    def check(self, *args, **kwargs):
+    def rehearse(self, code, timeout=None):
         return KernelResult(ok=True, created=["Box"])
 
 

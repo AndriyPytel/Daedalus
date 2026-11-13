@@ -74,14 +74,16 @@ def a_fillet_mixing_the_two_boss_junctions_at(radius):
 
 
 def test_the_worker_survives_a_mixed_concavity_selection_that_also_fails_occ(worker):
-    result = worker.check(a_fillet_mixing_the_two_boss_junctions_at(8.0), None)
+    assert worker.seed().ok
+    result = worker.rehearse(a_fillet_mixing_the_two_boss_junctions_at(8.0))
 
     assert not result.ok, "a fillet mixing concave and convex Base edges was passed to the Document"
     assert worker.alive, "the kernel did not survive the mixed-concavity selection"
 
 
 def test_the_failure_names_the_mixed_edges_not_the_bare_occ_refusal(worker):
-    said = worker.check(a_fillet_mixing_the_two_boss_junctions_at(8.0), None).traceback
+    assert worker.seed().ok
+    said = worker.rehearse(a_fillet_mixing_the_two_boss_junctions_at(8.0)).traceback
 
     assert "mixes concave and convex edges" in said, (
         "the mixed-concavity trap did not fire before OCC\'s own refusal: %s" % said)

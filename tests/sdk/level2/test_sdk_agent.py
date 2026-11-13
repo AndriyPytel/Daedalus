@@ -266,20 +266,19 @@ def test_a_run_given_its_own_stream_emits_every_event_into_it(kernel):
 
 def test_a_run_seeds_the_kernel_once(kernel, monkeypatch):
     seeds = []
-    real = kernel.check
+    real = kernel.seed
 
-    def recording(code, *args, **kwargs):
-        if "document" in kwargs:
-            seeds.append(code)
-        return real(code, *args, **kwargs)
+    def recording(*args, **kwargs):
+        seeds.append(args)
+        return real(*args, **kwargs)
 
-    monkeypatch.setattr(kernel, "check", recording)
+    monkeypatch.setattr(kernel, "seed", recording)
     llm = ScriptedLLMClient([_say(code=BOX), _say(code="print(1)"), _say(finish="done")])
     client = _client(llm, kernel)
 
     client.agent("Make a cube")
 
-    assert seeds == ["pass"]
+    assert len(seeds) == 1
     client.close()
 
 

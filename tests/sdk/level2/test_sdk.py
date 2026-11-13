@@ -18,7 +18,7 @@ pytestmark = pytest.mark.freecad
 class _NoKernel:
     """A worker never asked to run anything, for a route that never reaches Design."""
 
-    def check(self, code, document=None, render_path=None, timeout=None, names=None, ephemeral=None):
+    def rehearse(self, code, timeout=None):
         raise AssertionError("a route that isn't design must never reach the kernel")
 
     def kill(self):

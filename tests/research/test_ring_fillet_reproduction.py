@@ -25,7 +25,7 @@ def kernel():
         find_freecadcmd()
     except RuntimeError as exc:
         pytest.skip(str(exc))
-    with Kernel() as running:
+    with Kernel(timeout=300) as running:
         yield running
 
 
@@ -39,20 +39,20 @@ def test_steps_1_to_16_rebuild_the_logged_volume(kernel):
     design = _load("ring_fillet_design.json")
     steps = _load("ring_fillet_steps.json")
 
-    boot = kernel.check("doc.addObject('PartDesign::Body', 'Body')")
+    boot = kernel.rehearse("doc.addObject('PartDesign::Body', 'Body')")
     assert boot.ok, boot.traceback
 
     for n in range(1, 17):
-        result = kernel.check(classification.with_design(design, steps[str(n)]))
+        result = kernel.rehearse(classification.with_design(design, steps[str(n)]))
         assert result.ok, "Step %d failed: %s" % (n, result.traceback)
 
-    volume = kernel.check("print(doc.getObject('Body').Shape.Volume)")
+    volume = kernel.rehearse("print(doc.getObject('Body').Shape.Volume)")
     assert volume.ok, volume.traceback
     assert abs(float(volume.stdout.strip()) - EXPECTED_VOLUME_MM3) < 1.0
 
 
 def test_steps_1_to_26_build_as_one_kernel_session(kernel):
-    """AC: Steps 1-26, including the 10-fillet Step 17-26 block as one Kernel.check() call, complete."""
+    """AC: Steps 1-26, including the 10-fillet Step 17-26 block as one Kernel.rehearse() call, complete."""
     design = _load("ring_fillet_design.json")
     steps = _load("ring_fillet_steps.json")
     fillet_1730_code = _load("ring_fillet_steps_17_30.json")["code"]

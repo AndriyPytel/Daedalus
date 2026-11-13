@@ -3,7 +3,7 @@ Level 2 -- the BIM Assertion measured on real Arch objects in headless FreeCAD, 
 """
 import pytest
 
-from core.agent.bim import measured, refusals, unfinished
+from core.agent.bim import FACTS_CHECK, refusals, unfinished
 from core.kernel import Kernel, find_freecadcmd
 from tests.bim_helpers import FLAT, NO_BUILDING, STRAY_WALL, UNHOSTED_WINDOW, WITHOUT_SPACE, ZERO_HEIGHT_WALL
 
@@ -29,13 +29,13 @@ def kernel():
 
 
 def _fresh(kernel):
-    kernel.check("for o in list(doc.Objects):\n    doc.removeObject(o.Name)")
+    kernel.rehearse("for o in list(doc.Objects):\n    doc.removeObject(o.Name)")
 
 
 def test_a_valid_flat_passes_and_its_ifc4_has_every_kind(kernel):
-    assert kernel.check(FLAT).ok
+    assert kernel.rehearse(FLAT).ok
 
-    facts = measured(kernel)
+    facts = kernel.measure(FACTS_CHECK)
 
     assert refusals(facts) == [] and unfinished(kernel) is None
     assert facts["ifc"]["schema"] == "IFC4"
@@ -46,7 +46,7 @@ def test_a_valid_flat_passes_and_its_ifc4_has_every_kind(kernel):
 def test_a_flat_that_breaks_one_condition_is_refused_with_the_reason(kernel, name):
     code, reason = CASES[name]
     _fresh(kernel)
-    assert kernel.check(code).ok
+    assert kernel.rehearse(code).ok
 
     found = unfinished(kernel)
 
@@ -56,9 +56,9 @@ def test_a_flat_that_breaks_one_condition_is_refused_with_the_reason(kernel, nam
 
 def test_measuring_leaves_the_document_as_it_was(kernel):
     _fresh(kernel)
-    assert kernel.check(FLAT).ok
-    before = kernel.check("print(len(doc.Objects))").stdout
+    assert kernel.rehearse(FLAT).ok
+    before = kernel.rehearse("print(len(doc.Objects))").stdout
 
-    measured(kernel)
+    kernel.measure(FACTS_CHECK)
 
-    assert kernel.check("print(len(doc.Objects))").stdout == before
+    assert kernel.rehearse("print(len(doc.Objects))").stdout == before

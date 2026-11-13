@@ -31,11 +31,11 @@ def kernel():
 
 def test_a_property_change_is_captured_and_attributed_to_its_step(kernel):
     """AC2: a modification, not just a creation, is captured by the diff."""
-    created = kernel.check("doc.addObject('Part::Box', 'Box')")
+    created = kernel.rehearse("doc.addObject('Part::Box', 'Box')")
     assert created.ok, created.traceback
     assert created.modified == []
 
-    changed = kernel.check("doc.getObject('Box').Length = 20")
+    changed = kernel.rehearse("doc.getObject('Box').Length = 20")
 
     assert changed.ok, changed.traceback
     assert changed.modified == ["Box"]

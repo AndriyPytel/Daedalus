@@ -468,7 +468,7 @@ from settings on every send.
         """Kills the kernel now, discarding whatever Step is in flight.
         Where `stop` lets the kernel checkpoint the Step on its own, this
         also calls `shutdown` -- the same call a Session's own teardown
-        makes -- so the `Kernel.check` call in flight comes back a
+        makes -- so the Kernel call in flight comes back a
         crash and `core/kernel.py`'s reopen-the-checkpoint recovery keeps it
         out of the Document. `Kernel.kill` only drops the process, so the
         next Step run restarts it.

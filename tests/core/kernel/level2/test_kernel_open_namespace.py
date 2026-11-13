@@ -25,7 +25,7 @@ def kernel():
 
 def test_a_step_can_call_freecad_directly_with_no_tool_involved(kernel):
     """AC1: no registered Tool is called here at all, only FreeCAD's own API."""
-    result = kernel.check("doc.addObject('Part::Box', 'Box')")
+    result = kernel.rehearse("doc.addObject('Part::Box', 'Box')")
 
     assert result.ok, result.traceback
     assert "Box" in result.created
@@ -33,7 +33,7 @@ def test_a_step_can_call_freecad_directly_with_no_tool_involved(kernel):
 
 def test_a_freecad_tools_helper_still_works_from_a_steps_code(kernel):
     """AC2: an existing convenience Tool function is not removed, only optional."""
-    result = kernel.check(
+    result = kernel.rehearse(
         "from core.freecad_apply import description\n"
         "doc.addObject('Part::Box', 'Box')\n"
         "doc.recompute()\n"
@@ -46,7 +46,7 @@ def test_a_freecad_tools_helper_still_works_from_a_steps_code(kernel):
 def test_a_bare_import_app_resolves_to_the_pre_bound_freecad_module(kernel):
     """A bare `import App` must not shadow the pre-bound name with FreeCAD's
     own `Mod/Mesh/App` namespace package (dcaa993's now-fixed trap)."""
-    result = kernel.check(
+    result = kernel.rehearse(
         "import App\n"
         "assert App is FreeCAD\n"
         "App.Vector(1, 2, 3)"

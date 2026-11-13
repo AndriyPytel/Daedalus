@@ -43,14 +43,13 @@ def _with_a_box_of_the_users(client):
 
 def test_an_intent_sent_twice_seeds_the_kernel_once_per_send_and_forgets_the_names_in_between(kernel, monkeypatch):
     seeds = []
-    real = kernel.check
+    real = kernel.seed
 
-    def recording(code, *args, **kwargs):
-        if "document" in kwargs:
-            seeds.append(dict(client._pipeline._names))
-        return real(code, *args, **kwargs)
+    def recording(*args, **kwargs):
+        seeds.append(dict(client._pipeline._names))
+        return real(*args, **kwargs)
 
-    monkeypatch.setattr(kernel, "check", recording)
+    monkeypatch.setattr(kernel, "seed", recording)
     llm = ScriptedLLMClient([say(code=BOX), say(finish="done"), say(code=BOX), say(finish="done")])
     client = _client(kernel, llm)
 

@@ -65,19 +65,22 @@ doc.recompute()
 
 
 def test_a_feature_no_body_claims_is_refused(worker):
-    result = worker.check(UNWIRED_PAD, None)
+    assert worker.seed().ok
+    result = worker.rehearse(UNWIRED_PAD)
 
     assert not result.ok, "a Pad no Body's Group claims was passed to the Document"
 
 
 def test_the_unwired_feature_failure_names_it_and_how_to_fix_it(worker):
-    said = worker.check(UNWIRED_PAD, None).traceback
+    assert worker.seed().ok
+    said = worker.rehearse(UNWIRED_PAD).traceback
 
     assert "Pad" in said, "the failure does not name the feature: %s" % said
     assert "body.addObject" in said, "the failure does not say how to fix it: %s" % said
 
 
 def test_a_feature_added_to_its_body_passes(worker):
-    result = worker.check(WIRED_PAD, None)
+    assert worker.seed().ok
+    result = worker.rehearse(WIRED_PAD)
 
     assert result.ok, result.traceback

@@ -18,6 +18,9 @@ from test_fillet_mixed_concavity_precheck_level2 import A_PLATE_WITH_TWO_BOSSES
 pytestmark = pytest.mark.freecad
 
 
+PRINT_FACTS = "import json\nprint('FACTS ' + json.dumps(facts))\n"
+
+
 @pytest.fixture(scope="module")
 def worker():
     try:
@@ -31,13 +34,14 @@ def worker():
 def test_a_mixed_selection_is_split_by_concavity(worker):
     code = A_PLATE_WITH_TWO_BOSSES + (
         "top = body.Tip\n"
-        "held = edges_by_concavity(top.Shape, ['Edge10', 'Edge9'])\n"
-    )
+        "facts = edges_by_concavity(top.Shape, ['Edge10', 'Edge9'])\n"
+    ) + PRINT_FACTS
+    assert worker.seed().ok
 
-    result = worker.check(code, None)
+    facts = worker.measure(code)
 
-    assert result.ok, result.traceback
-    assert sorted(map(sorted, result.held)) == [['Edge10'], ['Edge9']], result.held
+    assert facts is not None
+    assert sorted(map(sorted, facts)) == [['Edge10'], ['Edge9']], facts
 
 
 def test_no_returned_group_mixes_concavities(worker):
@@ -45,15 +49,16 @@ def test_no_returned_group_mixes_concavities(worker):
         "from core.kernel import kernel_worker\n"
         "top = body.Tip\n"
         "groups = edges_by_concavity(top.Shape, ['Edge10', 'Edge9'])\n"
-        "held = [len(set(kernel_worker._edge_concavity_sign(top.Shape, top.Shape.getElement(n))\n"
+        "facts = [len(set(kernel_worker._edge_concavity_sign(top.Shape, top.Shape.getElement(n))\n"
         "                for n in g)) for g in groups]\n"
-    )
+    ) + PRINT_FACTS
+    assert worker.seed().ok
 
-    result = worker.check(code, None)
+    facts = worker.measure(code)
 
-    assert result.ok, result.traceback
-    assert all(count == 1 for count in result.held), (
-        "a returned group shares more than one concavity: %r" % result.held)
+    assert facts is not None
+    assert all(count == 1 for count in facts), (
+        "a returned group shares more than one concavity: %r" % facts)
 
 
 def test_a_single_concavity_selection_comes_back_as_one_group(worker):
@@ -65,13 +70,14 @@ def test_a_single_concavity_selection_comes_back_as_one_group(worker):
         "                  and abs(edge.Curve.Radius - 12.0) < 1e-6\n"
         "                  and abs(edge.valueAt((edge.FirstParameter + edge.LastParameter)\n"
         "                                        / 2.0).z - 15.0) < 1e-6]\n"
-        "held = [base_junctions, edges_by_concavity(top.Shape, base_junctions)]\n"
-    )
+        "facts = [base_junctions, edges_by_concavity(top.Shape, base_junctions)]\n"
+    ) + PRINT_FACTS
+    assert worker.seed().ok
 
-    result = worker.check(code, None)
+    facts = worker.measure(code)
 
-    assert result.ok, result.traceback
-    base_junctions, groups = result.held
+    assert facts is not None
+    base_junctions, groups = facts
     assert len(base_junctions) == 2, "expected both boss base junctions, got %r" % base_junctions
     assert groups == [base_junctions], (
         "a single-concavity selection was split instead of coming back as one group: %r" % groups)
@@ -88,14 +94,14 @@ def test_a_step_builds_one_fillet_per_group_and_none_is_left_mixed(worker):
         "    fillet.Base = (top, names)\n"
         "    fillet.Radius = 1.0\n"
         "    doc.recompute()\n"
-        "held = kernel_worker._fillets_with_mixed_concavity(doc)\n"
-    )
+        "facts = kernel_worker._fillets_with_mixed_concavity(doc)\n"
+    ) + PRINT_FACTS
+    assert worker.seed().ok
 
-    result = worker.check(code, None)
+    facts = worker.measure(code)
 
-    assert result.ok, result.traceback
-    assert result.held == [], (
-        "a Fillet built from one grouped selection was still flagged mixed: %r" % result.held)
+    assert facts == [], (
+        "a Fillet built from one grouped selection was still flagged mixed: %r" % facts)
 
 
 
@@ -152,26 +158,28 @@ def test_a_transitional_tangent_edge_has_no_concavity_sign(worker):
     """
     code = A_BOX_WITH_ONE_FILLETED_EDGE + (
         "from core.kernel import kernel_worker\n"
-        "held = [kernel_worker._edge_concavity_sign(tip.Shape, tip.Shape.getElement(n))\n"
+        "facts = [kernel_worker._edge_concavity_sign(tip.Shape, tip.Shape.getElement(n))\n"
         "        for n in transitional]\n"
-    )
+    ) + PRINT_FACTS
+    assert worker.seed().ok
 
-    result = worker.check(code, None)
+    facts = worker.measure(code)
 
-    assert result.ok, result.traceback
-    assert all(sign is None for sign in result.held), (
-        "a transitional tangent edge was given a concavity sign: %r" % result.held)
+    assert facts is not None
+    assert all(sign is None for sign in facts), (
+        "a transitional tangent edge was given a concavity sign: %r" % facts)
 
 
 def test_a_transitional_tangent_edge_is_excluded_from_every_group(worker):
     code = A_BOX_WITH_ONE_FILLETED_EDGE + (
-        "held = [transitional, edges_by_concavity(tip.Shape, transitional + real_corner)]\n"
-    )
+        "facts = [transitional, edges_by_concavity(tip.Shape, transitional + real_corner)]\n"
+    ) + PRINT_FACTS
+    assert worker.seed().ok
 
-    result = worker.check(code, None)
+    facts = worker.measure(code)
 
-    assert result.ok, result.traceback
-    transitional_names, groups = result.held
+    assert facts is not None
+    transitional_names, groups = facts
     grouped = [name for group in groups for name in group]
     assert not (set(transitional_names) & set(grouped)), (
         "a transitional tangent edge was returned in a group: %r" % groups)
@@ -192,13 +200,14 @@ def test_a_fillet_on_the_filtered_group_actually_rounds_every_requested_edge(wor
         "fillet2.Base = (tip, groups[-1])\n"
         "fillet2.Radius = 1.0\n"
         "doc.recompute()\n"
-        "held = [len(groups[-1]), built_ok(fillet2), len(fillet2.Shape.Faces) - faces_before]\n"
-    )
+        "facts = [len(groups[-1]), built_ok(fillet2), len(fillet2.Shape.Faces) - faces_before]\n"
+    ) + PRINT_FACTS
+    assert worker.seed().ok
 
-    result = worker.check(code, None)
+    facts = worker.measure(code)
 
-    assert result.ok, result.traceback
-    requested_count, ok, new_faces = result.held
+    assert facts is not None
+    requested_count, ok, new_faces = facts
     assert ok, "the filtered group's fillet did not build clean"
     assert new_faces == requested_count, (
         "the fillet rounded %d faces but the group asked for %d edges -- an edge was silently "

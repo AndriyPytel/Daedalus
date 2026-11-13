@@ -2,22 +2,14 @@
 Level 1 -- three finishes in a row refused with nothing built end the run, and any other turn starts the count again.
 """
 import json
-from types import SimpleNamespace
-
 from core.agent.domain import Domain
 from core.agent.solo import run_solo
 from core.events import FAILED, EventStream
 from core.llm import ScriptedLLMClient
 from tests.event_helpers import events_of
+from tests.fake_kernel import FakeKernel
 
 FINISH = json.dumps({"finish": "done"})
-
-
-class Kernel:
-    def check(self, code, **_):
-        return SimpleNamespace(ok=True, created=["Box"], modified=[], deleted=[], objects=1, names={},
-                               signature={}, traceback="", stdout="", checkpoint=None, render=None,
-                               geometry={}, volume=None, rolled_back=[])
 
 
 class Tools:
@@ -29,7 +21,7 @@ def _run(replies):
     domain = Domain("part", "", [{"type": "text", "text": "go"}], lambda: None, lambda k: "no solid")
     llm = ScriptedLLMClient(replies)
     events = EventStream()
-    result = run_solo("go", domain=domain, llm=llm, kernel=Kernel(), tools=Tools(), events=events,
+    result = run_solo("go", domain=domain, llm=llm, kernel=FakeKernel(), tools=Tools(), events=events,
                       max_turns=10)
     return llm, events, result
 

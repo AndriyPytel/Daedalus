@@ -84,7 +84,7 @@ def run_solo(intent, *, domain, llm, kernel, tools, events, attachments=(), canc
 
     def probe_turn(code):
         events.emit(TOOL_CALL, name="probe", arguments={"code": code})
-        answer = _answer(kernel.check(code, exploring=True))
+        answer = _answer(kernel.probe(code))
         events.emit(TOOL_RESULT, name="probe", result=answer)
         return json.dumps(answer, default=str)
 
@@ -114,8 +114,7 @@ def run_solo(intent, *, domain, llm, kernel, tools, events, attachments=(), canc
         state["renders"] += 1
         view = view if isinstance(view, str) else None
         events.emit(TOOL_CALL, name="render", arguments={"view": view})
-        drawn = kernel.check("pass", render_path=os.path.join(renders, "%d.png" % state["renders"]),
-                             render_view=view)
+        drawn = kernel.render(os.path.join(renders, "%d.png" % state["renders"]), view)
         picture = _as_image(drawn.render) if drawn.ok else None
         answer = {"rendered": view or "isometric"} if picture else {
             "error": drawn.traceback or "nothing to draw yet"}

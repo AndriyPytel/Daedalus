@@ -68,8 +68,8 @@ def kernel():
 def test_the_check_the_finish_runs_in_the_kernel_refuses_only_the_solid_the_grader_cannot_mesh(kernel, name, refused):
     from core.agent.reader import unmeshable
 
-    loaded = kernel.check("obj = doc.addObject('Part::Feature', 'Solid')\nobj.Shape = Part.read(%r)\ndoc.recompute()"
-                          % os.path.join(STEPS, name + ".step"))
+    loaded = kernel.rehearse("obj = doc.addObject('Part::Feature', 'Solid')\nobj.Shape = Part.read(%r)\ndoc.recompute()"
+                             % os.path.join(STEPS, name + ".step"))
 
     assert loaded.ok, loaded.traceback
     assert (unmeshable(kernel) is not None) is refused
