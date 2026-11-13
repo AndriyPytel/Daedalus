@@ -2,12 +2,10 @@
 Level 1 — the order the apply pipeline does things in, and what the caller sees.
 
 Everything is injected: no Qt, no FreeCAD, no worker. What matters here is that
-lint runs before the transaction, the transaction never opens on a Step that
-changed nothing, and none of that is visible from outside — the caller gets
-"applied" or "failed". There is no rehearsal here any more: the caller hands
-`apply()` `kernel_result`, what
-a real kernel already found running the Step for real, and `FakeWorker` here
-is only `start_run`'s own seed call, untouched by this ticket.
+lint runs before the kernel's rehearsal, the transaction never opens on a Step
+that changed nothing, and none of that is visible from outside — the caller
+gets "applied" or "failed". `FakeWorker` is the kernel: it answers the
+rehearsal and the seed with whatever result the test sets.
 """
 import pytest
 
@@ -34,7 +32,7 @@ class FakeObject:
 
 
 class FakeWorker:
-    """Answers `start_run`'s own seed call however the test says."""
+    """Answers the rehearsal and the seed call however the test says."""
 
     def __init__(self, result=None):
         self.result = result or KernelResult(ok=True, render="/tmp/step.png",
@@ -48,17 +46,18 @@ class FakeWorker:
         return self.result
 
 
-def _kernel_result(created=("Box",), modified=(), objects=None, signature=None, **rest):
-    """
-    A `kernel_result` shaped like what `apply()` now expects a caller to have
-    from the kernel's own run of the Step, rather than a rehearsal `apply()`
-    runs itself.
-    """
+def _kernel_result(created=("Box",), modified=(), deleted=(), names=None, signature=None):
     made = list(created)
-    return dict(created=made, deleted=[], modified=list(modified),
-               objects=(objects if objects is not None
-                        else [{"name": name, "type": "Part::Box"} for name in made]),
-               names={}, signature=(signature if signature is not None else {}), **rest)
+    return KernelResult(ok=True, created=made, deleted=list(deleted), modified=list(modified),
+                        objects=[{"name": name, "type": "Part::Box"} for name in made],
+                        names=names or {}, signature=signature or {})
+
+
+def applying(pipeline, code, rehearsal=None, **kwargs):
+    """Apply *code* with the kernel answering the rehearsal as *rehearsal*."""
+    if rehearsal is not None:
+        pipeline.worker.result = rehearsal
+    return pipeline.apply(code, **kwargs)
 
 
 @pytest.fixture
@@ -88,8 +87,7 @@ def test_a_clean_step_lands_and_reports_what_it_created(pipeline):
     """
     An Apply lands a Step and describes what is now there. It takes no picture.
     """
-    result = pipeline.apply("box = doc.addObject('Part::Box', 'Box')", label="Add the box",
-                            kernel_result=_kernel_result())
+    result = applying(pipeline, "box = doc.addObject('Part::Box', 'Box')", rehearsal=_kernel_result())
 
     assert result.ok
     assert result.created == ["Box"]
@@ -106,7 +104,7 @@ def test_a_step_that_lands_puts_the_part_back_in_the_viewport(pipeline, monkeypa
     fitted = []
     monkeypatch.setattr("core.freecad_apply.fit_view", lambda doc: fitted.append(doc))
 
-    assert pipeline.apply("doc.recompute()", kernel_result=_kernel_result()).ok
+    assert applying(pipeline, "doc.recompute()", rehearsal=_kernel_result()).ok
     assert fitted == [pipeline.document]
 
 
@@ -120,7 +118,7 @@ def test_a_step_that_lands_shows_the_built_result(pipeline, monkeypatch):
     shown = []
     monkeypatch.setattr("core.freecad_apply._show_tip", lambda doc: shown.append(doc))
 
-    assert pipeline.apply("doc.recompute()", kernel_result=_kernel_result()).ok
+    assert applying(pipeline, "doc.recompute()", rehearsal=_kernel_result()).ok
     assert shown == [pipeline.document]
 
 
@@ -134,8 +132,7 @@ def test_a_step_the_kernel_says_changed_nothing_leaves_the_camera_alone(pipeline
     fitted = []
     monkeypatch.setattr("core.freecad_apply.fit_view", lambda doc: fitted.append(doc))
 
-    result = pipeline.apply("def build(doc):\n    doc.addObject('Part::Box', 'Box')\n",
-                            kernel_result=_kernel_result(created=[]))
+    result = applying(pipeline, "def build(doc):\n    doc.addObject('Part::Box', 'Box')\n", rehearsal=_kernel_result(created=[]))
 
     assert not result.ok
     assert "changed nothing" in result.traceback
@@ -152,16 +149,13 @@ def test_a_step_that_only_rewrites_a_sketchs_geometry_still_lands(pipeline):
     real. The kernel's own `modified` is enough on its own -- it is not
     second-guessed against a signature that cannot see this kind of change.
     """
-    result = pipeline.apply(
-        "sk = doc.getObject('Sketch')\n",
-        kernel_result=_kernel_result(created=[], modified=["Sketch"]),
-    )
+    result = applying(pipeline, "sk = doc.getObject('Sketch')\n", rehearsal=_kernel_result(created=[], modified=["Sketch"]))
 
     assert result.ok, result.traceback
 
 
 def test_lint_runs_before_the_transaction_so_a_bad_step_costs_nothing(pipeline):
-    result = pipeline.apply("fillet.Base = (box, ['Edge12'])", kernel_result=_kernel_result())
+    result = applying(pipeline, "fillet.Base = (box, ['Edge12'])", rehearsal=_kernel_result())
 
     assert not result.ok
     assert "literal element name" in result.traceback
@@ -170,15 +164,84 @@ def test_lint_runs_before_the_transaction_so_a_bad_step_costs_nothing(pipeline):
 
 
 def test_the_caller_sees_applied_or_failed_and_nothing_else(pipeline):
-    applied = pipeline.apply("doc.recompute()", kernel_result=_kernel_result()).as_tool_result()
-    failed = pipeline.apply("doc.recompute()", kernel_result=_kernel_result(created=[])).as_tool_result()
+    applied = applying(pipeline, "doc.recompute()", rehearsal=_kernel_result()).as_tool_result()
+    failed = applying(pipeline, "doc.recompute()", rehearsal=_kernel_result(created=[])).as_tool_result()
 
     assert applied["status"] == "applied"
     assert failed["status"] == "failed"
     assert "changed nothing" in failed["traceback"]
     assert failed["gate"] == "changed_nothing"
     assert "preflight" not in repr(applied).lower()
-    assert set(applied) == {"status", "created", "modified", "description"}
+    assert set(applied) == {"status", "created", "modified", "description", "deleted", "geometry"}
+
+
+def test_lint_runs_once_with_the_selection(pipeline, monkeypatch):
+    import core.freecad_apply as module
+
+    linted = []
+    real = module.lint
+
+    def counting(code, selection=None, design_model=True):
+        linted.append(selection)
+        return real(code, selection, design_model)
+
+    monkeypatch.setattr(module, "lint", counting)
+    selection = [{"object": "Box", "elements": ["Edge3"]}]
+
+    result = applying(pipeline, "fillet.Base = (box, ['Edge3'])", selection=selection,
+                      rehearsal=_kernel_result(created=["Fillet"]))
+
+    assert result.ok, result.traceback
+    assert linted == [selection]
+
+
+def test_the_kernel_is_asked_to_rehearse_only_what_lint_let_through(pipeline):
+    applying(pipeline, "fillet.Base = (box, ['Edge12'])", rehearsal=_kernel_result())
+
+    assert pipeline.fake_worker.checked == []
+
+
+def test_a_step_the_kernel_refuses_never_reaches_the_document(pipeline):
+    refusal = KernelResult(ok=False, traceback="boom", volume={"before": 1.0, "after": 0.0},
+                           stdout="said")
+
+    result = applying(pipeline, "box.fail()", rehearsal=refusal)
+
+    assert not result.ok and result.gate == ""
+    assert result.as_tool_result()["traceback"] == "boom"
+    assert result.as_tool_result()["volume"] == {"before": 1.0, "after": 0.0}
+    assert pipeline.trace == []
+    assert [step["code"] for step in pipeline.fake_worker.checked] == ["box.fail()"]
+
+
+def test_a_step_that_changes_nothing_is_refused_with_the_prompt_message(pipeline):
+    from core.prompts import read_prompt
+
+    result = applying(pipeline, "print(1)", rehearsal=_kernel_result(created=[]))
+
+    assert result.traceback == read_prompt("changed_nothing.md")
+    assert [step["code"] for step in pipeline.fake_worker.checked] == ["print(1)"]
+
+
+def test_a_refusal_resyncs_the_kernel(trace):
+    def transaction(document, code, label, **_):
+        raise RuntimeError("the live Document disagreed")
+
+    worker = FakeWorker()
+    pipeline = ApplyPipeline(document=FakeDocument(), worker=worker,
+                             dispatch=lambda f, timeout=None: f(), transaction=transaction)
+
+    result = pipeline.apply("doc.recompute()")
+
+    assert not result.ok
+    assert [step["code"] for step in worker.checked] == ["doc.recompute()", "pass"]
+    assert worker.checked[-1]["document"] is not None
+
+
+def test_a_step_that_lands_does_not_resync_the_kernel(pipeline):
+    assert pipeline.apply("doc.recompute()").ok
+
+    assert [step["code"] for step in pipeline.fake_worker.checked] == ["doc.recompute()"]
 
 
 def test_a_step_that_the_kernel_ran_but_fails_for_real_is_reported_as_such(trace):
@@ -188,7 +251,7 @@ def test_a_step_that_the_kernel_ran_but_fails_for_real_is_reported_as_such(trace
     pipeline = ApplyPipeline(document=FakeDocument(), worker=FakeWorker(),
                              dispatch=lambda f, timeout=None: f(), transaction=transaction)
 
-    result = pipeline.apply("doc.recompute()", kernel_result=_kernel_result())
+    result = applying(pipeline, "doc.recompute()", rehearsal=_kernel_result())
 
     assert not result.ok
     assert "rolled back" in result.traceback
@@ -203,7 +266,7 @@ def test_a_replay_that_drifts_names_drift_as_its_cause(trace):
     pipeline = ApplyPipeline(document=FakeDocument(), worker=FakeWorker(),
                              dispatch=lambda f, timeout=None: f(), transaction=transaction)
 
-    result = pipeline.apply("doc.recompute()", kernel_result=_kernel_result())
+    result = applying(pipeline, "doc.recompute()", rehearsal=_kernel_result())
 
     assert result.drift
     assert result.gate == "drift"
@@ -217,14 +280,14 @@ def test_closing_during_the_transaction_is_a_clean_stop_not_a_failed_step(trace)
                              dispatch=lambda f, timeout=None: f(), transaction=transaction)
 
     with pytest.raises(Closing):
-        pipeline.apply("doc.recompute()", kernel_result=_kernel_result())
+        applying(pipeline, "doc.recompute()", rehearsal=_kernel_result())
 
 
 def test_no_open_document_is_a_reason_not_a_crash():
     pipeline = ApplyPipeline(document=lambda: None, worker=FakeWorker(),
                              dispatch=lambda f, timeout=None: f())
 
-    result = pipeline.apply("doc.recompute()", kernel_result=_kernel_result())
+    result = applying(pipeline, "doc.recompute()", rehearsal=_kernel_result())
 
     assert not result.ok
     assert "no open Document" in result.traceback
@@ -232,9 +295,7 @@ def test_no_open_document_is_a_reason_not_a_crash():
 
 
 def test_an_element_the_user_selected_survives_the_lint(pipeline):
-    result = pipeline.apply("fillet.Base = (box, ['Edge3'])",
-                            selection=[{"object": "Box", "elements": ["Edge3"]}],
-                            kernel_result=_kernel_result(created=["Fillet"]))
+    result = applying(pipeline, "fillet.Base = (box, ['Edge3'])", selection=[{"object": "Box", "elements": ["Edge3"]}], rehearsal=_kernel_result(created=["Fillet"]))
 
     assert result.ok, result.traceback
 
@@ -244,13 +305,11 @@ def test_a_fillet_that_never_says_how_many_edges_never_reaches_the_document(pipe
     A filter that finds eight of the marked edges rounds eight of them and
     reports the Step applied. It fails before the Document sees it.
     """
-    result = pipeline.apply(
-        "refs = []\n"
+    result = applying(pipeline, "refs = []\n"
         "for i, e in enumerate(base.Shape.Edges, 1):\n"
         "    if abs(e.Vertexes[0].Point.x - e.Vertexes[1].Point.x) < 1e-7:\n"
         "        refs.append('Edge%d' % i)\n"
-        "fillet.Base = (base, refs)\n",
-        kernel_result=_kernel_result())
+        "fillet.Base = (base, refs)\n", rehearsal=_kernel_result())
 
     assert not result.ok
     assert "how many" in result.traceback
@@ -278,35 +337,9 @@ def test_every_document_touch_goes_through_the_dispatcher():
     pipeline = ApplyPipeline(document=doc, worker=FakeWorker(), dispatch=dispatch,
                              transaction=lambda *a, **kw: None)
 
-    pipeline.apply("doc.recompute()", kernel_result=_kernel_result())
+    applying(pipeline, "doc.recompute()", rehearsal=_kernel_result())
 
     assert len(dispatched) == 6
-
-
-def test_an_op_mismatch_reaches_apply_the_same_way_a_lint_rejection_does(pipeline):
-    """
-    Whether a Step built the TypeId its `op` promises is read off
-    `kernel_result`'s own `created`/`objects`, checked before the
-    transaction ever sees the code.
-    """
-    result = pipeline.apply(
-        "doc.addObject('Part::Extrusion', 'Pad')", op="pad",
-        kernel_result=_kernel_result(created=["Pad"],
-                                     objects=[{"name": "Pad", "type": "Part::Extrusion"}]))
-
-    assert not result.ok
-    assert "pad" in result.traceback
-    assert result.gate == "op_mismatch"
-    assert pipeline.trace == []
-
-
-def test_an_op_none_never_blocks_a_step_the_old_pipeline_would_have_applied(pipeline):
-    result = pipeline.apply(
-        "doc.addObject('PartDesign::Pad', 'Pad')",
-        kernel_result=_kernel_result(created=["Pad"],
-                                     objects=[{"name": "Pad", "type": "PartDesign::Pad"}]))
-
-    assert result.ok
 
 
 class FakeWidget:
@@ -358,9 +391,6 @@ def test_start_run_snapshots_the_document_into_the_kernel(pipeline):
     pipeline.document.Objects = [FakeObject("Box"), FakeObject("Cylinder")]
     pipeline.fake_worker.result = KernelResult(ok=True, objects=[{"name": "Box"},
                                                                    {"name": "Cylinder"}])
-    window = FakeMainWindow()
-    pipeline._main_window = window
-
     seeded = pipeline.start_run()
 
     assert len(seeded.objects) == len(pipeline.document.Objects)
@@ -372,7 +402,7 @@ def test_a_run_in_flight_locks_the_gui(pipeline):
     window = FakeMainWindow()
     pipeline._main_window = window
 
-    pipeline.start_run()
+    pipeline.lock()
 
     assert pipeline.locked is True
     assert window.viewport.enabled is False
@@ -387,7 +417,7 @@ def test_the_lock_leaves_the_chat_alone(pipeline):
     window = FakeMainWindow()
     pipeline._main_window = window
 
-    pipeline.start_run()
+    pipeline.lock()
 
     assert window.chat.enabled is True
 
@@ -398,7 +428,7 @@ def test_the_lock_leaves_the_windows_actions_to_the_application(pipeline):
     pipeline._main_window = window
     window.action.enabled = False
 
-    pipeline.start_run()
+    pipeline.lock()
     pipeline.end_run()
 
     assert window.action.enabled is False
@@ -408,7 +438,7 @@ def test_a_run_that_ends_unlocks_the_gui(pipeline):
     """AC3: after the run ends, the GUI is free again."""
     window = FakeMainWindow()
     pipeline._main_window = window
-    pipeline.start_run()
+    pipeline.lock()
 
     pipeline.end_run()
 
@@ -416,13 +446,10 @@ def test_a_run_that_ends_unlocks_the_gui(pipeline):
     assert window.viewport.enabled is True
 
 
-def test_start_run_with_no_open_document_still_locks(pipeline):
-    """No Document open is not a reason to leave the GUI unlocked or crash."""
+def test_start_run_with_no_open_document_seeds_an_empty_one(pipeline):
     pipeline._document = lambda: None
-    window = FakeMainWindow()
-    pipeline._main_window = window
 
     seeded = pipeline.start_run()
 
-    assert pipeline.locked is True
     assert seeded.objects == []
+    assert pipeline.fake_worker.checked[-1]["document"] is None

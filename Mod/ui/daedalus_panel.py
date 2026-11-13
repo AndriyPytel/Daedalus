@@ -548,7 +548,7 @@ traceback.
         except Exception:
             pass  # except-pass-allowed: the panel may already be closing, nothing needs the signal
 
-        sdk_client.pipeline.start_run()
+        sdk_client.pipeline.lock()
         try:
             domain = sdk_client.domain_for(intent, get_domain(), events)
             result = sdk_client.send(

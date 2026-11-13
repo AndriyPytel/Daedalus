@@ -182,8 +182,6 @@ def main():
         seed = sdk.native_document(args.base_ifc, os.path.join(scratch, "work.ifc"), os.path.join(scratch, "seed.FCStd"))
     client = Client(document=seed, llm=llm)
     client.events.log_to(args.log)
-    if seed:
-        client.kernel.check("pass", document=seed)
 
     spent = {"usd": 0.0}
 

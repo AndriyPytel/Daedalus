@@ -197,7 +197,7 @@ def test_two_sessions_on_the_same_document_cannot_both_run(panel, monkeypatch):
     """
     One file, one Intent holds across Sessions, not only within one: a second
     Session bound to the same Document the first is still running against is
-    refused too, and neither of its `snapshot`/`start_run` calls is ever
+    refused too, and neither of its `snapshot`/`lock` calls is ever
     reached -- `on_send` never gets past `_document_busy`.
     """
     import types
@@ -2819,9 +2819,8 @@ def test_the_panel_marshals_the_document_onto_the_gui_thread(panel):
     The first Intent of a Session segfaults FreeCAD without this.
 
     `LoopWorker.do_work` runs on a QThread and the first thing it does is
-    `pipeline.start_run()`, which reads the active Document and disables the
-    main window. `sdk.Client` defaults `dispatch` to running the
-    callable where it stands -- right for a headless script, a Document
+    `pipeline.lock()`, which disables the main window. `sdk.Client` defaults
+    `dispatch` to running the callable where it stands -- right for a headless script, a Document
     mutation and a `QWidget.setEnabled` off the GUI thread here.
     """
     from bridge.main_thread import on_main_thread
@@ -2902,7 +2901,7 @@ def test_a_step_that_faults_ends_its_own_run_and_the_gui_survives(panel, monkeyp
     ended = []
 
     class _FakePipeline:
-        def start_run(self):
+        def lock(self):
             return None
 
         def end_run(self):
@@ -2957,7 +2956,7 @@ def test_an_unopenable_transcript_is_logged_not_swallowed(monkeypatch, tmp_path)
     worker = LoopWorker(EventBridge(), AskTheUser())
 
     class _FakePipeline:
-        def start_run(self):
+        def lock(self):
             return None
 
         def end_run(self):
@@ -3006,7 +3005,7 @@ def test_an_intent_from_the_panel_is_routed_before_design(monkeypatch):
     sent = []
 
     class _FakePipeline:
-        def start_run(self):
+        def lock(self):
             return None
 
         def end_run(self):
@@ -3099,7 +3098,7 @@ def test_the_run_is_sent_under_the_domain_the_choice_resolved_to(monkeypatch):
     sent, asked = [], []
 
     class _FakePipeline:
-        def start_run(self):
+        def lock(self):
             return None
 
         def end_run(self):
@@ -3149,7 +3148,7 @@ def test_a_failed_domain_call_ends_the_run_with_an_error_in_the_chat(monkeypatch
     seen, finished, ended = [], [], []
 
     class _FakePipeline:
-        def start_run(self):
+        def lock(self):
             return None
 
         def end_run(self):

@@ -1349,10 +1349,6 @@ def run_step(request):
     if past:
         response["ok"] = False
         response["traceback"] = (response.get("traceback") or "") + past
-    if request.get("builds") and response.get("ok") and not touched.touched():
-        response = {"ok": False, "traceback": (
-            "This Step changed nothing in the Document, so it is not a Step. Code "
-            "that only looks goes without \"step\"; send the code that builds it.")}
     if response.get("ok"):
         if exploring and touched.touched() and not ephemeral:
             _reload_checkpoint()

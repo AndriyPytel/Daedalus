@@ -13,7 +13,7 @@ import os
 import re
 import tempfile
 
-from core import events, freecad_apply, model_catalog
+from core import events, model_catalog
 from core import settings as _settings
 from core.arch import arch_type, export_ifc, named_in
 from core import furniture, nativeifc
@@ -385,9 +385,7 @@ class Client:
         self.pipeline.events = stream
         tools = build_registry(document=lambda: self.document, pipeline=self.pipeline,
                                dispatch=self.dispatch)
-        seed = tools.call("document_copy")["path"]
-        self.kernel.check("pass", document=seed)
-        freecad_apply.discard(seed)
+        self.pipeline.start_run()
         if domain == ASSEMBLY:
             with tempfile.TemporaryDirectory(prefix="fcc-parts-") as folder:
                 return run_assembly(prompt, llm=self.llm, kernel=self.kernel, tools=tools,

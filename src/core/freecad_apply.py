@@ -23,7 +23,7 @@ from core.freecad_traps import Trap
 from core.kernel import Kernel, KernelResult, copy_of
 from core.kernel.kernel_worker import (_NamedDoc, register_step_source, signature_of,
                                 signatures_match, step_namespace, trimmed_traceback)
-from core.lint import OP_TYPEIDS, _TYPEID_REASON, lint, op_typeid_mismatch
+from core.lint import lint
 from core.prompts import read_prompt
 from core.tools import NO_PARAMETERS, ToolError, ToolRegistry
 
@@ -62,13 +62,9 @@ class SignatureMismatch(Exception):
 @dataclass
 class ApplyResult:
     """
-    All the loop ever learns about a Step: it landed, or here is why not.
-    `modified` is Preflight's own measured list, carried past the
-    `_CHANGED_NOTHING` check rather than dropped there; `drift` is set only
-    by a `SignatureMismatch`, the GUI Document disagreeing with what the
-    kernel verified. `gate` names which refusal branch built this result --
-    "lint", "op_mismatch", "changed_nothing", "no_document", "ownership",
-    "rollback" or "drift".
+    All the loop ever learns about a Step: it landed, or here is why not; `drift` is set only by a `SignatureMismatch`.
+    `gate` names the refusal branch -- "lint", "changed_nothing", "no_document", "ownership", "rollback" or "drift", and none where the kernel's own run failed.
+    `said` is what the kernel reported of that run -- volume, stdout, geometry -- for the model's next turn.
     """
 
     ok: bool
@@ -78,18 +74,32 @@ class ApplyResult:
     modified: list = field(default_factory=list)
     drift: bool = False
     gate: str = ""
+    said: dict = field(default_factory=dict)
 
     def as_tool_result(self) -> dict:
         if self.ok:
-            return {"status": "applied", "created": self.created,
+            return {**self.said, "status": "applied", "created": self.created,
                     "modified": self.modified, "description": self.description}
-        return {"status": "failed", "traceback": self.traceback, "drift": self.drift,
-                "gate": self.gate}
+        return {**self.said, "status": "failed", "traceback": self.traceback,
+                "drift": self.drift, "gate": self.gate}
+
+
+def _said(rehearsal):
+    said = {}
+    for key in ("stdout", "volume", "rolled_back"):
+        if getattr(rehearsal, key):
+            said[key] = getattr(rehearsal, key)
+    if rehearsal.ok:
+        touched = set(rehearsal.created) | set(rehearsal.modified)
+        said["deleted"] = rehearsal.deleted
+        said["geometry"] = {name: g for name, g in rehearsal.geometry.items() if name in touched}
+    return said
 
 
 _CHANGED_NOTHING = read_prompt("changed_nothing.md")
 
 STEP_LIMIT = 120
+STEP_LABEL = "Daedalus Step"
 
 
 def _direct(func, timeout=None):
@@ -230,24 +240,31 @@ class ApplyPipeline:
 
     def start_run(self) -> KernelResult:
         """
-        Snapshot the GUI's current Document into the kernel and lock the GUI.
+        Seed the kernel from the live Document, the one seed of a run, and forget the names the last run allocated.
 
-        Locking the main window keeps the GUI's state comparable to the
-        kernel's for the rest of the run.
+        The seed leaves a checkpoint, so a failed first Step reloads it and a restarted kernel resumes on it.
         """
+        self._names = {}
+        return self._seed()
+
+    def _seed(self) -> KernelResult:
         doc = self._dispatch(self._active)
         if doc is None:
-            seeded = self.worker.check("pass", document=None, ephemeral=True)
-        else:
-            copy = self._dispatch(lambda: copy_of(doc))
-            try:
-                seeded = self.worker.check("pass", document=copy, ephemeral=True)
-            finally:
-                discard(copy)
+            return self.worker.check("pass", document=None)
+        copy = self._dispatch(lambda: copy_of(doc))
+        try:
+            return self.worker.check("pass", document=copy)
+        finally:
+            discard(copy)
+
+    def lock(self):
+        """
+        Lock the GUI for the run, which keeps its state comparable to the kernel's.
+
+        Only a run with a window to lock calls it; `end_run` unlocks.
+        """
         self._dispatch(lambda: lock_gui(self.main_window, True))
         self.locked = True
-        self._names = {}
-        return seeded
 
     def end_run(self):
         """Unlock the GUI: the run is over, by whichever outcome ended it."""
@@ -264,32 +281,30 @@ class ApplyPipeline:
         """
         return self._document() if callable(self._document) else self._document
 
-    def apply(self, code, selection=None, label="Daedalus Step", op=None,
-              kernel_result=None, design_model=True) -> ApplyResult:
+    def apply(self, code, selection=None) -> ApplyResult:
         """
-        Lint *code* and land it on the live Document as one transaction.
-        `kernel_result` is what the kernel already found running this Step
-        for real -- names created/deleted/modified, its name map, its
-        Document's signature -- so the kernel's run is the rehearsal, rolled
-        back on a signature disagreement, with no second rehearsal here.
-        `op` is checked against what the kernel built, not this code's text;
-        *design_model* false is a caller with no `design` in scope, to whom the Design-model lint rules do not apply.
+        The whole `code` call: lint with *selection*, rehearse in the kernel, refuse a Step that changes nothing, then land it on the live Document as one transaction.
+        A Step the Document refuses after the kernel took it leaves the kernel ahead of the Document, so the kernel is seeded from the Document again.
         """
-        kernel_result = kernel_result or {}
-        checked = lint(code, selection, design_model)
+        checked = lint(code, selection, design_model=False)
         if not checked.ok:
             return ApplyResult(ok=False, traceback=checked.report(), gate="lint")
 
-        mismatch = op_typeid_mismatch(op, kernel_result.get("created"),
-                                      kernel_result.get("objects"))
-        if mismatch:
-            return ApplyResult(ok=False, traceback=_TYPEID_REASON % (
-                mismatch, mismatch, op, " or ".join(OP_TYPEIDS[op])), gate="op_mismatch")
+        rehearsal = self.worker.check(code)
+        said = _said(rehearsal)
+        if not rehearsal.ok:
+            return ApplyResult(ok=False, traceback=rehearsal.traceback, said=said)
+        if not (rehearsal.created or rehearsal.deleted or rehearsal.modified):
+            return ApplyResult(ok=False, traceback=_CHANGED_NOTHING, gate="changed_nothing",
+                               said=said)
 
-        if not (kernel_result.get("created") or kernel_result.get("deleted")
-                or kernel_result.get("modified")):
-            return ApplyResult(ok=False, traceback=_CHANGED_NOTHING, gate="changed_nothing")
+        result = self._land(code, rehearsal)
+        result.said = said
+        if not result.ok:
+            self._seed()
+        return result
 
+    def _land(self, code, rehearsal) -> ApplyResult:
         doc = self._dispatch(self._active)
         if doc is None:
             return ApplyResult(ok=False, traceback="There is no open Document to apply this Step to.",
@@ -297,15 +312,15 @@ class ApplyPipeline:
 
         before = set(self._dispatch(lambda: [o.Name for o in doc.Objects]))
 
-        declined = self._refused(kernel_result.get("deleted") or (), doc)
+        declined = self._refused(rehearsal.deleted, doc)
         if declined:
             return ApplyResult(ok=False, traceback=declined, gate="ownership")
 
         started = self._clock()
         try:
             self._dispatch(lambda: self._transaction(
-                doc, code, label, names=self._names,
-                expected_signature=kernel_result.get("signature")))
+                doc, code, STEP_LABEL, names=self._names,
+                expected_signature=rehearsal.signature))
         except Closing:
             raise
         except SignatureMismatch as exc:
@@ -322,14 +337,14 @@ class ApplyPipeline:
         if took > STEP_LIMIT:
             self._narrate(WARNING, message="step took %d s on the live Document" % took)
 
-        self._names = dict(kernel_result.get("names") or {})
+        self._names = dict(rehearsal.names)
         self._dispatch(lambda: _show_tip(doc))
         self._dispatch(lambda: fit_view(doc))
         described = self._dispatch(lambda: description(doc))
         created = [o["name"] for o in described["features"] if o["name"] not in before]
         self.owned.update(created)
         return ApplyResult(ok=True, description=described, created=created,
-                           modified=list(kernel_result.get("modified") or ()))
+                           modified=list(rehearsal.modified))
 
     def _narrate(self, kind, **data):
         """Say it on the stream, if a run is listening. Headless, nobody is."""
@@ -1674,40 +1689,12 @@ def _register_apply(registry, pipeline, selection):
                                    "No Gui.*, no live selection, and no literal element "
                                    "names such as Edge12 — compute references instead.",
                 },
-                "label": {
-                    "type": "string",
-                    "description": "Short name for the undo entry, e.g. 'Pad the base sketch'.",
-                },
-                "op": {
-                    "type": "string",
-                    "description": "This Step's operation, one of the 36 in plan.md's closed "
-                                   "list — carried straight from the Plan, not asked for here.",
-                },
-                "kernel_result": {
-                    "type": "object",
-                    "description": "What the kernel already found running this Step for real "
-                                   "(DAE-A-53): created, deleted, modified, names, signature, "
-                                   "objects. Carried by the loop, not asked for here.",
-                },
-                "design_model": {
-                    "type": "boolean",
-                    "description": "False where the caller has no Design model in scope, so the "
-                                   "lint rules about reading one are left out. Carried by the "
-                                   "loop, not asked for here.",
-                },
             },
             "required": ["code"],
         },
     )
-    def apply_step(code, label="Daedalus Step", op=None, kernel_result=None, design_model=True):
-        """
-        There is no rehearsal behind this Tool any more: from here up, a
-        Step was applied or it was not, and there is no third thing to know
-        about.
-        """
-        return pipeline.apply(code, selection=selection(), label=label,
-                              op=op, kernel_result=kernel_result,
-                              design_model=design_model).as_tool_result()
+    def apply_step(code):
+        return pipeline.apply(code, selection=selection()).as_tool_result()
 
 
 def _readable(value):
