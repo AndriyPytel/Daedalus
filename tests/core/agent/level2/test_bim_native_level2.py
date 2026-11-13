@@ -243,7 +243,7 @@ def test_a_process_with_a_gui_keeps_its_shapes(monkeypatch):
 def test_the_kernel_and_a_live_document_that_builds_shapes_agree_on_the_signature_of_a_native_edit(kernel, tmp_path):
     import FreeCAD
     import Part
-    from core.kernel.kernel_worker import signature_of, signatures_match
+    from core.kernel.step_namespace import signature_of, signatures_match
 
     seed = sdk.native_document(flat(str(tmp_path / "input.ifc")), str(tmp_path / "work.ifc"),
                                str(tmp_path / "input.FCStd"))

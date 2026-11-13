@@ -142,7 +142,7 @@ def test_the_guards_own_cost_stays_under_the_round_trip_it_rides_on(worker):
     """
     import time
 
-    from core.kernel import kernel_worker
+    from core.kernel import step_rules
 
     plate_names = held_names(worker, "['Edge%d' % (at + 1) for at in plate_corners]")
     code = a_fillet_on(plate_names)
@@ -156,13 +156,13 @@ def test_the_guards_own_cost_stays_under_the_round_trip_it_rides_on(worker):
         "import time\n"
         "started = time.perf_counter()\n"
         "for _ in range(20):\n"
-        "    kernel_worker._fillets_with_mixed_concavity(doc)\n"
+        "    step_rules._fillets_with_mixed_concavity(doc)\n"
         "guard_cost = (time.perf_counter() - started) / 20.0\n"
         "import json\n"
         "print('FACTS ' + json.dumps(guard_cost))\n"
     )
     assert worker.seed().ok
-    guard_cost = worker.measure("from core.kernel import kernel_worker\n" + probe)
+    guard_cost = worker.measure("from core.kernel import step_rules\n" + probe)
     assert guard_cost is not None
 
     assert guard_cost < round_trip, (

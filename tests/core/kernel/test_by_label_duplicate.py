@@ -10,7 +10,7 @@ import pytest
 
 
 def test_more_than_one_match_lists_every_label_it_found():
-    from core.kernel.kernel_worker import by_label
+    from core.kernel.step_namespace import by_label
 
     doc = types.SimpleNamespace(Objects=[
         types.SimpleNamespace(Label="BasePad"),

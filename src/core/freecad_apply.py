@@ -21,8 +21,8 @@ from dataclasses import dataclass, field
 from core.events import ANSWER, QUESTION, WARNING
 from core.freecad_traps import Trap
 from core.kernel import Kernel, KernelResult, copy_of
-from core.kernel.kernel_worker import (_NamedDoc, register_step_source, signature_of,
-                                signatures_match, step_namespace, trimmed_traceback)
+from core.kernel.step_namespace import (_NamedDoc, register_step_source, signature_of,
+                                        signatures_match, step_namespace, trimmed_traceback)
 from core.lint import lint
 from core.prompts import read_prompt
 from core.tools import NO_PARAMETERS, ToolError, ToolRegistry

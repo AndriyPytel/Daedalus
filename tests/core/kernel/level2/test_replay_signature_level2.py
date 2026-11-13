@@ -9,7 +9,7 @@ import pytest
 
 from core.freecad_apply import ApplyPipeline, SignatureMismatch, run_in_transaction
 from core.kernel import Kernel, find_freecadcmd
-from core.kernel.kernel_worker import signature_of
+from core.kernel.step_namespace import signature_of
 
 
 pytestmark = pytest.mark.freecad
