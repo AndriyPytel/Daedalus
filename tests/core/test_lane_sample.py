@@ -20,7 +20,7 @@ def _test_data(tmp_path, monkeypatch):
         (folder / "exemplar.step").write_text("exemplar")
         (folder / "sheet.pdf").write_text("sheet")
     (tmp_path / "split.json").write_text(json.dumps({"validation": LABELS, "test": ["t_000"]}))
-    monkeypatch.setattr(lane, "TEST_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DAE_TEST_DATA_DIR", str(tmp_path))
     return tmp_path
 
 
@@ -28,7 +28,7 @@ def test_exemplar_for_finds_a_test_data_label(monkeypatch, tmp_path):
     data = tmp_path / "data"
     data.mkdir()
     _test_data(data, monkeypatch)
-    monkeypatch.setattr(lane, "EXEMPLAR_DIR", str(tmp_path / "none"))
+    monkeypatch.setenv("DAE_MODELMANIA_DIR", str(tmp_path / "none"))
 
     assert lane._exemplar_for("c_002") == str(data / "validation" / "c_002" / "exemplar.step")
     assert lane._exemplar_for("c_002-rep1") == str(data / "validation" / "c_002" / "exemplar.step")

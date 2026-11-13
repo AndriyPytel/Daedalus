@@ -26,6 +26,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.dirname(ROOT))
 
+from task import STEP, Task, read_task  # noqa: E402
+
 HANG_SECONDS = 1800
 REASON_WIDTH = 60
 
@@ -34,12 +36,6 @@ def _domains():
     import sdk
 
     return sdk.PART, sdk.ASSEMBLY, sdk.BIM
-
-
-def _saved_suffix(domain):
-    """The file a run under *domain* saves: an FCStd for an Assembly, an IFC4 file for BIM, a STEP otherwise."""
-    _, assembly, bim = _domains()
-    return {assembly: ".FCStd", bim: ".ifc"}.get(domain, ".step")
 
 
 def _attempt_timestamp():
@@ -123,37 +119,30 @@ def quota_refusal(log):
     return None
 
 
-def run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
-            python=sys.executable, base_step=None, attach=(),
-            domain=None, base_document=None, base_ifc=None):
+def run_command(path, model, effort, budget_usd, log, intent, provider, native=False,
+                python=sys.executable):
     """
-    One run of one sheet, as a subprocess of `tools/run.py`.
+    The argv of one run of the task at *path*: a task folder, a sheet, or `""` for an Intent alone.
 
-    A task with no sheet — `--task bolt-nut=` — is a run of the Intent alone.
-    An editing run names *base_step* and the renders in *attach*; *domain* is `--domain`, left off for Part, and an Assembly run saves an FCStd; *base_document* is the Document an editing Assembly run opens, which the run may change where its Intent names what goes, and *base_ifc* the IFC an editing BIM run opens in nativeifc.
+    The run saves beside *log*, in the file the Task says it leaves.
     """
-    part = _domains()[0]
-    domain = domain or part
-    suffix = _saved_suffix(domain)
+    suffix = Task.open(path, intent, native).saved_suffix
     save = log[: -len(".jsonl")] + suffix if log.endswith(".jsonl") else log + suffix
     cmd = [python, os.path.join(ROOT, "tools", "run.py"),
           "--intent", intent, "--model", model,
           "--provider", provider, "--effort", effort, "--log", log, "--save", save]
-    if sheet:
-        cmd += ["--attach", sheet]
-    if attach:
-        cmd += ["--attach"] + list(attach)
+    if path:
+        cmd += ["--task", path]
+    if native:
+        cmd += ["--native"]
     if budget_usd is not None:
         cmd += ["--budget-usd", str(budget_usd)]
-    if base_step:
-        cmd += ["--base-step", base_step]
-    if domain != part:
-        cmd += ["--domain", domain]
-    if base_document:
-        cmd += ["--base-document", base_document]
-    if base_ifc:
-        cmd += ["--base-ifc", base_ifc]
-    return subprocess.Popen(cmd)
+    return cmd
+
+
+def run_one(label, path, model, effort, budget_usd, log, intent, provider, native=False):
+    """One run of one task, as a subprocess of `tools/run.py`."""
+    return subprocess.Popen(run_command(path, model, effort, budget_usd, log, intent, provider, native))
 
 
 def _attempts(text):
@@ -225,79 +214,28 @@ leaving `--budget-usd` unset and risking an unbounded overnight spend.
 """
 
 
-RENDER_VIEWS = ("front", "right", "top", "iso")
 VOLUME_RATIO = (0.2, 5.0)
 
 
-def _part():
-    for lib in ("/Applications/FreeCAD.app/Contents/Resources/lib",):
-        if os.path.isdir(lib) and lib not in sys.path:
-            sys.path.insert(0, lib)
-    import FreeCAD  # noqa: F401
-    import Part
-
-    return Part
-
-
-def step_problem(path):
+def guard_edit(result):
     """
-    The reason the official gate would refuse the STEP at *path*, else `None`.
+    Why the edited STEP the run's *result* describes must not ship, else `None`.
 
-    Refused: no solid, more than one solid, an OCC `isValid()` failure, and the mesh gate
-    `core.manifold` mirrors.
+    Its volume must lie within `VOLUME_RATIO` of the base's; real edits moved volume by -15% and +9%, so only an absurd change is a failed edit.
     """
-    shape = _part().read(path)
-    import sdk
-
-    if not shape.Solids:
-        return "no solid"
-    if len(shape.Solids) > 1:
-        return "%d solids" % len(shape.Solids)
-    if not shape.isValid():
-        return "not valid"
-    return sdk.manifold.check_fc(shape)
-
-
-def guard_edit(edit, base):
-    """
-    Why the edited STEP *edit* must not ship, else `None`.
-
-    It must pass `step_problem` and keep its volume within `VOLUME_RATIO` of *base*'s; real edits
-    moved volume by -15% and +9%, so only an absurd change is a failed edit.
-    """
-    problem = step_problem(edit)
-    if problem:
-        return problem
-    Part = _part()
-    before = Part.read(base).Volume
-    ratio = Part.read(edit).Volume / before if before else 1.0
+    ratio = result["volume"] / result["base_volume"] if result.get("base_volume") else 1.0
     low, high = VOLUME_RATIO
     return None if low <= ratio <= high else "volume ratio %.3f" % ratio
 
 
-def _shippable_base(fixture, folder):
-    """The fixture's `input.step`, or where it fails the official gate and `repair_base` mends it, that repair written into *folder*."""
-    base = os.path.join(fixture, "input.step")
-    if not step_problem(base):
-        return base
-    import sdk
-
-    shape = _part().read(base)
-    repaired, _note = sdk.repair_base(shape)
-    if repaired is shape:
-        return base
-    path = os.path.join(folder, "input.repaired.step")
-    repaired.exportStep(path)
-    sdk.rewrite_step(repaired, path)
-    return base if step_problem(path) else path
-
-
-def _ship_edit(log, base, output):
-    """Write *output*: the run's edited STEP if it passes the guard, else a copy of *base*; return the fallback reason."""
-    step = log[: -len(".jsonl")] + ".step" if log and log.endswith(".jsonl") else None
-    if step and _has_step(log):
-        reason = guard_edit(step, base)
-        source = base if reason else step
+def _ship_edit(log, input_step, output):
+    """Write *output*: the run's edited STEP if its result passes the guard, else the base it started from, which is *input_step* when the run saved none; return the fallback reason."""
+    stem = log[: -len(".jsonl")]
+    base = stem + ".base.step" if os.path.isfile(stem + ".base.step") else input_step
+    if _has_step(log) and os.path.isfile(stem + ".json"):
+        with open(stem + ".json", encoding="utf-8") as handle:
+            reason = guard_edit(json.load(handle))
+        source = base if reason else stem + ".step"
     else:
         reason, source = "no solid", base
     os.makedirs(os.path.dirname(output), exist_ok=True)
@@ -319,23 +257,17 @@ def _standing(log):
 
 
 def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
-          resume, provider, run_seconds, timestamp=None, edits=None,
-          domain=None, task_folders=None, native=False):
+          resume, provider, run_seconds, timestamp=None, native=False,
+          run_one=run_one, watch=watch):
     """
     Every attempt gets its own `<stem>.<timestamp>`
-    log and, from `run_one`'s own naming, STEP, so a retry's save never
+    log and, from `run.py`'s own naming, saved file, so a retry's save never
     lands on the same path as any other attempt's. *timestamp* is
     injectable so a test can make attempts distinguishable without a real
-    clock, and *edits* maps a label to its editing fixture folder, whose run ends in
-    `<model>/<label>/output.step`: the edit, or a copy of `input.step`; *domain* goes to every run, and *task_folders* maps a label to the task folder whose text and parts, or floor plan, it runs on; *native* hands a BIM edit its `input.ifc` instead of its `input.FCStd`.
+    clock, and *tasks* are `(label, path)` pairs where the path is a task folder, a sheet or `""`, which `Task.open` reads with *intent*.
+    An edit folder's run ends in `<model>/<label>/output.step`: the edit, or a copy of the base; *native* hands a BIM edit its `input.ifc`, and *run_one* and *watch* start and wait on a run.
     """
-    import sdk
-
-    edits = edits or {}
-    task_folders = task_folders or {}
-    part, _, bim = _domains()
-    domain = domain or part
-    saved = _saved_suffix(domain)
+    opened = {label: Task.open(path, intent, native) for label, path in tasks}
     timestamp = timestamp or _attempt_timestamp
     state_path = os.path.join(out, "state.json")
     state = load_state(state_path) if resume else {"runs": {}}
@@ -343,42 +275,24 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
     for model in models:
         model_dir = os.path.join(out, model)
         os.makedirs(model_dir, exist_ok=True)
-        for label, sheet in tasks:
+        for label, path in tasks:
             key = "%s/%s" % (label, model)
             if state["runs"].get(key, {}).get("status") == "done":
                 print("SKIP %s: already done" % key, flush=True)
                 continue
 
             stem = os.path.join(model_dir, label)
+            saved = opened[label].saved_suffix
             outcome = "hung"
             refusal = None
             ceiling = False
             attempts = []
             log = None
             best = None
-            fixture = edits.get(label)
-            run_intent = intent
             for attempt in range(1, retries + 1):
                 log = _unique_stem(stem, timestamp()) + ".jsonl"
                 attempts.append(log)
-                kwargs = {}
-                if fixture:
-                    with open(os.path.join(fixture, "edit_description.txt"), encoding="utf-8") as handle:
-                        run_intent = sdk.read_prompt("edit_task_intent.md").strip().format(desc=handle.read().strip())
-                    kwargs["base_step"] = os.path.join(fixture, "input.step")
-                    kwargs["attach"] = [os.path.join(fixture, "renders", view + ".png")
-                                        for view in RENDER_VIEWS]
-                if domain != part:
-                    kwargs["domain"] = domain
-                if label in task_folders:
-                    task = bim_task if domain == bim else assembly_task
-                    run_intent, kwargs["attach"] = task(task_folders[label])
-                    if native:
-                        kwargs["base_ifc"] = os.path.join(task_folders[label], "input.ifc")
-                    elif os.path.isfile(os.path.join(task_folders[label], "input.FCStd")):
-                        kwargs["base_document"] = os.path.join(task_folders[label], "input.FCStd")
-                process = run_one(label, "" if label in task_folders else sheet, model, effort, budget_usd, log, run_intent, provider,
-                                  **kwargs)
+                process = run_one(label, path, model, effort, budget_usd, log, intent, provider, native=native)
                 outcome = watch(process, log, hang_seconds, run_seconds)
                 if _has_step(log, saved):
                     standing = _standing(log)
@@ -401,15 +315,10 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
                                   "status": "quota" if refusal
                                   else "ceiling" if ceiling and not succeeded
                                   else "done" if succeeded else "failed"}
-            if fixture and not refusal:
+            seed = opened[label].seed
+            if seed and seed.kind == STEP and not refusal:
                 output = os.path.join(model_dir, label, "output.step")
-                os.makedirs(os.path.dirname(output), exist_ok=True)
-                base = _shippable_base(fixture, os.path.dirname(output))
-                state["runs"][key]["fallback"] = _ship_edit(state["runs"][key]["log"], base, output)
-                state["runs"][key]["input_invalid"] = step_problem(base)
-                if state["runs"][key]["input_invalid"]:
-                    print("INPUT INVALID %s: %s" % (label, state["runs"][key]["input_invalid"]),
-                          flush=True)
+                state["runs"][key]["fallback"] = _ship_edit(state["runs"][key]["log"], seed.path, output)
             save_state(state_path, state)
             print("%s: %s" % (key, state["runs"][key]["status"]), flush=True)
             if refusal:
@@ -486,9 +395,11 @@ def _reason(events, m):
     return ""
 
 
-MODELMANIA_DIR = os.environ.get(
-    "DAE_MODELMANIA_DIR", os.path.join(os.path.dirname(ROOT), "manual", "modelmania"))
-EXEMPLAR_DIR = os.path.join(MODELMANIA_DIR, "exemplar")
+def exemplar_dir():
+    """Where the six sheets' Exemplar STEPs live, `DAE_MODELMANIA_DIR`'s `exemplar` or the checkout's `manual/modelmania`."""
+    return os.path.join(
+        os.environ.get("DAE_MODELMANIA_DIR", os.path.join(os.path.dirname(ROOT), "manual", "modelmania")),
+        "exemplar")
 
 
 def default_test_data_dir(checkout):
@@ -500,7 +411,19 @@ def default_test_data_dir(checkout):
     return os.path.join(score.main_checkout(checkout), "test-data")
 
 
-TEST_DATA_DIR = os.environ.get("DAE_TEST_DATA_DIR") or default_test_data_dir(os.path.dirname(ROOT))
+def test_data_dir():
+    """`DAE_TEST_DATA_DIR`, else the main checkout's test-data."""
+    return os.environ.get("DAE_TEST_DATA_DIR") or default_test_data_dir(os.path.dirname(ROOT))
+
+
+def assembly_dir():
+    return os.path.join(test_data_dir(), "assembly")
+
+
+def bim_dir():
+    return os.path.join(test_data_dir(), "bim")
+
+
 SPLITS = ("validation", "test")
 
 
@@ -514,7 +437,7 @@ def sampled_tasks(split, count, out, labels_file=None):
         with open(labels_file, encoding="utf-8") as handle:
             labels = handle.read().split()
     else:
-        with open(os.path.join(TEST_DATA_DIR, "split.json"), encoding="utf-8") as handle:
+        with open(os.path.join(test_data_dir(), "split.json"), encoding="utf-8") as handle:
             pool = json.load(handle)[split]
         seed = random.SystemRandom().randrange(2 ** 32)
         labels = random.Random(seed).sample(pool, count)
@@ -523,30 +446,13 @@ def sampled_tasks(split, count, out, labels_file=None):
             handle.write(str(seed))
     with open(os.path.join(out, "labels.txt"), "w", encoding="utf-8") as handle:
         handle.write("\n".join(labels) + "\n")
-    return [(label, os.path.join(TEST_DATA_DIR, split, label, "sheet.pdf")) for label in labels]
+    return [(label, os.path.join(test_data_dir(), split, label, "sheet.pdf")) for label in labels]
 
 
-ASSEMBLY_DIR = os.path.join(TEST_DATA_DIR, "assembly")
 FROM_PARTS = "from_parts"
 FROM_SCRATCH = "from_scratch"
 EDIT = "edit"
 ASSEMBLY_MODE = FROM_PARTS
-
-
-def read_task(folder):
-    """The parsed `task.json` of the assembly benchmark task in *folder*."""
-    with open(os.path.join(folder, "task.json"), encoding="utf-8") as handle:
-        return json.load(handle)
-
-
-def assembly_task(folder):
-    """The Intent and the absolute STEP paths of the assembly benchmark task in *folder*; a from-scratch task has its graph in the Intent and no paths, and an edit task has the STEP files of `parts/`, if it has any."""
-    task = read_task(folder)
-    if "input" in task["inputs"]:
-        return task["text"], sorted(glob.glob(os.path.join(folder, "parts", "*.step")))
-    if "graph" in task["inputs"]:
-        return task["text"] + "\n\nThe graph:\n" + json.dumps(task["inputs"]["graph"], indent=1), []
-    return task["text"], [os.path.join(folder, part["file"]) for part in task["inputs"]["parts"]]
 
 
 def _sample(directory, mode, split, count, out, labels_file):
@@ -569,7 +475,7 @@ def _sample(directory, mode, split, count, out, labels_file):
 
 def sampled_assembly_tasks(split, count, out, labels_file=None, mode=ASSEMBLY_MODE):
     """The `(label, folder)` tasks of *split* in the Assembly benchmark's `split.json`, drawn or read back like `sampled_tasks`."""
-    return _sample(ASSEMBLY_DIR, mode, split, count, out, labels_file)
+    return _sample(assembly_dir(), mode, split, count, out, labels_file)
 
 
 def _table(header, rows, cells, means):
@@ -648,7 +554,7 @@ def assembly_rows(out, mode=ASSEMBLY_MODE):
     import assembly_score
 
     def scored(run, saved):
-        folder = os.path.join(ASSEMBLY_DIR, mode, run["label"])
+        folder = os.path.join(assembly_dir(), mode, run["label"])
         return {"score": assembly_score.score(saved, os.path.join(folder, "reference.FCStd"))["score"]
                 if saved else 0.0,
                 "kind": read_task(folder)["inputs"].get("edit"),
@@ -657,22 +563,15 @@ def assembly_rows(out, mode=ASSEMBLY_MODE):
     return _swept_rows(out, ".FCStd", scored)
 
 
-BIM_DIR = os.path.join(TEST_DATA_DIR, "bim")
 BIM_MODE = "create"
 BIM_COMPONENTS = ("counts", "walls", "spaces", "hosting", "openings", "adjacency")
 STOREYS = "storeys"
 STOREYS_COMPONENTS = ("storeys", "stairs")
 
 
-def bim_task(folder):
-    """The Intent and the absolute path of the floor plan of the BIM benchmark task in *folder*; an edit task has none."""
-    task = read_task(folder)
-    return task["text"], [os.path.join(folder, task["inputs"]["plan"])] if "plan" in task["inputs"] else []
-
-
 def sampled_bim_tasks(split, count, out, labels_file=None, mode=BIM_MODE):
     """The `(label, folder)` tasks of *split* under *mode* in the BIM benchmark's `split.json`, drawn or read back like `sampled_tasks`."""
-    return _sample(BIM_DIR, mode, split, count, out, labels_file)
+    return _sample(bim_dir(), mode, split, count, out, labels_file)
 
 
 def bim_table(rows, components=BIM_COMPONENTS):
@@ -695,7 +594,7 @@ def bim_rows(out, mode=BIM_MODE):
     import bim_score
 
     def scored(run, saved):
-        folder = os.path.join(BIM_DIR, mode, run["label"])
+        folder = os.path.join(bim_dir(), mode, run["label"])
         reference = os.path.join(folder, "reference.ifc")
         if mode == EDIT:
             gain = bim_score.score_edit(saved, reference, os.path.join(folder, "input.ifc")) if saved else {"score": 0.0}
@@ -722,8 +621,8 @@ def _exemplar_for(label):
     import re as _re
 
     stem = _re.sub(r"-rep\d+(-on|-off)?$", "", label)
-    candidates = [os.path.join(EXEMPLAR_DIR, stem + ".step")] + [
-        os.path.join(TEST_DATA_DIR, split, stem, "exemplar.step") for split in SPLITS]
+    candidates = [os.path.join(exemplar_dir(), stem + ".step")] + [
+        os.path.join(test_data_dir(), split, stem, "exemplar.step") for split in SPLITS]
     return next((path for path in candidates if os.path.isfile(path)), None)
 
 
@@ -884,7 +783,7 @@ def report(out):
     ]) + "\n"
 
 
-def main():
+def main(sweep=sweep):
     from tests import modelmania_harness
     from sdk import EFFORTS, call_ceiling
 
@@ -1004,16 +903,14 @@ def main():
         os.makedirs(args.out, exist_ok=True)
         tasks = sampled_bim_tasks(args.split, args.sample, args.out, args.labels,
                                   args.mode if args.mode in (EDIT, STOREYS) else BIM_MODE)
-        args.task_folder = ["%s=%s" % task for task in tasks]
     elif args.domain == assembly and (args.sample or args.labels):
         os.makedirs(args.out, exist_ok=True)
         tasks = sampled_assembly_tasks(args.split, args.sample, args.out, args.labels, args.mode)
-        args.task_folder = ["%s=%s" % task for task in tasks]
     elif args.sample or args.labels:
         os.makedirs(args.out, exist_ok=True)
         tasks = sampled_tasks(args.split, args.sample, args.out, args.labels)
     elif args.task_folder:
-        tasks = [(task.split("=", 1)[0], "") for task in args.task_folder]
+        tasks = [task.split("=", 1) for task in args.task_folder]
     else:
         tasks = [t.split("=", 1) for t in args.task]
         if not tasks and not args.edit_task or not args.model:
@@ -1022,14 +919,11 @@ def main():
     if args.budget_usd is None:
         parser.error("--budget-usd is required: a paid run needs a dollar ceiling")
 
-    edits = dict(t.split("=", 1) for t in args.edit_task)
-    task_folders = dict(t.split("=", 1) for t in args.task_folder)
-    tasks = list(tasks) + [(label, "") for label in edits]
+    tasks = list(tasks) + [t.split("=", 1) for t in args.edit_task]
     os.makedirs(args.out, exist_ok=True)
     stopped = sweep(tasks, args.model, args.effort, args.budget_usd, args.intent,
                     args.out, args.hang_seconds, args.retries, args.resume, args.provider,
-                    args.run_seconds, edits=edits,
-                    domain=args.domain, task_folders=task_folders, native=args.input == "ifc")
+                    args.run_seconds, native=args.input == "ifc")
     return QUOTA_EXIT if stopped else 0
 
 

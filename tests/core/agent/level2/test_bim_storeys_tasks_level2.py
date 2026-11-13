@@ -16,7 +16,7 @@ import lane  # noqa: E402
 
 pytestmark = pytest.mark.freecad
 
-ROOT = os.path.join(lane.BIM_DIR, "storeys")
+ROOT = os.path.join(lane.bim_dir(), "storeys")
 if not os.path.isdir(ROOT):
     pytest.skip("test-data/bim/storeys not built", allow_module_level=True)
 
