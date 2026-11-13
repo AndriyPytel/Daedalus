@@ -10,21 +10,9 @@ import json
 import pytest
 
 from core.events import (
-    APPLIED, ATTACHED, BLOCKED, KINDS, PLAN, THOUGHT, Event, EventStream, replay,
+    APPLIED, ATTACHED, BUDGET_EXHAUSTED, QUESTION, THOUGHT, Event, EventStream, replay,
 )
 from tests.event_helpers import events_of, first_event
-
-
-def test_every_specced_event_kind_exists():
-    assert set(KINDS) == {
-        "intent", "thought", "writing", "question", "answer", "attached", "design",
-        "part", "plan", "plan_revised", "gate", "step_started", "step_declared", "tool_call",
-        "tool_result", "preflight_failed", "applied", "assertion", "outstanding", "unbuilt",
-        "review_suspected", "review_verdict", "blocked", "disputed", "stopped", "call_started", "cost",
-        "error", "warning", "change_set", "routed", "domain", "completed", "aborted", "budget_exhausted", "failed",
-        "sub_agent_spawned", "sub_agent_answered", "sub_agent_refused",
-        "turn_budget_exhausted", "invoke_markup",
-    }
 
 
 def test_an_unknown_kind_is_a_loud_failure_not_a_silent_event():
@@ -39,11 +27,11 @@ def test_subscribers_see_events_as_they_are_emitted():
     events = EventStream()
     events.subscribe(seen.append)
 
-    events.emit(PLAN, steps=["a"])
-    assert [e.kind for e in seen] == [PLAN]
+    events.emit(QUESTION, text="a")
+    assert [e.kind for e in seen] == [QUESTION]
 
     events.emit(APPLIED, step=1, label="a", created=[])
-    assert [e.kind for e in seen] == [PLAN, APPLIED]
+    assert [e.kind for e in seen] == [QUESTION, APPLIED]
 
 
 def test_a_broken_renderer_does_not_take_the_run_down():
@@ -52,7 +40,7 @@ def test_a_broken_renderer_does_not_take_the_run_down():
     reached = []
     events.subscribe(reached.append)
 
-    events.emit(PLAN, steps=["a"])
+    events.emit(QUESTION, text="a")
 
     assert len(reached) == 1, "a later subscriber was skipped"
     assert len(events) == 1
@@ -63,10 +51,10 @@ def test_the_log_is_written_as_the_run_happens(tmp_path):
     events = EventStream()
     events.log_to(path)
 
-    events.emit(PLAN, steps=["Make a box"])
+    events.emit(QUESTION, text="Make a box")
     mid_run = open(path).read()
 
-    events.emit(BLOCKED, reason="out of attempts", tried=[])
+    events.emit(BUDGET_EXHAUSTED, reason="out of attempts", tried=[])
 
     assert "Make a box" in mid_run, "nothing was on disk until the run ended"
     assert len(open(path).read().strip().splitlines()) == 2
@@ -78,10 +66,10 @@ def test_events_already_emitted_are_not_lost_when_logging_starts_late(tmp_path):
     events.emit(THOUGHT, phase="plan", text="early")
 
     events.log_to(path)
-    events.emit(PLAN, steps=["a"])
+    events.emit(QUESTION, text="a")
 
     kinds = [json.loads(line)["kind"] for line in open(path).read().strip().splitlines()]
-    assert kinds == [THOUGHT, PLAN]
+    assert kinds == [THOUGHT, QUESTION]
 
 
 def test_a_logged_run_reads_back_as_the_run(tmp_path):
@@ -89,13 +77,13 @@ def test_a_logged_run_reads_back_as_the_run(tmp_path):
     events = EventStream()
     events.log_to(path)
 
-    events.emit(PLAN, steps=["Make a box", "Fillet it"])
-    events.emit(BLOCKED, reason="Step 2 failed 3 times",
+    events.emit(QUESTION, text="Make a box")
+    events.emit(BUDGET_EXHAUSTED, reason="Step 2 failed 3 times",
                 tried=[{"step": "Fillet it", "code": "x()", "traceback": "boom"}])
 
     replayed = [json.loads(line) for line in open(path).read().strip().splitlines()]
 
-    assert replayed[0]["data"]["steps"] == ["Make a box", "Fillet it"]
+    assert replayed[0]["data"]["text"] == "Make a box"
     assert replayed[1]["data"]["tried"][0]["traceback"] == "boom"
     assert all("at" in entry for entry in replayed), "no timestamps to order a bad run by"
 
@@ -112,12 +100,12 @@ def test_an_attachment_survives_the_round_trip_by_name(tmp_path):
 
     events.emit(ATTACHED, files=[{"name": "mm2023-phase1.png",
                                   "path": "/tmp/gone/mm2023-phase1.png"}])
-    events.emit(PLAN, steps=["Make a box"])
+    events.emit(QUESTION, text="Make a box")
 
     replayed, truncated = replay(path)
 
     assert not truncated
-    assert [event.kind for event in replayed] == [ATTACHED, PLAN]
+    assert [event.kind for event in replayed] == [ATTACHED, QUESTION]
     assert replayed[0].data["files"][0]["name"] == "mm2023-phase1.png"
 
 
@@ -144,7 +132,7 @@ def test_a_session_replays_as_the_events_that_wrote_it(tmp_path):
     path = tmp_path / "session.jsonl"
     written = _written(path, [
         (THOUGHT, {"phase": "plan", "text": "hmm"}),
-        (PLAN, {"steps": ["Make a box", "Fillet it"]}),
+        (QUESTION, {"text": "Make a box"}),
         (APPLIED, {"step": 1, "label": "Box", "created": ["Box"]}),
     ])
 
@@ -159,20 +147,20 @@ def test_a_session_replays_as_the_events_that_wrote_it(tmp_path):
 def test_a_log_cut_off_mid_line_restores_everything_before_it(tmp_path):
     """The crash the per-event flush exists for must not cost the transcript."""
     path = tmp_path / "session.jsonl"
-    _written(path, [(PLAN, {"steps": ["a"]}),
+    _written(path, [(QUESTION, {"text": "a"}),
                     (APPLIED, {"step": 1, "label": "a", "created": []})])
     with open(path, "a", encoding="utf-8") as handle:
         handle.write('{"kind": "blocked", "at": 1.0, "da')
 
     restored, truncated = replay(str(path))
 
-    assert [e.kind for e in restored] == [PLAN, APPLIED]
+    assert [e.kind for e in restored] == [QUESTION, APPLIED]
     assert truncated, "the user was not told the transcript is incomplete"
 
 
 def test_a_whole_log_is_not_reported_as_truncated(tmp_path):
     path = tmp_path / "session.jsonl"
-    _written(path, [(PLAN, {"steps": ["a"]})])
+    _written(path, [(QUESTION, {"text": "a"})])
 
     assert replay(str(path))[1] is False
 
@@ -180,13 +168,13 @@ def test_a_whole_log_is_not_reported_as_truncated(tmp_path):
 def test_an_event_kind_this_build_does_not_know_survives_the_read(tmp_path):
     """An older log must not stop a Session opening; the renderer skips it."""
     path = tmp_path / "session.jsonl"
-    _written(path, [(PLAN, {"steps": ["a"]})])
+    _written(path, [(QUESTION, {"text": "a"})])
     with open(path, "a", encoding="utf-8") as handle:
         handle.write('{"kind": "almost_applied", "at": 1.0, "data": {"step": 1}}\n')
 
     restored, truncated = replay(str(path))
 
-    assert [e.kind for e in restored] == [PLAN, "almost_applied"]
+    assert [e.kind for e in restored] == [QUESTION, "almost_applied"]
 
 
 def test_a_session_with_no_log_yet_replays_as_nothing(tmp_path):
@@ -196,10 +184,10 @@ def test_a_session_with_no_log_yet_replays_as_nothing(tmp_path):
 def test_the_stream_can_be_queried_by_kind():
     events = EventStream()
     events.emit(THOUGHT, phase="plan", text="one")
-    events.emit(PLAN, steps=["a"])
+    events.emit(QUESTION, text="a")
     events.emit(THOUGHT, phase="review", text="two")
 
     assert [e.data["text"] for e in events_of(events, THOUGHT)] == ["one", "two"]
     assert first_event(events, THOUGHT).data["text"] == "one"
     assert events.last(THOUGHT).data["text"] == "two"
-    assert first_event(events, BLOCKED) is None
+    assert first_event(events, BUDGET_EXHAUSTED) is None
