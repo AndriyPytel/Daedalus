@@ -108,7 +108,7 @@ def test_a_repair_that_moves_the_volume_by_half_a_percent_or_more_is_not_applied
 def test_export_step_writes_the_repaired_geometry_and_the_gate_passes_on_the_file(tmp_path):
     import FreeCAD
 
-    from core.freecad_apply import export_step
+    from core.document_tools import export_step
     from core.manifold import check
 
     doc = FreeCAD.newDocument("manifold_export")
@@ -128,7 +128,7 @@ def test_export_step_writes_the_repaired_geometry_and_the_gate_passes_on_the_fil
 def test_export_step_leaves_a_manifold_model_exactly_as_it_is(tmp_path):
     import FreeCAD
 
-    from core.freecad_apply import export_step
+    from core.document_tools import export_step
 
     doc = FreeCAD.newDocument("manifold_untouched")
     try:
@@ -148,7 +148,7 @@ def test_export_step_leaves_a_manifold_model_exactly_as_it_is(tmp_path):
 def test_export_step_says_so_when_it_refuses_a_repair(tmp_path):
     import FreeCAD
 
-    from core.freecad_apply import export_step
+    from core.document_tools import export_step
 
     doc = FreeCAD.newDocument("manifold_refused")
     try:
@@ -181,7 +181,7 @@ def _record_writes(monkeypatch, clean_modes):
 def _export_box(tmp_path, name):
     import FreeCAD
 
-    from core.freecad_apply import export_step
+    from core.document_tools import export_step
 
     doc = FreeCAD.newDocument(name)
     try:

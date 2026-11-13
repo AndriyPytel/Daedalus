@@ -18,7 +18,8 @@ from core import settings as _settings
 from core.arch import arch_type, export_ifc, named_in
 from core import furniture, nativeifc
 from core.equipment import write_attribution
-from core.freecad_apply import ApplyPipeline, active_document, build_registry
+from core.document_tools import active_document, build_registry
+from core.freecad_apply import ApplyPipeline
 from core.events import (APPLIED, ASSERTION, BLOCKED, COMPLETED, COST, REVIEW_VERDICT,
                          EventStream, replay)
 from core.kernel import Kernel
@@ -370,7 +371,7 @@ class Client:
         the path back -- `save` writes a Document; `saveAs` would otherwise
         append `.FCStd` to a STEP-shaped name and leave no STEP behind. *only* names the one object written.
         """
-        from core.freecad_apply import export_step
+        from core.document_tools import export_step
 
         return export_step(self.document, path, only)
 
@@ -383,7 +384,7 @@ class Client:
 
     def has_solid(self):
         """Whether this Client's Document holds a solid; a document without one has no STEP to write."""
-        from core.freecad_apply import has_solid
+        from core.document_tools import has_solid
 
         return has_solid(self.document)
 

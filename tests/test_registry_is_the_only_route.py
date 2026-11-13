@@ -6,8 +6,10 @@ If this fails, either the new code took a shortcut around the Tool registry, or
 a module earned its place on ALLOWED and nobody said so.
 
 The Document is reached from exactly these places, and each has a reason:
-  - core/freecad_apply.py: The Tools themselves, and where the transaction resolves
-    the Document to hand it to. This is the sanctioned route.
+  - core/freecad_apply.py: Where the transaction resolves the Document to hand it to,
+    and the 3D view it fits. This is the sanctioned route.
+  - core/document_tools.py: The FreeCAD-backed Tools themselves: they read the Document
+    in focus, and probe a type on a scratch one.
   - core/kernel/kernel_worker.py: Runs inside the kernel's own process, against its
     own checkpointed Document. It never touches the user's Document.
   - core/equipment.py: `place_library` opens a library file in a document of its own to copy
@@ -32,6 +34,7 @@ from tests.source_tree import ROOT, sources
 
 ALLOWED = {
     "src/core/freecad_apply.py",
+    "src/core/document_tools.py",
     "src/core/kernel/kernel_worker.py",
     "src/core/equipment.py",
     "src/sdk.py",
