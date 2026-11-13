@@ -22,6 +22,7 @@ import threading
 import pytest
 
 import bridge.main_thread
+import core.document_tools
 import core.freecad_apply
 
 
@@ -198,7 +199,7 @@ def test_what_the_user_selected_is_read_on_the_main_thread(qt_app):
     saved = sys.modules.get("FreeCADGui")
     sys.modules["FreeCADGui"] = gui
     try:
-        run_off_thread(lambda: core.freecad_apply._selection(bridge.main_thread.on_main_thread), qt_app)
+        run_off_thread(lambda: core.document_tools._selection(bridge.main_thread.on_main_thread), qt_app)
     finally:
         sys.modules.pop("FreeCADGui")
         if saved is not None:
@@ -229,7 +230,7 @@ def test_the_active_body_is_read_on_the_main_thread(qt_app):
     saved = sys.modules.get("FreeCADGui")
     sys.modules["FreeCADGui"] = gui
     try:
-        run_off_thread(lambda: core.freecad_apply._active_body(type("_D", (), {"Objects": []}),
+        run_off_thread(lambda: core.document_tools._active_body(type("_D", (), {"Objects": []}),
                                                           bridge.main_thread.on_main_thread),
                        qt_app)
     finally:
@@ -264,7 +265,7 @@ def _core_sources():
 
 MAKES_A_DOCUMENT = {
     "kernel_worker.py": "is the child",
-    "freecad_apply.py": "hidden=True, temp=True, and known",
+    "document_tools.py": "hidden=True, temp=True, and known",
 }
 
 

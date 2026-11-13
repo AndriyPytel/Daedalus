@@ -579,66 +579,6 @@ def test_reading_midplane_is_untouched():
     assert lint("was = pad.Midplane").ok
 
 
-def test_addobject_typeid_matching_the_steps_op_is_accepted():
-    """
-    The TypeId check is now `op_typeid_mismatch`, read off
-    the kernel's own report of what a Step built rather than parsed out of
-    the code — `lint()` no longer holds an opinion on `op` at all.
-    """
-    from core.lint import op_typeid_mismatch
-
-    created, objects = ["Pad"], [{"name": "Pad", "type": "PartDesign::Pad"}]
-
-    assert op_typeid_mismatch("pad", created, objects) is None
-
-
-def test_addobject_typeid_not_matching_the_steps_op_is_rejected():
-    """
-    `execute.md`'s verb-to-TypeId table says `pad` builds a `PartDesign::Pad`.
-    `Part::Extrusion` is not the TypeId any of the 36 approved operations
-    builds, so a Step declared `op: "pad"` that built one is rejected.
-    """
-    from core.lint import op_typeid_mismatch
-
-    created, objects = ["Pad"], [{"name": "Pad", "type": "Part::Extrusion"}]
-
-    mismatch = op_typeid_mismatch("pad", created, objects)
-
-    assert mismatch == "Part::Extrusion"
-
-
-def test_scaffolding_typeids_are_accepted_under_any_op():
-    """A Body and a Sketcher profile are common to every operation, not just
-    the one the Step is named for."""
-    from core.lint import op_typeid_mismatch
-
-    created = ["Body", "Sketch", "Pad"]
-    objects = [{"name": "Body", "type": "PartDesign::Body"},
-              {"name": "Sketch", "type": "Sketcher::SketchObject"},
-              {"name": "Pad", "type": "PartDesign::Pad"}]
-
-    assert op_typeid_mismatch("pad", created, objects) is None
-
-
-def test_no_op_given_skips_the_typeid_check():
-    """Legacy code, applied without a declared `op`, is not held to the
-    allow-list at all — `core/lint.py` gained this check after runs began
-    naming an `op`, and every recorded run before that never named one."""
-    from core.lint import op_typeid_mismatch
-
-    created, objects = ["Pad"], [{"name": "Pad", "type": "Part::Extrusion"}]
-
-    assert op_typeid_mismatch(None, created, objects) is None
-
-
-def test_an_op_off_the_36_list_skips_the_typeid_check():
-    from core.lint import op_typeid_mismatch
-
-    created, objects = ["Pad"], [{"name": "Pad", "type": "Part::Extrusion"}]
-
-    assert op_typeid_mismatch("squish", created, objects) is None
-
-
 def test_a_literal_name_lookup_of_an_object_this_step_just_created_is_rejected():
     """
     This reproduces FreeCAD renaming a new object on a name

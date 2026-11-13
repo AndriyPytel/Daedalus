@@ -11,7 +11,7 @@ import tempfile
 from core.agent.agent import _feedback, _parsed, _say
 from core.events import (APPLIED, ATTACHED, BUDGET_EXHAUSTED, COMPLETED, ERROR, FAILED, INTENT,
                          PREFLIGHT_FAILED, TOOL_CALL, TOOL_RESULT)
-from core.freecad_apply import TRAPS
+from core.freecad_traps import TRAPS
 from core.llm import Session
 from core.loop.prompt import _TRAPS_PLACEHOLDER, _as_image
 from core.loop.results import LoopResult

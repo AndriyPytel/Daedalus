@@ -29,53 +29,6 @@ GUI_NAMES = ("Gui", "FreeCADGui")
 
 _PRIMITIVE_SHAPES = ("Box", "Cylinder", "Sphere", "Cone", "Ellipsoid", "Torus", "Prism", "Wedge")
 
-OP_TYPEIDS = {
-    "pad": ("PartDesign::Pad",),
-    "revolve": ("PartDesign::Revolution",),
-    "additive-loft": ("PartDesign::AdditiveLoft",),
-    "additive-sweep": ("PartDesign::AdditivePipe",),
-    "additive-helix": ("PartDesign::AdditiveHelix",),
-    "additive-primitive": tuple("PartDesign::Additive%s" % shape for shape in _PRIMITIVE_SHAPES),
-    "pocket": ("PartDesign::Pocket",),
-    "hole": ("PartDesign::Hole", "PartDesign::Pocket"),
-    "groove": ("PartDesign::Groove",),
-    "subtractive-loft": ("PartDesign::SubtractiveLoft",),
-    "subtractive-sweep": ("PartDesign::SubtractivePipe",),
-    "subtractive-helix": ("PartDesign::SubtractiveHelix",),
-    "subtractive-primitive": tuple("PartDesign::Subtractive%s" % shape for shape in _PRIMITIVE_SHAPES),
-    "fillet": ("PartDesign::Fillet",),
-    "chamfer": ("PartDesign::Chamfer",),
-    "draft": ("PartDesign::Draft",),
-    "thickness": ("PartDesign::Thickness",),
-    "mirror": ("PartDesign::Mirrored",),
-    "linear-pattern": ("PartDesign::LinearPattern",),
-    "polar-pattern": ("PartDesign::PolarPattern",),
-    "multi-transform": ("PartDesign::MultiTransform",),
-    "scale": ("PartDesign::Scaled",),
-    "sketch": ("Sketcher::SketchObject",),
-    "datum-plane": ("PartDesign::Plane",),
-    "datum-line": ("PartDesign::Line",),
-    "datum-point": ("PartDesign::Point",),
-    "local-coordinate-system": ("PartDesign::CoordinateSystem",),
-    "sub-shape-binder": ("PartDesign::SubShapeBinder", "PartDesign::ShapeBinder"),
-    "body": ("PartDesign::Body",),
-    "fuse": ("Part::MultiFuse", "Part::Fuse"),
-    "cut": ("Part::Cut",),
-    "common": ("Part::Common", "Part::MultiCommon"),
-    "thread": ("PartDesign::Hole",),
-    "extend": (),
-    "trim": (),
-    "offset": ("Part::Offset", "Part::Offset2D"),
-}
-
-_SCAFFOLDING_OPS = ("sketch", "datum-plane", "datum-line", "datum-point",
-                    "local-coordinate-system", "sub-shape-binder", "body")
-
-_SCAFFOLD_TYPEIDS = frozenset(
-    typeid for op in _SCAFFOLDING_OPS for typeid in OP_TYPEIDS[op]
-)
-
-
 ACTIVATION_NAMES = (
     "ActiveObject", "setActiveObject", "getActiveObject", "activeView", "ActiveView",
 )
@@ -116,11 +69,6 @@ _SWALLOWED_REASON = read_prompt("lint_swallowed.md")
 _UNCOUNTED_SELECTION_REASON = read_prompt("lint_uncounted_selection.md")
 _DRESSUP_BASE_IS_BODY_REASON = read_prompt("lint_dressup_base_is_body.md")
 _GUI_REASON = read_prompt("lint_gui.md")
-
-_TYPEID_REASON = (
-    "addObject(%r, ...) does not build %r. ADR-0026's verb-to-TypeId table says "
-    "%r builds %s, and no other TypeId is this Step's operation."
-)
 
 _ACTIVATION_REASON = read_prompt("lint_activation.md")
 
@@ -180,10 +128,7 @@ def lint(code: str, selection=None, design_model=True) -> LintResult:
     """
     Check *code* before it is replayed onto the Document. `selection` is the
     Snapshot's selection; element names in it are allowed; *design_model* false
-    leaves out the two rules that presume a `design` in scope. Whether the Step
-    built the TypeId its declared `op` promises is answered by
-    `op_typeid_mismatch`, off what the kernel actually built rather than by
-    parsing this string.
+    leaves out the two rules that presume a `design` in scope.
     """
     try:
         tree = ast.parse(code)
@@ -393,33 +338,6 @@ def _allocated_name_lookup(node: ast.Call, allocated: set):
     name = node.args[0]
     if isinstance(name, ast.Constant) and isinstance(name.value, str) and name.value in allocated:
         return name.value
-    return None
-
-
-_BOOLEAN_OPS = {"Fuse": "fuse", "Cut": "cut", "Common": "common"}
-
-
-def op_typeid_mismatch(op, created, objects):
-    """
-    Whether a Step's declared `op` does not match what it built, read off the
-    kernel's report of its checkpoint's objects (`created` names the ones this
-    Step made) rather than parsed out of the code. Only `PartDesign::`/`Part::`
-    types are checked, and `None` comes back where `op` is off the closed verb
-    list. A PartDesign::Boolean matches only the op its `boolean_type` names.
-    """
-    if op not in OP_TYPEIDS:
-        return None
-    allowed = set(OP_TYPEIDS[op]) | _SCAFFOLD_TYPEIDS
-    built = {entry.get("name"): entry.get("type") for entry in objects or ()}
-    booleans = {entry.get("name"): entry.get("boolean_type") for entry in objects or ()}
-    for name in created or ():
-        type_id = built.get(name)
-        if not type_id or not type_id.startswith(("PartDesign::", "Part::")):
-            continue
-        if type_id == "PartDesign::Boolean" and _BOOLEAN_OPS.get(booleans.get(name)) == op:
-            continue
-        if type_id not in allowed:
-            return type_id
     return None
 
 
