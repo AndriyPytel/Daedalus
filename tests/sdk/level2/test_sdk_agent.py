@@ -6,8 +6,7 @@ import os
 
 import pytest
 
-from core.events import (APPLIED, BUDGET_EXHAUSTED, COMPLETED, COST, DESIGN, GATE, PLAN,
-                         PREFLIGHT_FAILED, REVIEW_VERDICT)
+from core.events import APPLIED, BUDGET_EXHAUSTED, COMPLETED, COST, PREFLIGHT_FAILED
 from core.agent import reader
 from core.kernel import Kernel, find_freecadcmd
 from core.llm import ScriptedLLMClient
@@ -88,7 +87,6 @@ def test_the_agent_picks_its_own_route_and_the_step_it_built_is_exported(kernel,
     assert kinds.count(APPLIED) == 1
     assert kinds.count(PREFLIGHT_FAILED) == 1
     assert COMPLETED in kinds
-    assert not {DESIGN, PLAN, GATE, REVIEW_VERDICT} & set(kinds)
     assert "nope" in _user_text(llm.calls[2])
     assert '"volume": 1000' in _user_text(llm.calls[4])
     assert any(block.get("type") == "image_url" for block in llm.calls[5][-1]["content"])
@@ -248,7 +246,6 @@ def test_a_design_intent_goes_to_the_agent_unless_the_pipeline_is_asked_for(kern
     result = client.send("Make a cube", route_first=False)
 
     assert result.ok
-    assert not {DESIGN, PLAN, GATE, REVIEW_VERDICT} & set(_kinds(client))
     client.close()
 
 

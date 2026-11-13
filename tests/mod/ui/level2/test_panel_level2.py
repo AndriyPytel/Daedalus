@@ -1665,47 +1665,41 @@ def _said_by(widgets):
 
 
 def _a_transcript(path):
-    from core.events import APPLIED, PLAN, REVIEW_VERDICT, THOUGHT, EventStream
+    from core.events import APPLIED, COMPLETED, QUESTION, THOUGHT, EventStream
 
     stream = EventStream()
     stream.log_to(path)
     stream.emit(THOUGHT, phase="plan", text="a box, then a fillet")
-    stream.emit(PLAN, steps=["Make a box", "Fillet it"])
+    stream.emit(QUESTION, text="How tall?")
     stream.emit(APPLIED, step=1, label="Box", created=["Box"])
-    stream.emit(REVIEW_VERDICT, verdict="pass", reason="Looks like a box.")
+    stream.emit(COMPLETED, summary="Looks like a box.")
 
 
-def _a_recorded_p_transcript(path):
-    from core import events as ev
-
-    stream = ev.EventStream()
-    stream.log_to(path)
-    stream.emit(ev.INTENT, text="a box, then a fillet")
-    stream.emit(ev.DESIGN, part={"features": []})
-    stream.emit(ev.PLAN, steps=["Make a box", "Fillet it"], acceptance=["It is a box"])
-    stream.emit(ev.GATE, decision="approve", standing=False)
-    stream.emit(ev.STEP_DECLARED, step=1, label="Make a box", checkpoint="c1")
-    stream.emit(ev.APPLIED, step=1, label="Box", created=["Box"])
-    stream.emit(ev.ASSERTION, ok=True, code="assert True", confirmed=["It is a box"],
-                uncovered=[], traceback="")
-    stream.emit(ev.REVIEW_SUSPECTED, suspected=["the views disagree"])
-    stream.emit(ev.REVIEW_VERDICT, verdict="fail", reason="No fillet.")
-    stream.emit(ev.PLAN_REVISED, steps=["Fillet it"], acceptance=[], reason="no fillet")
-    stream.emit(ev.OUTSTANDING, unmet=["It is filleted"])
-    stream.emit(ev.BLOCKED, reason="You rejected the Plan.", tried=[], provider_said="")
-
-
-def test_a_recorded_p_session_replays_without_error_as_chat_lines(panel, tmp_path):
-    log = str(tmp_path / "p.jsonl")
-    _a_recorded_p_transcript(log)
-    session_id, _ = panel.chat_sessions.add_new_chat("p")
+def _a_session_opened_from(panel, tmp_path, name, retired=False):
+    log = str(tmp_path / (name + ".jsonl"))
+    _a_transcript(log)
+    if retired:
+        with open(log, "a", encoding="utf-8") as handle:
+            handle.write('{"kind": "plan", "at": 1.0, "data": {"steps": ["Make a box"]}}\n')
+    session_id, _ = panel.chat_sessions.add_new_chat(name)
     panel.sessions.at(session_id).update({"log": log, "restored": False})
-
     panel.switch_session(session_id)
 
-    said = _said_in(panel)
-    assert "unrecognized event kind" not in said
-    assert "Applied" in said and "Box" in said
+
+def test_a_retired_kind_in_a_replayed_log_draws_nothing_and_is_logged_once(
+        panel, tmp_path, monkeypatch):
+    from bridge.logger import logger
+
+    _a_session_opened_from(panel, tmp_path, "plain")
+    plain = len(_widgets_in(panel))
+    logged = []
+    monkeypatch.setattr(logger, "warning", logged.append)
+
+    _a_session_opened_from(panel, tmp_path, "retired", retired=True)
+
+    assert len(_widgets_in(panel)) == plain
+    assert "unrecognized" not in _said_in(panel)
+    assert len(logged) == 1 and "'plan'" in logged[0]
 
 
 def test_a_session_comes_back_with_its_whole_transcript(panel, tmp_path):
@@ -1726,29 +1720,7 @@ def test_a_session_comes_back_with_its_whole_transcript(panel, tmp_path):
     assert any(isinstance(w, AccordionWidget) for w in _widgets_in(panel)), kinds
     said = _said_in(panel)
     assert "Applied" in said and "Box" in said
-    assert "Review: pass" in said
-
-
-def _a_queue_transcript(path):
-    """
-    A full run's structural events, in the order `core.loop._run` emits
-    them: Intent, an approved Gate, one Step declared and applied inline,
-    Assertion, Review -- everything the Queue widget reads
-    a phase transition off.
-    """
-    from core.events import (APPLIED, ASSERTION, EventStream, GATE, INTENT, PLAN,
-                             REVIEW_VERDICT, STEP_DECLARED)
-
-    stream = EventStream()
-    stream.log_to(path)
-    stream.emit(INTENT, text="a box, then a fillet")
-    stream.emit(PLAN, steps=["Make a box"])
-    stream.emit(GATE, decision="approve", standing=False)
-    stream.emit(STEP_DECLARED, step=1, label="Make a box", checkpoint="c1")
-    stream.emit(APPLIED, step=1, label="Box", created=["Box"])
-    stream.emit(ASSERTION, ok=True, code="assert True", confirmed=["It is a box"],
-               uncovered=[], traceback="")
-    stream.emit(REVIEW_VERDICT, verdict="pass", reason="Looks like a box.")
+    assert "Done" in said
 
 
 def _a_cost_transcript(path):
@@ -1836,7 +1808,7 @@ def test_a_session_recorded_before_the_step_render_went_away_still_opens(panel, 
 
     panel.switch_session(session_id)
 
-    assert "Review: pass" in _said_in(panel), "the transcript did not replay"
+    assert "Done" in _said_in(panel), "the transcript did not replay"
 
 
 def test_a_session_is_replayed_once_however_often_it_is_opened(panel, tmp_path):
@@ -1904,7 +1876,7 @@ def test_a_short_transcript_still_lands_in_one_go(panel, tmp_path):
 
     panel.switch_session(session_id)
 
-    assert "Review: pass" in _said_in(panel)
+    assert "Done" in _said_in(panel)
 
 
 def test_switching_away_mid_replay_abandons_the_rest(panel, tmp_path, monkeypatch):
@@ -1943,18 +1915,24 @@ def test_a_truncated_transcript_shows_what_survived_and_says_so(panel, tmp_path)
     assert "ends mid-event" in said
 
 
-def test_an_event_kind_the_panel_does_not_know_is_skipped_not_fatal(panel, tmp_path):
+def test_an_event_kind_the_panel_does_not_know_is_skipped_not_fatal(panel, tmp_path, monkeypatch):
+    from bridge.logger import logger
+
     log = str(tmp_path / "from_the_future.jsonl")
     _a_transcript(log)
     with open(log, "a", encoding="utf-8") as handle:
         handle.write('{"kind": "almost_applied", "at": 1.0, "data": {"step": 1}}\n')
     session_id, _ = panel.chat_sessions.add_new_chat("future")
     panel.sessions.at(session_id).update({"log": log, "restored": False})
+    logged = []
+    monkeypatch.setattr(logger, "warning", logged.append)
 
     panel.switch_session(session_id)
 
     said = _said_in(panel)
-    assert "Review: pass" in said
+    assert "Done" in said
+    assert "unrecognized" not in said
+    assert len(logged) == 1 and "almost_applied" in logged[0]
 
 
 def test_a_rename_persists_and_reaches_the_header(panel):
@@ -2469,42 +2447,6 @@ def _write_a_png(path):
     assert picture.save(path, "PNG")
 
 
-def test_a_review_that_passed_still_says_so_in_the_transcript(panel, tmp_path):
-    """The other half: nothing asks anything after a pass, so the line is all there is."""
-    _review_transcript_evidence(panel, tmp_path, verdict="pass",
-                                reason="it matches the drawing")
-
-    assert "it matches the drawing" in _said_in(panel)
-
-    panel._reset_render_state()
-
-
-def _review_transcript_evidence(panel, tmp_path, verdict="fail",
-                                reason="the flange is mirrored"):
-    """
-    What `_update_review_evidence` reads off the stream before a Review
-    verdict's own `on_revision` is asked anything: the acceptance
-    checks, the four views `review_views` wrote, and the verdict itself.
-    """
-    from conftest import QtGui
-
-    from core.events import ASSERTION, Event, REVIEW_VERDICT, TOOL_RESULT
-
-    views = []
-    for name in ("iso.png", "front.png", "top.png", "right.png"):
-        path = str(tmp_path / name)
-        QtGui.QPixmap(40, 30).save(path)
-        views.append(path)
-
-    panel.on_event(Event(ASSERTION, {"ok": True, "code": "assert True",
-                                     "confirmed": ["the bore is centred"],
-                                     "uncovered": [], "traceback": ""}))
-    panel.on_event(Event(TOOL_RESULT, {"name": "review_views",
-                                       "result": {"views": views}}))
-    panel.on_event(Event(REVIEW_VERDICT, {"verdict": verdict, "reason": reason}))
-    return views
-
-
 def test_reasoning_streams_inline_and_never_pins_to_the_queue(panel):
     """
     The status line used to carry the last 90 characters of every
@@ -2773,14 +2715,14 @@ def test_reasoning_is_not_truncated_to_ninety_characters(panel):
 
 def test_a_run_with_no_reasoning_shows_no_thinking_accordion(panel):
     """A model that emits no reasoning gets no empty placeholder for it."""
-    from core.events import Event, INTENT, PLAN
+    from core.events import Event, INTENT, QUESTION
     from ui.accordion_widget import AccordionWidget
 
     session_id, _ = panel.chat_sessions.add_new_chat("no-reasoning-run")
     panel.switch_session(session_id)
 
     panel.on_event(Event(INTENT, {"text": "a plain box"}))
-    panel.on_event(Event(PLAN, {"steps": ["Make a box"]}))
+    panel.on_event(Event(QUESTION, {"text": "How tall?"}))
     QT_APP.processEvents()
 
     thinking = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)
@@ -2822,63 +2764,6 @@ def test_a_tool_call_row_carries_how_long_the_call_took(panel):
     titles = [row.toggle_button.text()
               for row in history.widget().findChildren(AccordionWidget)]
     assert any("(3.2s)" in title for title in titles), titles
-
-
-def test_a_sub_agent_spawn_shows_a_live_row_before_it_answers(panel):
-    """AC6: the row appears while the worker is still running, not only after."""
-    from core.events import Event, SUB_AGENT_SPAWNED
-    from ui.accordion_widget import AccordionWidget
-
-    session_id, _ = panel.chat_sessions.add_new_chat("spawn-run")
-    panel.switch_session(session_id)
-
-    panel.on_event(Event(SUB_AGENT_SPAWNED, {"phase": "design", "prompt": "read page 2"}))
-    QT_APP.processEvents()
-
-    row = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)][-1]
-    assert "Sub-agent (design)" in row.toggle_button.text()
-    assert row._clock is not None, "the row should be pulsing while the worker runs"
-
-
-def test_a_sub_agent_answer_fills_the_spawned_row_with_its_transcript(panel):
-    """Expanding the row shows the worker's full transcript, not only its answer."""
-    from core.events import Event, SUB_AGENT_ANSWERED, SUB_AGENT_SPAWNED
-    from ui.accordion_widget import AccordionWidget
-
-    session_id, _ = panel.chat_sessions.add_new_chat("answer-run")
-    panel.switch_session(session_id)
-
-    panel.on_event(Event(SUB_AGENT_SPAWNED, {"phase": "design", "prompt": "read page 2"}))
-    panel.on_event(Event(SUB_AGENT_ANSWERED, {
-        "phase": "design", "answer": "13.0 mm",
-        "transcript": [{"role": "user", "content": "read page 2"},
-                       {"role": "assistant", "content": "13.0 mm"}]}))
-    QT_APP.processEvents()
-
-    rows = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)]
-    assert len(rows) == 1, "the answer should fill the spawned row, not add a second one"
-    row = rows[0]
-    assert row._clock is None, "an answered worker is done, not still pulsing"
-    row.toggle_content()
-    assert "read page 2" in row.content_area.text()
-    assert "13.0 mm" in row.content_area.text()
-
-
-def test_a_refused_spawn_renders_its_own_distinct_row(panel):
-    """AC6: a refusal is its own entry, not silently absent from the panel."""
-    from core.events import Event, SUB_AGENT_REFUSED
-    from ui.accordion_widget import AccordionWidget
-
-    session_id, _ = panel.chat_sessions.add_new_chat("refused-run")
-    panel.switch_session(session_id)
-
-    panel.on_event(Event(SUB_AGENT_REFUSED, {"phase": "worker", "reason": "depth"}))
-    QT_APP.processEvents()
-
-    row = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)][-1]
-    assert "refused" in row.toggle_button.text().lower()
-    row.toggle_content()
-    assert "depth" in row.content_area.text()
 
 
 def test_the_end_of_a_run_reaches_the_panel_on_the_gui_thread(panel):
@@ -2957,23 +2842,18 @@ def test_daedalus_panel_has_no_dead_request_work_signal():
     assert not hasattr(DaedalusPanel, "request_work")
 
 
-def test_no_event_kind_the_loop_emits_puts_a_warning_in_the_chat(panel):
+def test_the_dispatch_table_names_only_kinds_the_stream_registers(panel):
     """
-    `on_event` warns in the transcript about a kind its table does not name,
-    so every kind in `core.events.KINDS` must be a key of it, or a live run
-    shows the user a warning per event.
+    `on_event` draws a kind through its table or falls through to `narrate`;
+    a table key the stream does not register would never be reached.
     """
     from core import events as ev
     from ui.daedalus_panel import DaedalusPanel
 
     panel.new_chat()
-    panel.on_event(ev.Event(ev.CHANGE_SET, {}))
-    tables = {
-        "_ON_EVENT_DISPATCH": set(ev.KINDS) - {ev.INTENT},
-    }
-    missing = {attr: sorted(kinds - set(getattr(DaedalusPanel, attr)))
-               for attr, kinds in tables.items()}
-    assert missing == {attr: [] for attr in tables}
+    panel.on_event(ev.Event(ev.CALL_STARTED, {}))
+
+    assert set(DaedalusPanel._ON_EVENT_DISPATCH) <= set(ev.KINDS)
 
 
 def test_the_intent_shows_at_once_while_the_message_is_routed(panel, monkeypatch):

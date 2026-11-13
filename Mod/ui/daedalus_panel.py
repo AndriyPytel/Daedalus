@@ -1259,8 +1259,6 @@ left over is what the name is elided to.
         screen.
         """
         self._live_rows = {}
-        self._subagent_rows = {}
-        self._current_step = 0
         self._question_card = None
         self._answers_to_enter = None
         self._total_usd = 0.0
@@ -1616,16 +1614,21 @@ switched away from is abandoned rather than rendered.
         """The whole panel is this method: what an event *says* is `core.narrate`'s,
 what is left here is where a line goes and what shape it takes, a
 code block, a picture, streaming reasoning, or the document path as a
-link, with no calls back into the loop. `_ON_EVENT_DISPATCH` maps every
-`core.events.KINDS` member to a `_oe_*` method, True ending here and False
-falling through, and an unmapped kind reaches `_report_unknown_kind` rather
-than being skipped. `INTENT` takes the user's bubble unless Send already put
+link, with no calls back into the loop. `_ON_EVENT_DISPATCH` lists only the
+kinds drawn differently from prose, True ending here and False falling
+through to `narrate`; a kind the stream does not register draws nothing and
+is logged once. `INTENT` takes the user's bubble unless Send already put
 it up, so a prompt shows once whether live or restored.
 """
+        from bridge.logger import logger
         from sdk import events as ev
         from sdk import narrate
 
         data = event.data
+
+        if event.kind not in ev.KINDS:
+            logger.warning("unrecognized event kind %r" % event.kind)
+            return
 
         if event.kind == ev.INTENT:
             self._total_usd, self._domain_usd = self._domain_usd, 0.0
@@ -1646,43 +1649,8 @@ it up, so a prompt shows once whether live or restored.
             ev.ATTACHED: DaedalusPanel._oe_attached,
             ev.TOOL_CALL: DaedalusPanel._oe_tool_call,
             ev.TOOL_RESULT: DaedalusPanel._oe_tool_result,
-            ev.PART: DaedalusPanel._oe_part,
-            ev.PLAN: DaedalusPanel._noop,
-            ev.ASSERTION: DaedalusPanel._noop,
-            ev.STEP_STARTED: DaedalusPanel._noop,
-            ev.STEP_DECLARED: DaedalusPanel._oe_step_declared,
-            ev.APPLIED: DaedalusPanel._noop,
-            ev.BLOCKED: DaedalusPanel._noop,
-            ev.STOPPED: DaedalusPanel._noop,
-            ev.ABORTED: DaedalusPanel._noop,
-            ev.BUDGET_EXHAUSTED: DaedalusPanel._noop,
-            ev.TURN_BUDGET_EXHAUSTED: DaedalusPanel._noop,
-            ev.FAILED: DaedalusPanel._noop,
-            ev.COMPLETED: DaedalusPanel._noop,
-            ev.DISPUTED: DaedalusPanel._noop,
-            ev.QUESTION: DaedalusPanel._noop,
-            ev.ANSWER: DaedalusPanel._noop,
-            ev.DESIGN: DaedalusPanel._noop,
-            ev.CHANGE_SET: DaedalusPanel._noop,
-            ev.ROUTED: DaedalusPanel._noop,
-            ev.DOMAIN: DaedalusPanel._noop,
-            ev.OUTSTANDING: DaedalusPanel._noop,
-            ev.REVIEW_SUSPECTED: DaedalusPanel._noop,
-            ev.GATE: DaedalusPanel._noop,
-            ev.UNBUILT: DaedalusPanel._noop,
-            ev.PREFLIGHT_FAILED: DaedalusPanel._noop,
-            ev.REVIEW_VERDICT: DaedalusPanel._noop,
-            ev.PLAN_REVISED: DaedalusPanel._noop,
-            ev.ERROR: DaedalusPanel._noop,
-            ev.WARNING: DaedalusPanel._noop,
-            ev.SUB_AGENT_SPAWNED: DaedalusPanel._oe_sub_agent_spawned,
-            ev.SUB_AGENT_ANSWERED: DaedalusPanel._oe_sub_agent_answered,
-            ev.SUB_AGENT_REFUSED: DaedalusPanel._oe_sub_agent_refused,
-            ev.INVOKE_MARKUP: DaedalusPanel._noop,
         }).get(event.kind)
-        if handler is None:
-            self._report_unknown_kind(event, "on_event")
-        elif handler(self, event, data):
+        if handler is not None and handler(self, event, data):
             return
 
         self._say(narrate(event))
@@ -1718,38 +1686,6 @@ it up, so a prompt shows once whether live or restored.
     def _oe_tool_result(self, event, data):
         self._time_the_tool_call(event.at)
         return False
-
-    def _oe_part(self, event, data):
-        from sdk import narrate
-
-        self._render_part(narrate(event).line, data["path"])
-        return True
-
-    def _oe_step_declared(self, event, data):
-        self._the_thinking_stops()
-        self._current_step = data["step"]
-        return False
-
-    def _oe_sub_agent_spawned(self, event, data):
-        self._render_sub_agent_spawned(data["phase"], data.get("prompt", ""))
-        return True
-
-    def _oe_sub_agent_answered(self, event, data):
-        self._render_sub_agent_answered(data["phase"], data.get("answer", ""),
-                                        data.get("transcript") or [])
-        return True
-
-    def _oe_sub_agent_refused(self, event, data):
-        self._render_sub_agent_refused(data["phase"], data.get("reason", ""))
-        return True
-
-    def _noop(self, event, data):
-        return False
-
-    def _report_unknown_kind(self, event, dispatcher):
-        """An `event.kind` the dispatch table does not name."""
-        self.add_chat_widget(AssistantMessageWidget(
-            "\u26a0 %s: unrecognized event kind %r" % (dispatcher, event.kind)))
 
     def _say(self, narration):
         """Put a narrated event where it belongs: a line in the transcript, a
@@ -1826,32 +1762,6 @@ letting the phase open a fresh row next.
         if text:
             row.append_text(text)
 
-    def _render_sub_agent_spawned(self, phase, prompt):
-        """A worker's own row, opened the moment it is spawned."""
-        row = self._subagent_rows[phase] = AccordionWidget("Sub-agent (%s)…" % phase)
-        row.opens_onto_nothing()
-        self.add_chat_widget(row)
-        row.start_pulsing()
-
-    def _render_sub_agent_answered(self, phase, answer, transcript):
-        """The row `_render_sub_agent_spawned` opened, filled with the worker's transcript."""
-        row = self._subagent_rows.pop(phase, None)
-        if row is None:
-            row = AccordionWidget("Sub-agent (%s)" % phase)
-            self.add_chat_widget(row)
-        else:
-            row.stop_pulsing()
-            row.toggle_button.setText("Sub-agent (%s)" % phase)
-        row.append_text("\n".join(
-            "%s: %s" % (message.get("role"), message.get("content"))
-            for message in transcript) or answer)
-
-    def _render_sub_agent_refused(self, phase, reason):
-        """A refused spawn (`SessionTreeSupervisor.spawn`)."""
-        row = AccordionWidget("Sub-agent refused (%s)" % phase)
-        self.add_chat_widget(row)
-        row.append_text(reason)
-
     def _render_attachments(self, files):
         """What the run was shown, in the chat beside the Intent: the picture itself,
 not a filename, since the chips come off the bar on Send. A restored
@@ -1873,13 +1783,6 @@ never a broken image or a raised exception.
             label.setToolTip(name)
             self.add_chat_widget(_beside_the_intent(label))
 
-    def _render_part(self, line, path):
-        """Above the Plan, on a card: the Gate is the Steps and the document they were built from."""
-        self._the_thinking_stops()
-        self.add_chat_widget(AssistantMessageWidget(
-            line.replace(path, "").strip().rstrip(":").strip()))
-        self.add_chat_widget(_at_the_left_margin(FileChip(path, removable=False)))
-
     def _render_tool_call(self, name, arguments, event_time):
         """A call takes one collapsible shape in the stream, not three, naming its
 Step: open, four Steps of code fill the whole panel and the run reads idle
@@ -1888,9 +1791,7 @@ code stays one click away. Duration is added at `TOOL_RESULT`, from
 `event.at` deltas.
 """
         self._the_thinking_stops()
-        title = ("Step %d — %s" % (self._current_step, name) if self._current_step
-                 else name)
-        row = AccordionWidget(title, code=True, boxed=True)
+        row = AccordionWidget(name, code=True, boxed=True)
         self.add_chat_widget(row)
         row.append_text(arguments["code"] if "code" in arguments else str(arguments))
 
@@ -1907,10 +1808,8 @@ code stays one click away. Duration is added at `TOOL_RESULT`, from
         """
         if not (self._last_tool_call_widget and self._last_tool_call_time):
             return
-        named = ("Step %d — %s" % (self._current_step, self._last_tool_call_name)
-                 if self._current_step else self._last_tool_call_name)
         self._last_tool_call_widget.toggle_button.setText(
-            "%s  (%.1fs)" % (named, at - self._last_tool_call_time))
+            "%s  (%.1fs)" % (self._last_tool_call_name, at - self._last_tool_call_time))
         self._last_tool_call_widget = None
         self._last_tool_call_time = None
         self._last_tool_call_name = None
