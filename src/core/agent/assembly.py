@@ -7,6 +7,7 @@ import json
 import os
 
 from core.agent.domain import ASSEMBLY, Domain, unfinished as domain_unfinished
+from core.agent.solids import top_solids
 from core.agent.solo import run_solo
 from core.loop.prompt import _attached
 from core.prompts import read_prompt
@@ -136,9 +137,7 @@ def part_summary(document):
     """The bounding box, volume and face count of the one solid *document* holds at the top, or `None` where it holds none."""
     import Part
 
-    solids = [o.Shape for o in document.Objects
-              if not o.InList and getattr(o, "Shape", None) is not None
-              and not o.Shape.isNull() and o.Shape.Solids]
+    solids = [o.Shape for o in top_solids(document)]
     if not solids:
         return None
     shape = solids[0] if len(solids) == 1 else Part.Compound(solids)

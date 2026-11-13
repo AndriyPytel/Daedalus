@@ -27,6 +27,20 @@ pad.Length = 10
 doc.recompute()
 """
 
+TALLER = """
+import Part
+body = doc.getObject('Body')
+sketch = body.newObject('Sketcher::SketchObject', 'Sketch2')
+sketch.AttachmentSupport = [(body.Origin.OriginFeatures[3], '')]
+sketch.MapMode = 'FlatFace'
+for a, b in [((2, 2), (5, 2)), ((5, 2), (5, 5)), ((5, 5), (2, 5)), ((2, 5), (2, 2))]:
+    sketch.addGeometry(Part.LineSegment(App.Vector(*a, 0), App.Vector(*b, 0)))
+pad = body.newObject('PartDesign::Pad', 'Pad2')
+pad.Profile = sketch
+pad.Length = 15
+doc.recompute()
+"""
+
 
 def _say(**turn):
     return json.dumps(turn)
@@ -150,7 +164,7 @@ def test_a_crash_in_the_agents_code_does_not_end_the_run(kernel):
     llm = ScriptedLLMClient([
         _say(code=BOX),
         _say(code="import os\nos._exit(1)"),
-        _say(code=BOX.replace("'Body'", "'Second'")),
+        _say(code=TALLER),
         _say(finish="done"),
     ])
     client = _client(llm, kernel)
