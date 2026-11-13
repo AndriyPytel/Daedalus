@@ -2,7 +2,7 @@ stall_timeout_minutes: 10
 max_attempts_per_ticket: 3
 
 check:
-  - pytest
+  - /Users/apytel/Projects/FreeCadCopilot/.venv/bin/python -m pytest -q
 
 tracker: youtrack
 review_by: agent
