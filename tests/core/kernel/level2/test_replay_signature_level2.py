@@ -55,10 +55,9 @@ def doc():
 
 
 @pytest.fixture
-def pipeline(doc, worker, tmp_path):
+def pipeline(doc, worker):
     pipeline = ApplyPipeline(document=doc, worker=worker,
-                             dispatch=lambda func, timeout=None: func(),
-                             render_dir=str(tmp_path))
+                             dispatch=lambda func, timeout=None: func())
     pipeline.apply = functools.partial(pipeline.apply, design_model=False)
     return pipeline
 

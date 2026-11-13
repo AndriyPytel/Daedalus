@@ -35,7 +35,7 @@ from core.narrate import narrate
 from core.orchestrator import CONTROL, DESIGN, RUN_QUESTION, route
 from core.prompts import read_prompt
 from core.session_title import fallback, generate
-from core.sessions import Sessions
+from core.sessions import Sessions, log_id
 
 _LAZY = {
     "manifold": ("core.manifold", None),

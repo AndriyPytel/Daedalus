@@ -104,9 +104,7 @@ def saved_document(tmp_path):
 def test_the_workers_render_is_byte_identical_to_preflight_render_directly(warm, tmp_path):
     """
     `render` moved out of `preflight_worker` into `preflight_render`
-    with no change to its body; the worker calls the moved function through the
-    same `sys.path` trick `reading` already used for `core.sketch_check`. If the
-    child process could not see the new module, `warm.check` below would come
+    with no change to its body. If the child process could not see the new module, `warm.check` below would come
     back `ok=False` with an ImportError traceback instead of a render.
     """
     import FreeCAD
@@ -417,30 +415,3 @@ def test_a_body_left_in_pieces_is_still_refused(warm):
     assert "more than one piece" in result.traceback
 
 
-def test_a_sweep_of_modelmania_sized_readings_is_answered_in_seconds(warm):
-    """
-    The reading budget is set against a full Model Mania-sized sweep.
-
-    The four sheets contain 142 outlines. A warm child answers that many simple
-    readings well inside the phase budget, so the limit bounds a stopped child
-    rather than normal work.
-    """
-    from core.sheets import sheet_reader, sketch_check
-
-    corners = [(0.0, 0.0), (98.2, 0.0), (98.2, 30.0), (0.0, 30.0)]
-    entities = [
-        sheet_reader.Entity(kind="line", source="traced", role="contour",
-                            size=sheet_reader._distance(corners[at],
-                                                        corners[(at + 1) % 4]),
-                            start=corners[at], end=corners[(at + 1) % 4])
-        for at in range(4)]
-    outline = sheet_reader.Outline(entities=entities, closed=True, area=3000.0)
-    between = [sheet_reader.Between(printed=100.0, text="100", view="the front view",
-                                    first=(0.0, 15.0), second=(100.0, 15.0))]
-
-    started = time.monotonic()
-    for _ in range(142):
-        assert sketch_check.checked_by(warm, outline, "the front view", between)
-    elapsed = time.monotonic() - started
-
-    assert elapsed < 20, "the sweep is nowhere near the budget the phase is given"

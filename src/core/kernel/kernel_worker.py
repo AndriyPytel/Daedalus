@@ -1369,22 +1369,7 @@ def run_step(request):
     return response
 
 
-def reading(request):
-    """
-    One outline off a drawing, built as a sketch and put to the solver.
-
-    Here rather than in the addon's process because this is the process whose
-    death is a normal outcome: `Sketcher.Constraint` is the call that segfaults.
-    """
-    from core.sheets import sketch_check
-
-    outline, view, between = sketch_check.from_request(request)
-    answer = {"ok": True}
-    answer.update(sketch_check.as_response(sketch_check.checked(outline, view, between)))
-    return answer
-
-
-_ASKED_FOR = {"step": run_step, "reading": reading}
+_ASKED_FOR = {"step": run_step}
 
 
 def _parent_is_gone(parent):

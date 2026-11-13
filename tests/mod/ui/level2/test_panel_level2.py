@@ -165,8 +165,8 @@ def test_a_second_intent_on_a_running_document_is_refused(panel, monkeypatch):
     """
     import types
 
-    log = panel._current_log()
-    bundle = panel._worker_for(log)
+    session_id = panel.chat_sessions.current_id()
+    bundle = panel._worker_for(session_id)
     monkeypatch.setattr(panel, "_bind_document", lambda bundle: None)
     sent = []
     bundle.request_work.connect(lambda *args: sent.append(args[0]))
@@ -183,7 +183,7 @@ def test_a_second_intent_on_a_running_document_is_refused(panel, monkeypatch):
         "a refused Intent is left in the composer, not thrown away"
     assert "run in flight" in _said_in(panel)
 
-    panel.on_run_finished(types.SimpleNamespace(ok=True), log)
+    panel.on_run_finished(types.SimpleNamespace(ok=True), panel.sessions.at(session_id)["log"])
 
     assert (bundle.running, panel._running) == (False, False)
 
@@ -204,8 +204,7 @@ def test_two_sessions_on_the_same_document_cannot_both_run(panel, monkeypatch):
 
     from ui.daedalus_panel import _SessionWorker, EventBridge, AskTheUser
 
-    first_log = panel._current_log()
-    first = panel._worker_for(first_log)
+    first = panel._worker_for(panel.chat_sessions.current_id())
     monkeypatch.setattr(panel, "_bind_document", lambda bundle: None)
     same_document = object()
     first.worker._document = same_document
@@ -717,7 +716,7 @@ def _never_call_the_real_model(panel):
     caller that already replaced `_ask_for_a_title` of its own — to watch
     what it was asked — is left alone.
     """
-    bundle = panel._worker_for(panel._current_log())
+    bundle = panel._worker_for(panel.chat_sessions.current_id())
     bundle.request_work.disconnect(bundle.worker.do_work)
     if "_ask_for_a_title" not in vars(panel):
         panel._ask_for_a_title = lambda log, intent: None
@@ -732,7 +731,7 @@ def test_send_hands_the_attachments_over_and_clears_the_bar(panel, tmp_path):
     picture = tmp_path / "bracket.png"
     picture.write_bytes(b"a file; whether it decodes is the loop's problem")
 
-    bundle = panel._worker_for(panel._current_log())
+    bundle = panel._worker_for(panel.chat_sessions.current_id())
     sent = []
     bundle.request_work.connect(lambda intent, files, log: sent.append((intent, files)))
     try:
@@ -751,11 +750,11 @@ def test_a_clean_pass_still_clears_the_queue_line(panel):
     """The honest branch does not cost the quiet one: no `unmet` is still blank."""
     import types
 
-    log = panel._current_log()
-    panel._worker_for(log)
+    session_id = panel.chat_sessions.current_id()
+    panel._worker_for(session_id)
     panel._queue_widget.now("Working…")
 
-    panel.on_run_finished(types.SimpleNamespace(ok=True), log)
+    panel.on_run_finished(types.SimpleNamespace(ok=True), panel.sessions.at(session_id)["log"])
 
     assert panel._queue_widget._now_label._full == ""
 
@@ -772,7 +771,7 @@ def test_an_unusable_attachment_stops_the_run_before_it_starts(panel, tmp_path, 
     drawing.write_bytes(b"png")
     panel.chip_bar.add_file(str(drawing))
 
-    bundle = panel._worker_for(panel._current_log())
+    bundle = panel._worker_for(panel.chat_sessions.current_id())
     sent = []
     listener = lambda intent, files, log: sent.append(intent)
     bundle.request_work.connect(listener)
@@ -1143,7 +1142,7 @@ def test_a_document_closing_releases_a_run_parked_on_the_main_thread(sessions_ar
     from ui.daedalus_panel import DaedalusPanel
 
     built = DaedalusPanel()
-    bundle = built._worker_for(built._current_log())
+    bundle = built._worker_for(built.chat_sessions.current_id())
 
     class _Document:
         Uid = "the one the run was bound to"
@@ -1178,18 +1177,17 @@ def test_deleting_a_session_releases_a_run_parked_on_the_main_thread(
     from ui.daedalus_panel import DaedalusPanel
 
     built = DaedalusPanel()
-    log = built._current_log()
-    bundle = built._worker_for(log)
+    bundle = built._worker_for(built.chat_sessions.current_id())
     _parked_on_the_main_thread(bundle)
     bridge.main_thread._closing.clear()
 
     monkeypatch.setattr(QtWidgets.QMessageBox, "question",
                         staticmethod(lambda *a, **k: QtWidgets.QMessageBox.Yes))
 
-    index = built.chat_sessions.stack.currentIndex()
+    session_id = built.chat_sessions.current_id()
     done = threading.Event()
     started = time.time()
-    threading.Thread(target=lambda: (built.delete_session(index), done.set()),
+    threading.Thread(target=lambda: (built.delete_session(session_id), done.set()),
                      daemon=True).start()
 
     assert done.wait(5), "deleting the Session is still waiting on a job in flight"
@@ -1435,20 +1433,6 @@ def test_a_row_never_changes_height_under_the_cursor(panel):
     assert row.height() == resting
 
 
-def test_a_session_with_no_intent_is_not_in_the_history_index(panel):
-    """
-    Fifty promptless launches would otherwise evict fifty real Sessions:
-    load() keeps the newest KEEP and deletes the log of everything past it.
-    """
-    from bridge import settings_manager
-
-    before = settings_manager.instance().get_sessions()
-
-    panel.chat_sessions.add_new_chat("New Chat")
-
-    assert settings_manager.instance().get_sessions() == before
-
-
 def _rows_in_the_picker(panel):
     """The names the popup is actually showing, in order."""
     from ui.history_popup import HistoryItem
@@ -1457,7 +1441,7 @@ def _rows_in_the_picker(panel):
     try:
         rows = [panel.history_popup.list_layout.itemAt(i).widget()
                 for i in range(panel.history_popup.list_layout.count())]
-        return [(row.index, row.title_label.text())
+        return [(row.session_id, row.title_label.text())
                 for row in rows if isinstance(row, HistoryItem)]
     finally:
         panel.history_popup.close()
@@ -1465,24 +1449,24 @@ def _rows_in_the_picker(panel):
 
 def test_a_session_with_no_intent_is_not_in_the_picker_either(panel):
     """
-    QA against FreeCAD 1.1.3 found the invariant enforced in the durable index
+    QA against FreeCAD 1.1.3 found the invariant enforced in the durable session_id
     and not in the picker: `toggle_history` built the popup from every Session
-    in the stack, so a fresh dock showed one `New Chat` row against an index
+    in the stack, so a fresh dock showed one `New Chat` row against an session_id
     holding none of it.
     """
-    index, _ = panel.chat_sessions.add_new_chat("New Chat")
+    session_id, _ = panel.chat_sessions.add_new_chat("New Chat")
 
     assert "New Chat" not in [name for _, name in _rows_in_the_picker(panel)]
 
-    panel.chat_sessions.begin(index, "Two-bore bracket")
+    panel.sessions.begin(session_id, "Two-bore bracket")
 
     assert "Two-bore bracket" in [name for _, name in _rows_in_the_picker(panel)]
 
 
 def test_a_promptless_launch_adds_no_row_to_the_picker(panel):
     """Three launches where nobody typed anything, as the QA run did."""
-    index, _ = panel.chat_sessions.add_new_chat("Real work")
-    panel.chat_sessions.begin(index, "Two-bore bracket")
+    session_id, _ = panel.chat_sessions.add_new_chat("Real work")
+    panel.sessions.begin(session_id, "Two-bore bracket")
     before = _rows_in_the_picker(panel)
 
     for _ in range(3):
@@ -1492,110 +1476,48 @@ def test_a_promptless_launch_adds_no_row_to_the_picker(panel):
         [name for _, name in before]
 
 
-def test_a_picker_row_names_the_session_it_shows_not_its_own_position(panel):
+def test_a_picker_row_names_the_session_it_shows_not_its_own_position(panel, monkeypatch):
     """
-    The picker shows a subset, so a row numbered from zero would open its
-    neighbour. The row carries the Session's position in the stack. The first
-    Session here is never used, so it stays unindexed and the picker skips it.
+    Naming a third Session prunes the first, which moves everything after it.
+    The row carries the Session's id, so choosing it opens that Session and
+    not the one that now sits where it used to.
     """
-    panel.chat_sessions.add_new_chat("Never used")
-    index, _ = panel.chat_sessions.add_new_chat("New Chat")
-    panel.chat_sessions.begin(index, "The one this test is looking for")
+    from core import sessions as sessions_module
 
-    rows = _rows_in_the_picker(panel)
-    position, name = next((p, n) for p, n in rows
-                          if n == "The one this test is looking for")
+    monkeypatch.setattr(sessions_module, "KEEP", 2)
+    monkeypatch.setattr(panel, "_ask_for_a_title", lambda *_: None)
+    ids = {}
+    for name in ("first", "second", "third"):
+        session_id, _ = panel.chat_sessions.add_new_chat("New Chat")
+        panel._name_session(session_id, name)
+        ids[name] = session_id
 
-    assert position == index
-    assert panel.chat_sessions.get_session_info(position)["name"] == name
+    rows = dict(_rows_in_the_picker(panel))
+    assert rows == {ids["second"]: "second", ids["third"]: "third"}
 
+    panel.switch_session(ids["second"])
 
-def test_the_first_intent_puts_the_session_in_history_under_a_name(panel):
-    from bridge import settings_manager
-
-    index, _ = panel.chat_sessions.add_new_chat("New Chat")
-
-    panel.chat_sessions.begin(index, "Two-bore bracket")
-
-    stored = settings_manager.instance().get_sessions()
-    assert stored[-1]["name"] == "Two-bore bracket"
-    assert panel.chat_sessions.get_session_info(index)["name"] == "Two-bore bracket"
-
-
-def test_a_session_only_enters_history_once(panel):
-    """The second Intent must not add a second row for the same Session."""
-    from bridge import settings_manager
-
-    index, _ = panel.chat_sessions.add_new_chat("New Chat")
-    panel.chat_sessions.begin(index, "first")
-    count = len(settings_manager.instance().get_sessions())
-
-    assert not panel.chat_sessions.begin(index, "second")
-    assert len(settings_manager.instance().get_sessions()) == count
-    assert panel.chat_sessions.get_session_info(index)["name"] == "first"
-
-
-def test_a_generated_title_replaces_the_fallback_but_only_once(panel):
-    index, _ = panel.chat_sessions.add_new_chat("New Chat")
-    panel.chat_sessions.begin(index, "make me a bracket with tw…")
-    log = panel.chat_sessions.get_session_info(index)["log"]
-
-    assert panel.chat_sessions.title_arrived(log, "Two-bore bracket")
-    assert not panel.chat_sessions.title_arrived(log, "Something else")
-    assert panel.chat_sessions.get_session_info(index)["name"] == "Two-bore bracket"
+    assert panel.chat_sessions.current_id() == ids["second"]
+    assert panel.title_label.text() == "second"
+    assert panel.chat_sessions.stack.count() == panel.sessions.count()
 
 
 def test_a_title_lands_on_the_session_that_asked_for_it(panel):
     """
-    The call outlives the Session's position in the stack. Keyed by the index,
-    deleting a Session while a title was in flight renames its neighbour.
+    The call outlives every other Session: one deleted while a title was in
+    flight must not make it land on a neighbour.
     """
     doomed, _ = panel.chat_sessions.add_new_chat("New Chat")
-    panel.chat_sessions.begin(doomed, "the one that gets deleted")
+    panel.sessions.begin(doomed, "the one that gets deleted")
     asker, _ = panel.chat_sessions.add_new_chat("New Chat")
-    panel.chat_sessions.begin(asker, "the one that asked")
-    log = panel.chat_sessions.get_session_info(asker)["log"]
+    panel.sessions.begin(asker, "the one that asked")
 
-    panel.chat_sessions.remove_session(doomed)
+    panel.sessions.remove(doomed)
+    panel.chat_sessions.drop_page(doomed)
+    panel._title_arrived(asker, "Two-bore bracket")
 
-    assert panel.chat_sessions.title_arrived(log, "Two-bore bracket")
-    moved = next(i for i in range(panel.chat_sessions.count())
-                 if panel.chat_sessions.get_session_info(i)["log"] == log)
-    assert panel.chat_sessions.get_session_info(moved)["name"] == "Two-bore bracket"
-
-
-def test_a_manual_rename_is_never_overwritten_by_a_generated_title(panel):
-    index, _ = panel.chat_sessions.add_new_chat("New Chat")
-    panel.chat_sessions.begin(index, "make me a bracket with tw…")
-    log = panel.chat_sessions.get_session_info(index)["log"]
-
-    panel.chat_sessions.rename_session(index, "mine")
-
-    assert not panel.chat_sessions.title_arrived(log, "Two-bore bracket")
-    assert panel.chat_sessions.get_session_info(index)["name"] == "mine"
-
-
-def test_a_manual_rename_before_the_first_intent_also_wins(panel):
-    """The generated title lands later, and the name it would replace is the user's."""
-    index, _ = panel.chat_sessions.add_new_chat("New Chat")
-
-    panel.chat_sessions.rename_session(index, "mine")
-    panel.chat_sessions.begin(index, "the truncated intent")
-    log = panel.chat_sessions.get_session_info(index)["log"]
-
-    assert panel.chat_sessions.get_session_info(index)["name"] == "mine"
-    assert not panel.chat_sessions.title_arrived(log, "Two-bore bracket")
-
-
-def test_a_session_still_waiting_for_its_title_asks_again(panel):
-    """A Refusal on the first Intent leaves the retry open for the next one."""
-    index, _ = panel.chat_sessions.add_new_chat("New Chat")
-    panel.chat_sessions.begin(index, "the truncated intent")
-    log = panel.chat_sessions.get_session_info(index)["log"]
-
-    assert panel.chat_sessions.wants_a_title(index)
-    panel.chat_sessions.title_arrived(log, "Two-bore bracket")
-    assert not panel.chat_sessions.wants_a_title(index)
+    assert panel.sessions.at(asker)["name"] == "Two-bore bracket"
+    assert panel.title_label.text() == "Two-bore bracket"
 
 
 def test_a_launch_opens_an_empty_session_and_keeps_the_earlier_ones(sessions_are_the_tests_own):
@@ -1607,15 +1529,15 @@ def test_a_launch_opens_an_empty_session_and_keeps_the_earlier_ones(sessions_are
 
     first = DaedalusPanel()
     try:
-        first.chat_sessions.begin(first.chat_sessions.stack.currentIndex(), "yesterday")
+        first.sessions.begin(first.chat_sessions.current_id(), "yesterday")
     finally:
         first._cleanup_thread()
 
     relaunched = DaedalusPanel()
     try:
-        live = relaunched.chat_sessions.stack.currentIndex()
-        assert not relaunched.chat_sessions.get_session_info(live)["indexed"]
-        assert relaunched.chat_sessions.count() >= 2, "the earlier Session was dropped"
+        live = relaunched.chat_sessions.current_id()
+        assert not relaunched.sessions.at(live)["indexed"]
+        assert relaunched.sessions.count() >= 2, "the earlier Session was dropped"
         names = [s["name"] for s in settings_manager.instance().get_sessions()]
         assert "yesterday" in names
     finally:
@@ -1630,13 +1552,13 @@ def test_a_first_intent_names_the_session_from_what_was_typed(panel, monkeypatch
     anything, which is the behaviour — not this test's subject.
     """
     asked = []
-    monkeypatch.setattr(panel, "_ask_for_a_title", lambda index, intent: asked.append(intent))
+    monkeypatch.setattr(panel, "_ask_for_a_title", lambda session_id, intent: asked.append(intent))
     panel.chip_bar.get_and_clear()
     panel.new_chat()
-    index = panel.chat_sessions.stack.currentIndex()
+    session_id = panel.chat_sessions.current_id()
     _never_call_the_real_model(panel)
 
-    bundle = panel._worker_for(panel._current_log())
+    bundle = panel._worker_for(panel.chat_sessions.current_id())
     bundle.request_work.connect(lambda *_: None)
     panel.user_input.setPlainText(
         "Model a spur gear with 24 teeth, module 2, 10mm thick, and a 12mm bore")
@@ -1646,7 +1568,7 @@ def test_a_first_intent_names_the_session_from_what_was_typed(panel, monkeypatch
         bundle.request_work.disconnect()
         panel._set_running(False)
 
-    name = panel.chat_sessions.get_session_info(index)["name"]
+    name = panel.sessions.at(session_id)["name"]
     assert name.startswith("Model a spur gear")
     assert panel.title_label.text() == name
     assert asked, "the generated title was never asked for"
@@ -1685,47 +1607,41 @@ def _said_by(widgets):
 
 
 def _a_transcript(path):
-    from core.events import APPLIED, PLAN, REVIEW_VERDICT, THOUGHT, EventStream
+    from core.events import APPLIED, COMPLETED, QUESTION, THOUGHT, EventStream
 
     stream = EventStream()
     stream.log_to(path)
     stream.emit(THOUGHT, phase="plan", text="a box, then a fillet")
-    stream.emit(PLAN, steps=["Make a box", "Fillet it"])
+    stream.emit(QUESTION, text="How tall?")
     stream.emit(APPLIED, step=1, label="Box", created=["Box"])
-    stream.emit(REVIEW_VERDICT, verdict="pass", reason="Looks like a box.")
+    stream.emit(COMPLETED, summary="Looks like a box.")
 
 
-def _a_recorded_p_transcript(path):
-    from core import events as ev
-
-    stream = ev.EventStream()
-    stream.log_to(path)
-    stream.emit(ev.INTENT, text="a box, then a fillet")
-    stream.emit(ev.DESIGN, part={"features": []})
-    stream.emit(ev.PLAN, steps=["Make a box", "Fillet it"], acceptance=["It is a box"])
-    stream.emit(ev.GATE, decision="approve", standing=False)
-    stream.emit(ev.STEP_DECLARED, step=1, label="Make a box", checkpoint="c1")
-    stream.emit(ev.APPLIED, step=1, label="Box", created=["Box"])
-    stream.emit(ev.ASSERTION, ok=True, code="assert True", confirmed=["It is a box"],
-                uncovered=[], traceback="")
-    stream.emit(ev.REVIEW_SUSPECTED, suspected=["the views disagree"])
-    stream.emit(ev.REVIEW_VERDICT, verdict="fail", reason="No fillet.")
-    stream.emit(ev.PLAN_REVISED, steps=["Fillet it"], acceptance=[], reason="no fillet")
-    stream.emit(ev.OUTSTANDING, unmet=["It is filleted"])
-    stream.emit(ev.BLOCKED, reason="You rejected the Plan.", tried=[], provider_said="")
+def _a_session_opened_from(panel, tmp_path, name, retired=False):
+    log = str(tmp_path / (name + ".jsonl"))
+    _a_transcript(log)
+    if retired:
+        with open(log, "a", encoding="utf-8") as handle:
+            handle.write('{"kind": "plan", "at": 1.0, "data": {"steps": ["Make a box"]}}\n')
+    session_id, _ = panel.chat_sessions.add_new_chat(name)
+    panel.sessions.at(session_id).update({"log": log, "restored": False})
+    panel.switch_session(session_id)
 
 
-def test_a_recorded_p_session_replays_without_error_as_chat_lines(panel, tmp_path):
-    log = str(tmp_path / "p.jsonl")
-    _a_recorded_p_transcript(log)
-    index, _ = panel.chat_sessions.add_new_chat("p")
-    panel.chat_sessions.get_session_info(index).update({"log": log, "restored": False})
+def test_a_retired_kind_in_a_replayed_log_draws_nothing_and_is_logged_once(
+        panel, tmp_path, monkeypatch):
+    from bridge.logger import logger
 
-    panel.switch_session(index)
+    _a_session_opened_from(panel, tmp_path, "plain")
+    plain = len(_widgets_in(panel))
+    logged = []
+    monkeypatch.setattr(logger, "warning", logged.append)
 
-    said = _said_in(panel)
-    assert "unrecognized event kind" not in said
-    assert "Applied" in said and "Box" in said
+    _a_session_opened_from(panel, tmp_path, "retired", retired=True)
+
+    assert len(_widgets_in(panel)) == plain
+    assert "unrecognized" not in _said_in(panel)
+    assert len(logged) == 1 and "'plan'" in logged[0]
 
 
 def test_a_session_comes_back_with_its_whole_transcript(panel, tmp_path):
@@ -1736,39 +1652,17 @@ def test_a_session_comes_back_with_its_whole_transcript(panel, tmp_path):
     from ui.accordion_widget import AccordionWidget
     log = str(tmp_path / "yesterday.jsonl")
     _a_transcript(log)
-    index, _ = panel.chat_sessions.add_new_chat("yesterday")
-    panel.chat_sessions.get_session_info(index)["log"] = log
-    panel.chat_sessions.get_session_info(index)["restored"] = False
+    session_id, _ = panel.chat_sessions.add_new_chat("yesterday")
+    panel.sessions.at(session_id)["log"] = log
+    panel.sessions.at(session_id)["restored"] = False
 
-    panel.switch_session(index)
+    panel.switch_session(session_id)
 
     kinds = [type(w).__name__ for w in _widgets_in(panel)]
     assert any(isinstance(w, AccordionWidget) for w in _widgets_in(panel)), kinds
     said = _said_in(panel)
     assert "Applied" in said and "Box" in said
-    assert "Review: pass" in said
-
-
-def _a_queue_transcript(path):
-    """
-    A full run's structural events, in the order `core.loop._run` emits
-    them: Intent, an approved Gate, one Step declared and applied inline,
-    Assertion, Review -- everything the Queue widget reads
-    a phase transition off.
-    """
-    from core.events import (APPLIED, ASSERTION, EventStream, GATE, INTENT, PLAN,
-                             REVIEW_VERDICT, STEP_DECLARED)
-
-    stream = EventStream()
-    stream.log_to(path)
-    stream.emit(INTENT, text="a box, then a fillet")
-    stream.emit(PLAN, steps=["Make a box"])
-    stream.emit(GATE, decision="approve", standing=False)
-    stream.emit(STEP_DECLARED, step=1, label="Make a box", checkpoint="c1")
-    stream.emit(APPLIED, step=1, label="Box", created=["Box"])
-    stream.emit(ASSERTION, ok=True, code="assert True", confirmed=["It is a box"],
-               uncovered=[], traceback="")
-    stream.emit(REVIEW_VERDICT, verdict="pass", reason="Looks like a box.")
+    assert "Done" in said
 
 
 def _a_cost_transcript(path):
@@ -1831,11 +1725,11 @@ def test_a_new_intent_zeroes_the_total_mid_session(panel):
 def test_a_restored_session_shows_its_final_total(panel, tmp_path):
     log = str(tmp_path / "cost-run.jsonl")
     _a_cost_transcript(log)
-    index, _ = panel.chat_sessions.add_new_chat("cost-run")
-    panel.chat_sessions.get_session_info(index)["log"] = log
-    panel.chat_sessions.get_session_info(index)["restored"] = False
+    session_id, _ = panel.chat_sessions.add_new_chat("cost-run")
+    panel.sessions.at(session_id)["log"] = log
+    panel.sessions.at(session_id)["restored"] = False
 
-    panel.switch_session(index)
+    panel.switch_session(session_id)
 
     assert panel.usage_label.text().startswith("$0.13")
 
@@ -1851,23 +1745,23 @@ def test_a_session_recorded_before_the_step_render_went_away_still_opens(panel, 
     with open(log, "a", encoding="utf-8") as handle:
         handle.write('{"kind": "render", "at": 1.0, '
                      '"data": {"path": "/tmp/daedalus_step_1.png", "step": 1}}\n')
-    index, _ = panel.chat_sessions.add_new_chat("before")
-    panel.chat_sessions.get_session_info(index).update({"log": log, "restored": False})
+    session_id, _ = panel.chat_sessions.add_new_chat("before")
+    panel.sessions.at(session_id).update({"log": log, "restored": False})
 
-    panel.switch_session(index)
+    panel.switch_session(session_id)
 
-    assert "Review: pass" in _said_in(panel), "the transcript did not replay"
+    assert "Done" in _said_in(panel), "the transcript did not replay"
 
 
 def test_a_session_is_replayed_once_however_often_it_is_opened(panel, tmp_path):
     log = str(tmp_path / "twice.jsonl")
     _a_transcript(log)
-    index, _ = panel.chat_sessions.add_new_chat("twice")
-    panel.chat_sessions.get_session_info(index).update({"log": log, "restored": False})
+    session_id, _ = panel.chat_sessions.add_new_chat("twice")
+    panel.sessions.at(session_id).update({"log": log, "restored": False})
 
-    panel.switch_session(index)
+    panel.switch_session(session_id)
     first = len(_widgets_in(panel))
-    panel.switch_session(index)
+    panel.switch_session(session_id)
 
     assert len(_widgets_in(panel)) == first, "the transcript was rendered twice"
 
@@ -1898,14 +1792,14 @@ def test_a_long_transcript_is_replayed_a_chunk_at_a_time(panel, tmp_path, monkey
 
     log = str(tmp_path / "long.jsonl")
     _a_long_transcript(log, 120)
-    index, _ = panel.chat_sessions.add_new_chat("long")
-    panel.chat_sessions.get_session_info(index).update({"log": log, "restored": False})
+    session_id, _ = panel.chat_sessions.add_new_chat("long")
+    panel.sessions.at(session_id).update({"log": log, "restored": False})
 
     replayed = []
     real = panel.on_event
     monkeypatch.setattr(panel, "on_event", lambda event: replayed.append(event) or real(event))
 
-    panel.switch_session(index)
+    panel.switch_session(session_id)
 
     assert len(replayed) == daedalus_panel.RESTORE_CHUNK, \
         "the whole transcript was replayed before the event loop got a turn"
@@ -1919,27 +1813,27 @@ def test_a_short_transcript_still_lands_in_one_go(panel, tmp_path):
     """Chunking must not make the common case wait for an event-loop turn."""
     log = str(tmp_path / "short.jsonl")
     _a_transcript(log)
-    index, _ = panel.chat_sessions.add_new_chat("short")
-    panel.chat_sessions.get_session_info(index).update({"log": log, "restored": False})
+    session_id, _ = panel.chat_sessions.add_new_chat("short")
+    panel.sessions.at(session_id).update({"log": log, "restored": False})
 
-    panel.switch_session(index)
+    panel.switch_session(session_id)
 
-    assert "Review: pass" in _said_in(panel)
+    assert "Done" in _said_in(panel)
 
 
 def test_switching_away_mid_replay_abandons_the_rest(panel, tmp_path, monkeypatch):
     """The remaining chunks must not render into whichever Session is open now."""
     log = str(tmp_path / "abandoned.jsonl")
     _a_long_transcript(log, 120)
-    index, _ = panel.chat_sessions.add_new_chat("abandoned")
-    panel.chat_sessions.get_session_info(index).update({"log": log, "restored": False})
+    session_id, _ = panel.chat_sessions.add_new_chat("abandoned")
+    panel.sessions.at(session_id).update({"log": log, "restored": False})
     elsewhere, _ = panel.chat_sessions.add_new_chat("elsewhere")
 
     replayed = []
     real = panel.on_event
     monkeypatch.setattr(panel, "on_event", lambda event: replayed.append(event) or real(event))
 
-    panel.switch_session(index)
+    panel.switch_session(session_id)
     panel.switch_session(elsewhere)
     _spin()
 
@@ -1953,59 +1847,68 @@ def test_a_truncated_transcript_shows_what_survived_and_says_so(panel, tmp_path)
     _a_transcript(log)
     with open(log, "a", encoding="utf-8") as handle:
         handle.write('{"kind": "blocked", "at": 1.0, "da')
-    index, _ = panel.chat_sessions.add_new_chat("crashed")
-    panel.chat_sessions.get_session_info(index).update({"log": log, "restored": False})
+    session_id, _ = panel.chat_sessions.add_new_chat("crashed")
+    panel.sessions.at(session_id).update({"log": log, "restored": False})
 
-    panel.switch_session(index)
+    panel.switch_session(session_id)
 
     said = _said_in(panel)
     assert "Applied" in said, "the surviving transcript was thrown away"
     assert "ends mid-event" in said
 
 
-def test_an_event_kind_the_panel_does_not_know_is_skipped_not_fatal(panel, tmp_path):
+def test_an_event_kind_the_panel_does_not_know_is_skipped_not_fatal(panel, tmp_path, monkeypatch):
+    from bridge.logger import logger
+
     log = str(tmp_path / "from_the_future.jsonl")
     _a_transcript(log)
     with open(log, "a", encoding="utf-8") as handle:
         handle.write('{"kind": "almost_applied", "at": 1.0, "data": {"step": 1}}\n')
-    index, _ = panel.chat_sessions.add_new_chat("future")
-    panel.chat_sessions.get_session_info(index).update({"log": log, "restored": False})
+    session_id, _ = panel.chat_sessions.add_new_chat("future")
+    panel.sessions.at(session_id).update({"log": log, "restored": False})
+    logged = []
+    monkeypatch.setattr(logger, "warning", logged.append)
 
-    panel.switch_session(index)
+    panel.switch_session(session_id)
 
     said = _said_in(panel)
-    assert "Review: pass" in said
+    assert "Done" in said
+    assert "unrecognized" not in said
+    assert len(logged) == 1 and "almost_applied" in logged[0]
 
 
 def test_a_rename_persists_and_reaches_the_header(panel):
     """
-    Only a Session that has had an Intent is in the index at all, and the
-    index no longer lines up positionally with the open Sessions.
+    Only a Session that has had an Intent is in the session_id at all, and the
+    session_id no longer lines up positionally with the open Sessions.
     """
     from bridge import settings_manager
 
-    index, _ = panel.chat_sessions.add_new_chat("New Chat")
-    panel.chat_sessions.switch_to(index)
-    panel.chat_sessions.begin(index, "a first intent")
-    log = panel.chat_sessions.get_session_info(index)["log"]
+    session_id, _ = panel.chat_sessions.add_new_chat("New Chat")
+    panel.chat_sessions.switch_to(session_id)
+    panel.sessions.begin(session_id, "a first intent")
+    log = panel.sessions.at(session_id)["log"]
 
-    panel.chat_sessions.rename_session(index, "bracket revision")
-    panel.update_header_title(index)
+    panel.sessions.rename(session_id, "bracket revision")
+    panel.update_header_title(session_id)
 
     assert panel.title_label.text() == "bracket revision"
     stored = {s["log"]: s["name"] for s in settings_manager.instance().get_sessions()}
     assert stored[log] == "bracket revision"
 
 
-def test_deleting_a_session_takes_its_transcript_with_it(panel, tmp_path):
+def test_deleting_a_session_takes_its_transcript_with_it(panel, tmp_path, monkeypatch):
     from bridge import settings_manager
+    from conftest import QtWidgets
 
     log = str(tmp_path / "doomed.jsonl")
     _a_transcript(log)
-    index, _ = panel.chat_sessions.add_new_chat("doomed")
-    panel.chat_sessions.get_session_info(index)["log"] = log
+    session_id, _ = panel.chat_sessions.add_new_chat("doomed")
+    panel.sessions.at(session_id)["log"] = log
+    monkeypatch.setattr(QtWidgets.QMessageBox, "question",
+                        staticmethod(lambda *a, **k: QtWidgets.QMessageBox.Yes))
 
-    panel.chat_sessions.remove_session(index)
+    panel.delete_session(session_id)
 
     assert not os.path.exists(log), "delete hid the Session and kept the transcript"
     assert "doomed" not in [s["name"] for s in settings_manager.instance().get_sessions()]
@@ -2026,21 +1929,20 @@ def test_nothing_grabs_the_left_button_off_the_transcript():
     assert not QtWidgets.QScroller.hasScroller(area.viewport())
 
 
-def test_pruning_takes_the_chat_area_with_the_session(sessions_are_the_tests_own,
-                                                      monkeypatch):
+def test_pruning_takes_the_chat_area_with_the_session(panel, monkeypatch):
     """A page left behind would show the wrong Session's transcript."""
     from core import sessions as sessions_module
-    from ui import multi_tab_manager
 
     monkeypatch.setattr(sessions_module, "KEEP", 3)
-    manager = multi_tab_manager.ChatSessionManager()
-    for n in range(5):
-        index, _ = manager.add_new_chat("Chat %d" % n)
-        manager.begin(index, "Chat %d" % n)
+    monkeypatch.setattr(panel, "_ask_for_a_title", lambda *_: None)
+    for number in range(5):
+        session_id, _ = panel.chat_sessions.add_new_chat("New Chat")
+        panel._name_session(session_id, "Chat %d" % number)
 
-    assert manager.count() == 3
-    assert manager.stack.count() == 3, "a page outlived the Session it was showing"
-    assert manager.get_session_info(manager.stack.currentIndex())["name"] == "Chat 4"
+    assert panel.chat_sessions.stack.count() == panel.sessions.count(), \
+        "a page outlived the Session it was showing"
+    assert len(panel.sessions.indexed()) == 3
+    assert panel.sessions.at(panel.chat_sessions.current_id())["name"] == "Chat 4"
 
 
 def test_a_restored_session_owns_nothing(panel, tmp_path):
@@ -2052,16 +1954,16 @@ def test_a_restored_session_owns_nothing(panel, tmp_path):
     it is not reset on every switch any more, because the pipeline switching
     away from is no longer the pipeline switching in.
     """
-    live = panel.chat_sessions.stack.currentIndex()
+    live = panel.chat_sessions.current_id()
     panel.worker._get_sdk_client()
     panel.worker.pipeline.owned = {"BoxFromTheLiveSession"}
 
     log = str(tmp_path / "old.jsonl")
     _a_transcript(log)
-    index, _ = panel.chat_sessions.add_new_chat("old")
-    panel.chat_sessions.get_session_info(index).update({"log": log, "restored": False})
+    session_id, _ = panel.chat_sessions.add_new_chat("old")
+    panel.sessions.at(session_id).update({"log": log, "restored": False})
 
-    panel.switch_session(index)
+    panel.switch_session(session_id)
     panel.worker._get_sdk_client()
     assert panel.worker.pipeline.owned == set(), \
         "the next Step would apply against another Session's Owned Objects"
@@ -2089,9 +1991,9 @@ def test_returning_to_a_session_does_not_keep_another_ones_widgets(panel, tmp_pa
     log = str(tmp_path / "first.jsonl")
     _a_transcript(log)
     first, _ = panel.chat_sessions.add_new_chat("first")
-    panel.chat_sessions.get_session_info(first).update({"log": log, "restored": False})
+    panel.sessions.at(first).update({"log": log, "restored": False})
     panel.new_chat()
-    second = panel.chat_sessions.stack.currentIndex()
+    second = panel.chat_sessions.current_id()
 
     panel.switch_session(first)
     panel.switch_session(second)
@@ -2110,13 +2012,13 @@ def test_switching_mid_run_moves_the_panel_without_touching_the_run(panel):
     first, _ = panel.chat_sessions.add_new_chat("running")
     second, _ = panel.chat_sessions.add_new_chat("elsewhere")
     panel.chat_sessions.switch_to(first)
-    first_bundle = panel._worker_for(panel.chat_sessions.get_session_info(first)["log"])
+    first_bundle = panel._worker_for(panel.sessions.at(first)["log"])
     first_bundle.running = True
     panel._set_running(True)
 
     panel.switch_session(second)
 
-    assert panel.chat_sessions.stack.currentIndex() == second, \
+    assert panel.chat_sessions.current_id() == second, \
         "a run in another Session refused a switch that no longer touches it"
     assert first_bundle.running, "switching away stopped a run it did not start"
     first_bundle.running = False
@@ -2134,13 +2036,13 @@ def test_activating_a_documents_own_session_switches_the_panel_to_it(panel):
     try:
         elsewhere, _ = panel.chat_sessions.add_new_chat("elsewhere")
         named, _ = panel.chat_sessions.add_new_chat("named")
-        panel.chat_sessions.name_document(
-            panel.chat_sessions.get_session_info(named)["log"], doc.Name, doc.Uid)
+        panel.sessions.name_document(
+            named, doc.Name, doc.Uid)
         panel.chat_sessions.switch_to(elsewhere)
 
         panel.slotActivateDocument(doc)
 
-        assert panel.chat_sessions.stack.currentIndex() == named, \
+        assert panel.chat_sessions.current_id() == named, \
             "activating the Document did not bring its own Session forward"
     finally:
         FreeCAD.closeDocument(doc.Name)
@@ -2158,14 +2060,14 @@ def test_a_new_unsaved_document_does_not_reopen_an_older_unsaved_ones_chat(panel
     try:
         elsewhere, _ = panel.chat_sessions.add_new_chat("elsewhere")
         older, _ = panel.chat_sessions.add_new_chat("older")
-        panel.chat_sessions.name_document(
-            panel.chat_sessions.get_session_info(older)["log"],
+        panel.sessions.name_document(
+            older,
             doc.Name, "a-document-that-is-long-gone")
         panel.chat_sessions.switch_to(elsewhere)
 
         panel.slotActivateDocument(doc)
 
-        assert panel.chat_sessions.stack.currentIndex() == elsewhere
+        assert panel.chat_sessions.current_id() == elsewhere
     finally:
         FreeCAD.closeDocument(doc.Name)
 
@@ -2176,12 +2078,12 @@ def test_activating_an_unclaimed_document_leaves_the_panel_alone(panel):
 
     doc = FreeCAD.newDocument("FCC181PanelIgnoresUnclaimedDoc")
     try:
-        index, _ = panel.chat_sessions.add_new_chat("current")
-        panel.chat_sessions.switch_to(index)
+        session_id, _ = panel.chat_sessions.add_new_chat("current")
+        panel.chat_sessions.switch_to(session_id)
 
         panel.slotActivateDocument(doc)
 
-        assert panel.chat_sessions.stack.currentIndex() == index
+        assert panel.chat_sessions.current_id() == session_id
     finally:
         FreeCAD.closeDocument(doc.Name)
 
@@ -2303,22 +2205,22 @@ def test_stop_does_not_build_a_fresh_worker_for_an_idle_session(panel):
     a Session that never sent an Intent must not silently manufacture one.
     """
     panel.new_chat()
-    log = panel._current_log()
-    assert log not in panel._workers
+    session_id = panel.chat_sessions.current_id()
+    assert session_id not in panel._workers
 
     panel.on_stop()
 
-    assert log not in panel._workers
+    assert session_id not in panel._workers
 
 
 def test_abort_does_not_build_a_fresh_worker_for_an_idle_session(panel):
     panel.new_chat()
-    log = panel._current_log()
-    assert log not in panel._workers
+    session_id = panel.chat_sessions.current_id()
+    assert session_id not in panel._workers
 
     panel.on_abort()
 
-    assert log not in panel._workers
+    assert session_id not in panel._workers
 
 
 class _StuckProcess:
@@ -2364,7 +2266,7 @@ def test_stop_and_abort_kill_the_run_provider_process_without_waiting_the_ceilin
 
     for action in ("stop", "abort"):
         panel.new_chat()
-        bundle = panel._worker_for(panel._current_log())
+        bundle = panel._worker_for(panel.chat_sessions.current_id())
 
         process = _StuckProcess()
         stub = _StubSdkClient()
@@ -2487,42 +2389,6 @@ def _write_a_png(path):
     assert picture.save(path, "PNG")
 
 
-def test_a_review_that_passed_still_says_so_in_the_transcript(panel, tmp_path):
-    """The other half: nothing asks anything after a pass, so the line is all there is."""
-    _review_transcript_evidence(panel, tmp_path, verdict="pass",
-                                reason="it matches the drawing")
-
-    assert "it matches the drawing" in _said_in(panel)
-
-    panel._reset_render_state()
-
-
-def _review_transcript_evidence(panel, tmp_path, verdict="fail",
-                                reason="the flange is mirrored"):
-    """
-    What `_update_review_evidence` reads off the stream before a Review
-    verdict's own `on_revision` is asked anything: the acceptance
-    checks, the four views `review_views` wrote, and the verdict itself.
-    """
-    from conftest import QtGui
-
-    from core.events import ASSERTION, Event, REVIEW_VERDICT, TOOL_RESULT
-
-    views = []
-    for name in ("iso.png", "front.png", "top.png", "right.png"):
-        path = str(tmp_path / name)
-        QtGui.QPixmap(40, 30).save(path)
-        views.append(path)
-
-    panel.on_event(Event(ASSERTION, {"ok": True, "code": "assert True",
-                                     "confirmed": ["the bore is centred"],
-                                     "uncovered": [], "traceback": ""}))
-    panel.on_event(Event(TOOL_RESULT, {"name": "review_views",
-                                       "result": {"views": views}}))
-    panel.on_event(Event(REVIEW_VERDICT, {"verdict": verdict, "reason": reason}))
-    return views
-
-
 def test_reasoning_streams_inline_and_never_pins_to_the_queue(panel):
     """
     The status line used to carry the last 90 characters of every
@@ -2531,8 +2397,8 @@ def test_reasoning_streams_inline_and_never_pins_to_the_queue(panel):
     """
     from core.events import Event, THOUGHT
 
-    index, _ = panel.chat_sessions.add_new_chat("reasoning-run")
-    panel.switch_session(index)
+    session_id, _ = panel.chat_sessions.add_new_chat("reasoning-run")
+    panel.switch_session(session_id)
     before_text, before_visible = _now_on(panel), panel._queue_widget.isVisible()
 
     long_thought = "the plan looks reasonable so I will start from the base sketch " * 3
@@ -2554,8 +2420,8 @@ def test_a_wordless_thought_is_a_row_that_does_not_open(panel):
     from core.events import Event, THOUGHT
     from ui.accordion_widget import AccordionWidget
 
-    index, _ = panel.chat_sessions.add_new_chat("wordless-run")
-    panel.switch_session(index)
+    session_id, _ = panel.chat_sessions.add_new_chat("wordless-run")
+    panel.switch_session(session_id)
 
     panel.on_event(Event(THOUGHT, {"phase": "design", "text": ""}))
     QT_APP.processEvents()
@@ -2572,8 +2438,8 @@ def test_a_thought_that_arrives_late_gets_its_chevron_back(panel):
     from core.events import Event, THOUGHT
     from ui.accordion_widget import AccordionWidget
 
-    index, _ = panel.chat_sessions.add_new_chat("late-words-run")
-    panel.switch_session(index)
+    session_id, _ = panel.chat_sessions.add_new_chat("late-words-run")
+    panel.switch_session(session_id)
 
     panel.on_event(Event(THOUGHT, {"phase": "design", "text": ""}))
     panel.on_event(Event(THOUGHT, {"phase": "design", "text": "the boss is the datum"}))
@@ -2594,8 +2460,8 @@ def test_the_thinking_row_says_how_long_it_has_been_thinking(panel):
     from core.events import Event, THOUGHT
     from ui.accordion_widget import AccordionWidget
 
-    index, _ = panel.chat_sessions.add_new_chat("slow-run")
-    panel.switch_session(index)
+    session_id, _ = panel.chat_sessions.add_new_chat("slow-run")
+    panel.switch_session(session_id)
 
     panel.on_event(Event(THOUGHT, {"phase": "design", "text": ""}))
     QT_APP.processEvents()
@@ -2617,8 +2483,8 @@ def test_the_words_a_phase_writes_open_a_row_of_their_own(panel):
     from core.events import Event, THOUGHT, WRITING
     from ui.accordion_widget import AccordionWidget
 
-    index, _ = panel.chat_sessions.add_new_chat("writing-run")
-    panel.switch_session(index)
+    session_id, _ = panel.chat_sessions.add_new_chat("writing-run")
+    panel.switch_session(session_id)
 
     panel.on_event(Event(THOUGHT, {"phase": "plan", "text": "two Steps, then"}))
     QT_APP.processEvents()
@@ -2651,8 +2517,8 @@ def test_two_pages_of_one_drawing_each_keep_their_own_clock(panel):
     from core.events import Event, COST, THOUGHT
     from ui.accordion_widget import AccordionWidget
 
-    index, _ = panel.chat_sessions.add_new_chat("two-page-run")
-    panel.switch_session(index)
+    session_id, _ = panel.chat_sessions.add_new_chat("two-page-run")
+    panel.switch_session(session_id)
 
     panel.on_event(Event(THOUGHT, {"phase": "design: page 1", "text": ""}))
     panel.on_event(Event(THOUGHT, {"phase": "design: page 2", "text": ""}))
@@ -2687,8 +2553,8 @@ def test_a_page_that_starts_writing_ends_only_its_own_reasoning(panel):
     from core.events import Event, THOUGHT, WRITING
     from ui.accordion_widget import AccordionWidget
 
-    index, _ = panel.chat_sessions.add_new_chat("interleaved-run")
-    panel.switch_session(index)
+    session_id, _ = panel.chat_sessions.add_new_chat("interleaved-run")
+    panel.switch_session(session_id)
 
     panel.on_event(Event(THOUGHT, {"phase": "design: page 1", "text": ""}))
     panel.on_event(Event(THOUGHT, {"phase": "design: page 2", "text": ""}))
@@ -2718,8 +2584,8 @@ def test_the_thinking_row_stops_counting_when_the_call_is_paid_for(panel):
     from core.events import Event, COST, THOUGHT
     from ui.accordion_widget import AccordionWidget
 
-    index, _ = panel.chat_sessions.add_new_chat("paid-run")
-    panel.switch_session(index)
+    session_id, _ = panel.chat_sessions.add_new_chat("paid-run")
+    panel.switch_session(session_id)
 
     panel.on_event(Event(THOUGHT, {"phase": "design", "text": ""}))
     QT_APP.processEvents()
@@ -2746,8 +2612,8 @@ def test_the_thinking_row_wears_the_brain_figma_puts_on_it(panel):
     from ui.accordion_widget import AccordionWidget
     from ui.design_tokens import ICON
 
-    index, _ = panel.chat_sessions.add_new_chat("brain-run")
-    panel.switch_session(index)
+    session_id, _ = panel.chat_sessions.add_new_chat("brain-run")
+    panel.switch_session(session_id)
 
     panel.on_event(Event(THOUGHT, {"phase": "design", "text": "measuring the flats"}))
     QT_APP.processEvents()
@@ -2772,8 +2638,8 @@ def test_reasoning_is_not_truncated_to_ninety_characters(panel):
     from core.events import Event, THOUGHT
     from ui.accordion_widget import AccordionWidget
 
-    index, _ = panel.chat_sessions.add_new_chat("long-reasoning-run")
-    panel.switch_session(index)
+    session_id, _ = panel.chat_sessions.add_new_chat("long-reasoning-run")
+    panel.switch_session(session_id)
 
     chunks = ["thinking about the base sketch and its constraints, " * 2,
               "then the fillet radius and how it interacts with the pocket depth " * 2]
@@ -2791,14 +2657,14 @@ def test_reasoning_is_not_truncated_to_ninety_characters(panel):
 
 def test_a_run_with_no_reasoning_shows_no_thinking_accordion(panel):
     """A model that emits no reasoning gets no empty placeholder for it."""
-    from core.events import Event, INTENT, PLAN
+    from core.events import Event, INTENT, QUESTION
     from ui.accordion_widget import AccordionWidget
 
-    index, _ = panel.chat_sessions.add_new_chat("no-reasoning-run")
-    panel.switch_session(index)
+    session_id, _ = panel.chat_sessions.add_new_chat("no-reasoning-run")
+    panel.switch_session(session_id)
 
     panel.on_event(Event(INTENT, {"text": "a plain box"}))
-    panel.on_event(Event(PLAN, {"steps": ["Make a box"]}))
+    panel.on_event(Event(QUESTION, {"text": "How tall?"}))
     QT_APP.processEvents()
 
     thinking = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)
@@ -2829,10 +2695,10 @@ def test_a_tool_call_row_carries_how_long_the_call_took(panel):
     from ui.accordion_widget import AccordionWidget
 
     panel.on_event(Event(kind=INTENT, data={"text": "a plain box"}))
-    panel.on_event(Event(kind=TOOL_CALL, data={"name": "review_views", "arguments": {}},
+    panel.on_event(Event(kind=TOOL_CALL, data={"name": "base_inventory", "arguments": {}},
                          at=1000.0))
     panel.on_event(Event(kind=TOOL_RESULT,
-                         data={"name": "review_views", "result": {"status": "done"}},
+                         data={"name": "base_inventory", "result": {"status": "done"}},
                          at=1003.2))
     QT_APP.processEvents()
 
@@ -2840,63 +2706,6 @@ def test_a_tool_call_row_carries_how_long_the_call_took(panel):
     titles = [row.toggle_button.text()
               for row in history.widget().findChildren(AccordionWidget)]
     assert any("(3.2s)" in title for title in titles), titles
-
-
-def test_a_sub_agent_spawn_shows_a_live_row_before_it_answers(panel):
-    """AC6: the row appears while the worker is still running, not only after."""
-    from core.events import Event, SUB_AGENT_SPAWNED
-    from ui.accordion_widget import AccordionWidget
-
-    index, _ = panel.chat_sessions.add_new_chat("spawn-run")
-    panel.switch_session(index)
-
-    panel.on_event(Event(SUB_AGENT_SPAWNED, {"phase": "design", "prompt": "read page 2"}))
-    QT_APP.processEvents()
-
-    row = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)][-1]
-    assert "Sub-agent (design)" in row.toggle_button.text()
-    assert row._clock is not None, "the row should be pulsing while the worker runs"
-
-
-def test_a_sub_agent_answer_fills_the_spawned_row_with_its_transcript(panel):
-    """Expanding the row shows the worker's full transcript, not only its answer."""
-    from core.events import Event, SUB_AGENT_ANSWERED, SUB_AGENT_SPAWNED
-    from ui.accordion_widget import AccordionWidget
-
-    index, _ = panel.chat_sessions.add_new_chat("answer-run")
-    panel.switch_session(index)
-
-    panel.on_event(Event(SUB_AGENT_SPAWNED, {"phase": "design", "prompt": "read page 2"}))
-    panel.on_event(Event(SUB_AGENT_ANSWERED, {
-        "phase": "design", "answer": "13.0 mm",
-        "transcript": [{"role": "user", "content": "read page 2"},
-                       {"role": "assistant", "content": "13.0 mm"}]}))
-    QT_APP.processEvents()
-
-    rows = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)]
-    assert len(rows) == 1, "the answer should fill the spawned row, not add a second one"
-    row = rows[0]
-    assert row._clock is None, "an answered worker is done, not still pulsing"
-    row.toggle_content()
-    assert "read page 2" in row.content_area.text()
-    assert "13.0 mm" in row.content_area.text()
-
-
-def test_a_refused_spawn_renders_its_own_distinct_row(panel):
-    """AC6: a refusal is its own entry, not silently absent from the panel."""
-    from core.events import Event, SUB_AGENT_REFUSED
-    from ui.accordion_widget import AccordionWidget
-
-    index, _ = panel.chat_sessions.add_new_chat("refused-run")
-    panel.switch_session(index)
-
-    panel.on_event(Event(SUB_AGENT_REFUSED, {"phase": "worker", "reason": "depth"}))
-    QT_APP.processEvents()
-
-    row = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)][-1]
-    assert "refused" in row.toggle_button.text().lower()
-    row.toggle_content()
-    assert "depth" in row.content_area.text()
 
 
 def test_the_end_of_a_run_reaches_the_panel_on_the_gui_thread(panel):
@@ -2916,7 +2725,7 @@ def test_the_end_of_a_run_reaches_the_panel_on_the_gui_thread(panel):
     """
     from conftest import QtCore
 
-    log = panel._current_log()
+    log = panel.chat_sessions.current_id()
     bundle = panel._worker_for(log)
     main = QtCore.QThread.currentThread()
     ran_on = {}
@@ -2975,23 +2784,18 @@ def test_daedalus_panel_has_no_dead_request_work_signal():
     assert not hasattr(DaedalusPanel, "request_work")
 
 
-def test_no_event_kind_the_loop_emits_puts_a_warning_in_the_chat(panel):
+def test_the_dispatch_table_names_only_kinds_the_stream_registers(panel):
     """
-    `on_event` warns in the transcript about a kind its table does not name,
-    so every kind in `core.events.KINDS` must be a key of it, or a live run
-    shows the user a warning per event.
+    `on_event` draws a kind through its table or falls through to `narrate`;
+    a table key the stream does not register would never be reached.
     """
     from core import events as ev
     from ui.daedalus_panel import DaedalusPanel
 
     panel.new_chat()
-    panel.on_event(ev.Event(ev.CHANGE_SET, {}))
-    tables = {
-        "_ON_EVENT_DISPATCH": set(ev.KINDS) - {ev.INTENT},
-    }
-    missing = {attr: sorted(kinds - set(getattr(DaedalusPanel, attr)))
-               for attr, kinds in tables.items()}
-    assert missing == {attr: [] for attr in tables}
+    panel.on_event(ev.Event(ev.CALL_STARTED, {}))
+
+    assert set(DaedalusPanel._ON_EVENT_DISPATCH) <= set(ev.KINDS)
 
 
 def test_the_intent_shows_at_once_while_the_message_is_routed(panel, monkeypatch):
@@ -3016,7 +2820,7 @@ def test_the_intent_shows_at_once_while_the_message_is_routed(panel, monkeypatch
         panel.on_event(Event(INTENT, {"text": "a flanged bushing"}))
     finally:
         panel._set_running(False)
-        panel._worker_for(panel._current_log()).running = False
+        panel._worker_for(panel.chat_sessions.current_id()).running = False
 
     shown = _said_in(panel)
     assert shown.count("a flanged bushing") == 1

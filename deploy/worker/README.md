@@ -23,14 +23,13 @@ Every reader in `core.freecad_apply` already guards its `import FreeCADGui` with
 | Path | Without a display |
 | --- | --- |
 | `_selection` | `[]` |
-| `_active_view`, so `capture_review_views` (the five review pictures) | `None`, `[]` |
+| `_active_view` | `None` |
 | `_active_body` | falls back to the only Body |
 | `lint` | reads source text only, never imports the GUI |
 
 `ApplyPipeline.main_window`, `start_run` and `end_run` reach `Gui.getMainWindow()`; `sdk.Client` calls none of them.
 
-Decision: the worker runs with the GUI paths disabled and ships no Xvfb. A worker therefore cannot produce review
-pictures; a future need for them is a new ticket with its own image layer. `smoke.py` records the answers above as JSON
+Decision: the worker runs with the GUI paths disabled and ships no Xvfb. `smoke.py` records the answers above as JSON
 and `tests/test_worker_image.py` asserts them.
 
 ## Smoke test

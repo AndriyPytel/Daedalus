@@ -78,19 +78,6 @@ class _AProcessThatTakesTheRequest:
         return None
 
 
-def test_a_worker_that_cannot_come_back_answers_no_reading_instead_of_raising(
-        unstarted, monkeypatch):
-    """
-    Moving the reading check into the child means a segfaulting solver
-    costs the reading and not the run. A restart that cannot be made was the
-    hole in that: `start()` raised out of `reading()`, through
-    `_the_geometry_disagrees`, and ended the run at the second death.
-    """
-    monkeypatch.setattr(Kernel, "start", _never_comes_up)
-
-    assert unstarted.reading({"do": "reading"}, timeout=0.1) is None
-
-
 def test_a_restart_that_fails_after_a_death_is_a_result_and_not_an_exception(
         unstarted, monkeypatch):
     """

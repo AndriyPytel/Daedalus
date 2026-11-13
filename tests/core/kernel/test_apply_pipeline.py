@@ -257,20 +257,6 @@ def test_a_fillet_that_never_says_how_many_edges_never_reaches_the_document(pipe
     assert pipeline.trace == []
 
 
-def test_review_views_reads_the_pipelines_own_document(pipeline, monkeypatch):
-    """
-    Review captures the Session's own bound Document, not whichever
-    tab is in front — the same Document `apply` just landed the Step on.
-    """
-    seen = []
-    monkeypatch.setattr("core.freecad_apply.capture_review_views",
-                        lambda paths, doc, dispatch: seen.append(doc) or paths)
-
-    pipeline.review_views()
-
-    assert seen == [pipeline.document]
-
-
 def test_every_document_touch_goes_through_the_dispatcher():
     """
     Every document touch goes through the dispatcher: resolve the Document,
