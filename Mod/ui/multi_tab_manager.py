@@ -3,8 +3,7 @@ ChatSessionManager is the stack of chat areas, one per Session. The
 Sessions themselves are `core.sessions.Sessions`, the durable index with
 the names, the pruning and whose transcript is due, none of which needs Qt;
 what is left here is the half that is genuinely a widget, the stack holding
-one chat area per Session at the same positions and turning what changed
-into signals. A restored Session's chat area is built empty and filled the
+one chat area per Session, found by the Session's id. A restored Session's chat area is built empty and filled the
 first time it is shown, so opening the panel with a hundred Sessions in
 history costs nothing until one is read.
 """
@@ -25,10 +24,7 @@ class ChatSessionManager(QtWidgets.QWidget):
     - The header title label shows the active Session's name
     """
 
-    session_changed = QtCore.Signal(int)
-    session_added   = QtCore.Signal(int, str)
-    session_removed = QtCore.Signal(int)
-    session_renamed = QtCore.Signal(int, str)
+    session_changed = QtCore.Signal(str)
 
     def __init__(self, sessions=None):
         super().__init__()
@@ -40,6 +36,7 @@ class ChatSessionManager(QtWidgets.QWidget):
         layout.addWidget(self.stack)
 
         self.sessions = sessions if sessions is not None else Sessions()
+        self._pages = {}
 
     @staticmethod
     def _make_list() -> QtWidgets.QScrollArea:
@@ -127,7 +124,7 @@ between every line of one.
         container.setObjectName("scrollContainer")
         return scroll
 
-    def _new_page(self):
+    def _new_page(self, session_id: str):
         """One chat area, in a stack page of its own, at the end."""
         area = self._make_list()
 
@@ -137,22 +134,27 @@ between every line of one.
         vl.addWidget(area)
 
         self.stack.addWidget(container)
+        self._pages[session_id] = container
         return area
 
-    def _drop_page(self, position: int):
-        widget = self.stack.widget(position)
+    def drop_page(self, session_id: str):
+        widget = self._pages.pop(session_id, None)
         if widget is not None:
             self.stack.removeWidget(widget)
             widget.deleteLater()
 
-    def clear_page(self, position: int):
+    def current_id(self) -> str | None:
+        current = self.stack.currentWidget()
+        return next((sid for sid, page in self._pages.items() if page is current), None)
+
+    def clear_page(self, session_id: str):
         """
         Empty a Session's page back to nothing, in place, for a Session resynced
 from its transcript after running while it was not on screen: the page
 already carries whatever it showed the last time it was open, and replaying
 into it unemptied would land the whole transcript a second time after that.
 """
-        container = self.stack.widget(position)
+        container = self._pages.get(session_id)
         if container is None or container.layout() is None:
             return
         layout = container.layout()
@@ -164,60 +166,15 @@ into it unemptied would land the whole transcript a second time after that.
 
     def load(self):
         """Rebuild the Sessions from the index, each with an empty chat area."""
-        count = self.sessions.load()
-        while self.stack.count() < count:
-            self._new_page()
-        return count
+        self.sessions.load()
+        for session_id in self.sessions.ids():
+            self._new_page(session_id)
 
     def add_new_chat(self, name: str = "New Chat", document: str = ""):
-        idx = self.sessions.add(name, document)
-        area = self._new_page()
-        self.stack.setCurrentIndex(idx)
-        self.session_added.emit(idx, name)
-        return idx, area
-
-    def begin(self, index: int, name: str) -> bool:
-        """
-        The Session's first Intent: it takes a name and enters the picker.
-
-        Pruning happens here, because this is where the index grows, and it
-        moves the Sessions after it — so the caller must re-read the live
-        position rather than reuse the one it passed in.
-        """
-        session = self.sessions.at(index)
-        started, dropped = self.sessions.begin(index, name)
-        for position in dropped:
-            self._drop_page(position)
-            self.session_removed.emit(position)
-        if started:
-            self.session_renamed.emit(index, session["name"])
-        return started
-
-    def wants_a_title(self, index: int) -> bool:
-        return self.sessions.wants_a_title(index)
-
-    def title_arrived(self, session_id, title: str) -> bool:
-        position = self.sessions.title_arrived(session_id, title)
-        if position is None:
-            return False
-        self.session_renamed.emit(position, self.sessions.at(position)["name"])
-        return True
-
-    def remove_session(self, index: int):
-        if not self.sessions.remove(index):
-            return
-        self._drop_page(index)
-        self.session_removed.emit(index)
-
-        if self.stack.count() == 0:
-            self.add_new_chat("New Chat")
-
-    def rename_session(self, index: int, new_name: str):
-        if self.sessions.rename(index, new_name):
-            self.session_renamed.emit(index, new_name.strip())
-
-    def name_document(self, session_id, document: str, document_id: str = ""):
-        self.sessions.name_document(session_id, document, document_id)
+        session_id = self.sessions.add(name, document)
+        area = self._new_page(session_id)
+        self.stack.setCurrentWidget(self._pages[session_id])
+        return session_id, area
 
     def get_current_chat_history(self) -> QtWidgets.QScrollArea | None:
         container = self.stack.currentWidget()
@@ -225,19 +182,7 @@ into it unemptied would land the whole transcript a second time after that.
             return None
         return container.layout().itemAt(0).widget()
 
-    def count(self) -> int:
-        return self.sessions.count()
-
-    def get_session_info(self, index: int) -> dict | None:
-        return self.sessions.at(index)
-
-    def indexed_sessions(self) -> list:
-        return self.sessions.indexed()
-
-    def mark_restored(self, index: int) -> bool:
-        return self.sessions.mark_restored(index)
-
-    def switch_to(self, index: int):
-        if 0 <= index < self.stack.count():
-            self.stack.setCurrentIndex(index)
-            self.session_changed.emit(index)
+    def switch_to(self, session_id: str):
+        if session_id in self._pages:
+            self.stack.setCurrentWidget(self._pages[session_id])
+            self.session_changed.emit(session_id)

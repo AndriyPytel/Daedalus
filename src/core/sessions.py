@@ -2,13 +2,14 @@
 The Sessions and the rules about them, with no Qt in the room: a Session is
 durable -- a name, when it was created, the Document it worked on, and the
 path of its event log -- with nothing about its content held in a second
-place. These rules -- which Session is in the index, which may be renamed
-by a generated title, what is pruned off the tail, whose transcript is due
+place, and it is addressed by one id, the uuid in its log's file name.
+These rules -- which Session is in the index, which may be renamed by a
+generated title, what is pruned off the tail, whose transcript is due
 -- live here rather than inside a `QWidget`, so reaching them costs no dock.
 Where the index and the transcripts actually live is a seam: `SettingsIndex`
 is the real one, FreeCAD's settings and its user directory, while
 `ui/multi_tab_manager.py` holds the other half, one chat area per Session at
-the same positions.
+the same ids.
 """
 import os
 import time
@@ -35,14 +36,9 @@ def _wants_a_title(session) -> bool:
                 and not session.get("named") and not session.get("manual"))
 
 
-def _matches(record, session) -> bool:
-    """
-    *session* is the typed identity `.id`, not the record's own log path.
-    A bare log-path string is still accepted, matched against `log`.
-    """
-    if isinstance(session, str):
-        return record["log"] == session
-    return record.get("session") is not None and record["session"].id == session.id
+def log_id(log: str) -> str:
+    """The Session's id: the uuid in the file name of its log."""
+    return os.path.splitext(os.path.basename(log))[0]
 
 
 class SettingsIndex:
@@ -67,8 +63,8 @@ class Sessions:
     """
     Every Session this process knows about, in the order they are shown.
 
-    A position is the whole address of a Session — the same position the stack
-    of chat areas uses — so anything that moves them says which moved.
+    The id is the whole address of a Session, so pruning or removing another
+    one cannot move it.
     """
 
     def __init__(self, index=None):
@@ -104,8 +100,8 @@ class Sessions:
             self._save()
         return self.count()
 
-    def add(self, name: str = "New Chat", document: str = "") -> int:
-        """A Session that has not been used yet. Returns its position."""
+    def add(self, name: str = "New Chat", document: str = "") -> str:
+        """A Session that has not been used yet. Returns its id."""
         return self._append({
             "name": name,
             "created_at": time.time(),
@@ -116,28 +112,23 @@ class Sessions:
             "indexed": False,
         })
 
-    def _append(self, record) -> int:
-        from core.llm import Session
-
-        session = dict(record)
+    def _append(self, record) -> str:
+        session = dict(record, id=log_id(record["log"]))
         session.setdefault("restored", False)
         session.setdefault("document_id", "")
-        session.setdefault("session", Session())
         self._sessions.append(session)
-        return len(self._sessions) - 1
+        return session["id"]
 
-    def begin(self, index: int, name: str):
+    def begin(self, session_id: str, name: str):
         """
         The Session's first Intent: it takes a name and enters the picker,
         returning `(started, dropped)`. `started` is False once it already
-        has, so a second Intent changes nothing; `dropped` is the positions
+        has, so a second Intent changes nothing; `dropped` is the ids
         pruned off the tail to make room, oldest first, and the caller owns
-        whatever it hung on those positions. This is where the index grows,
-        so this is where it is bounded, and pruning moves the Sessions
-        after it, so the caller must re-read the live position rather than
-        reuse the one it passed in.
+        whatever it hung on those ids. This is where the index grows, so
+        this is where it is bounded.
         """
-        session = self.at(index)
+        session = self.at(session_id)
         if session is None or session["indexed"]:
             return False, []
 
@@ -153,90 +144,87 @@ class Sessions:
         dropped = []
         indexed = [s for s in self._sessions if s.get("indexed")]
         while len(indexed) > keep:
-            position = self._sessions.index(indexed.pop(0))
-            if self.remove(position):
-                dropped.append(position)
+            oldest = indexed.pop(0)["id"]
+            if self.remove(oldest):
+                dropped.append(oldest)
         return dropped
 
-    def wants_a_title(self, index: int) -> bool:
+    def wants_a_title(self, session_id: str) -> bool:
         """Still on its fallback name, so the generated title is worth asking for."""
-        return _wants_a_title(self.at(index))
+        return _wants_a_title(self.at(session_id))
 
-    def title_arrived(self, session_id, title: str):
+    def title_arrived(self, session_id: str, title: str) -> bool:
         """
         The generated title, taken once and then frozen; a rename outranks
-        it. Keyed by the Session's own typed identity, not the position or
-        the log path, since the call outlives the position and a Session
-        deleted mid-flight must not rename its neighbour. Returns the
-        position renamed, or None.
+        it. Keyed by the id, which outlives every position, so a Session
+        deleted mid-flight cannot rename its neighbour.
         """
-        record = next((s for s in self._sessions if _matches(s, session_id)), None)
+        record = self.at(session_id)
         if not _wants_a_title(record) or not title.strip():
-            return None
+            return False
         record["name"] = title.strip()
         record["named"] = True
         self._save()
-        return self._sessions.index(record)
+        return True
 
-    def rename(self, index: int, new_name: str) -> bool:
+    def rename(self, session_id: str, new_name: str) -> bool:
         """
         The log's path does not follow the name, so a rename cannot orphan it.
 
         A name the user chose is marked as theirs, and is never replaced by a
         generated one, now or later.
         """
-        if not 0 <= index < len(self._sessions) or not new_name.strip():
+        record = self.at(session_id)
+        if record is None or not new_name.strip():
             return False
-        self._sessions[index]["name"] = new_name.strip()
-        self._sessions[index]["manual"] = True
+        record["name"] = new_name.strip()
+        record["manual"] = True
         self._save()
         return True
 
-    def name_document(self, session_id, document: str, document_id: str = "") -> bool:
+    def name_document(self, session_id: str, document: str, document_id: str = "") -> bool:
         """
         Record which Document a Session worked on, so the picker can say
         so, keeping two things that answer two questions. The name is what
         the user calls the file and is what the picker shows; the id is the
         Document's own `Uid`, since FreeCAD calls every unsaved Document
         "Unnamed" and matching by name alone would open the wrong chat.
-        Matched by the Session's own typed identity, the same as
-        `title_arrived`.
         """
-        for record in self._sessions:
-            if not _matches(record, session_id):
-                continue
-            if record["document"] == document and record.get("document_id") == document_id:
-                return False
-            record["document"] = document
-            record["document_id"] = document_id
-            self._save()
-            return True
-        return False
-
-    def remove(self, index: int) -> bool:
-        if not 0 <= index < len(self._sessions):
+        record = self.at(session_id)
+        if record is None:
             return False
-        discard(self._sessions.pop(index).get("log"))
+        if record["document"] == document and record.get("document_id") == document_id:
+            return False
+        record["document"] = document
+        record["document_id"] = document_id
         self._save()
         return True
 
-    def at(self, index: int):
-        if 0 <= index < len(self._sessions):
-            return self._sessions[index]
-        return None
+    def remove(self, session_id: str) -> bool:
+        record = self.at(session_id)
+        if record is None:
+            return False
+        self._sessions.remove(record)
+        discard(record.get("log"))
+        self._save()
+        return True
+
+    def at(self, session_id: str):
+        return next((s for s in self._sessions if s["id"] == session_id), None)
+
+    def ids(self) -> list:
+        return [session["id"] for session in self._sessions]
 
     def count(self) -> int:
         return len(self._sessions)
 
     def indexed(self) -> list:
-        """`(position, session)` for every Session that has had an Intent."""
-        return [(position, session)
-                for position, session in enumerate(self._sessions)
-                if session.get("indexed")]
+        """Every Session that has had an Intent, in the order they are shown."""
+        return [session for session in self._sessions if session.get("indexed")]
 
-    def mark_restored(self, index: int) -> bool:
+    def mark_restored(self, session_id: str) -> bool:
         """True the first time a Session is asked for; its transcript is due."""
-        session = self.at(index)
+        session = self.at(session_id)
         if session is None or session["restored"]:
             return False
         session["restored"] = True
