@@ -18,7 +18,7 @@ import time
 
 import pytest
 
-from conftest import NO_QT, QT_APP
+from conftest import NO_QT, QT_APP, drain_fetches
 
 pytestmark = pytest.mark.freecad
 
@@ -49,18 +49,18 @@ def sessions_are_the_tests_own():
     """
     if QT_APP is None:
         pytest.skip(NO_QT)
-    from bridge import settings_manager
+    from core import settings
 
-    settings = settings_manager.instance()
-    theirs = settings.get_sessions()
-    settings.set_sessions([])
+    persisted = settings.instance()
+    theirs = persisted.get_sessions()
+    persisted.set_sessions([])
     yield
-    for made in settings.get_sessions():
+    for made in persisted.get_sessions():
         try:
             os.remove(made["log"])
         except OSError:
             pass
-    settings.set_sessions(theirs)
+    persisted.set_sessions(theirs)
 
 
 @pytest.fixture(scope="module")
@@ -638,7 +638,7 @@ def test_the_button_shows_a_stored_model_no_static_list_knows(panel, monkeypatch
     landed when the panel is built. Falling through to the first available
     model — GPT-4o — is deliberate.
     """
-    from bridge import provider_manager, settings_manager
+    from bridge import provider_manager
 
     monkeypatch.setattr(provider_manager.instance(), "awaiting_model_lists", lambda: True)
     _mock_the_pills(monkeypatch, model="gpt-5.6-sol", provider="OpenAI")
@@ -653,14 +653,19 @@ def test_a_failed_fetch_leaves_its_provider_still_awaited(monkeypatch):
     A provider that could not be reached has not said the stored model is gone.
     Treating a failure as an answer drops the user's model on a flaky network.
     """
-    from bridge import provider_manager, settings_manager
+    from bridge import provider_manager
+    from core import model_catalog, settings
+
+    def unreachable(*args, **kwargs):
+        raise ConnectionError("no network")
 
     manager = provider_manager.instance()
-    monkeypatch.setattr(settings_manager.instance(), "get_api_key_for_provider",
-                        lambda provider: "sk-test")
-    monkeypatch.setattr(manager, "_fetched", {})
+    drain_fetches(manager)
+    monkeypatch.setattr(model_catalog, "fetch", unreachable)
+    settings.instance().set_api_key_for_provider("OpenAI", "sk-test")
 
-    manager._on_fetch_failed(manager.get_all_providers()[0], "no network")
+    manager.get_available_models()
+    drain_fetches(manager)
 
     assert manager.awaiting_model_lists()
 
@@ -1525,7 +1530,7 @@ def test_a_launch_opens_an_empty_session_and_keeps_the_earlier_ones(sessions_are
     The panel used to reopen the last Session with its transcript.
     """
     from ui.daedalus_panel import DaedalusPanel
-    from bridge import settings_manager
+    from core import settings
 
     first = DaedalusPanel()
     try:
@@ -1538,7 +1543,7 @@ def test_a_launch_opens_an_empty_session_and_keeps_the_earlier_ones(sessions_are
         live = relaunched.chat_sessions.current_id()
         assert not relaunched.sessions.at(live)["indexed"]
         assert relaunched.sessions.count() >= 2, "the earlier Session was dropped"
-        names = [s["name"] for s in settings_manager.instance().get_sessions()]
+        names = [s["name"] for s in settings.instance().get_sessions()]
         assert "yesterday" in names
     finally:
         relaunched._cleanup_thread()
@@ -1882,7 +1887,7 @@ def test_a_rename_persists_and_reaches_the_header(panel):
     Only a Session that has had an Intent is in the session_id at all, and the
     session_id no longer lines up positionally with the open Sessions.
     """
-    from bridge import settings_manager
+    from core import settings
 
     session_id, _ = panel.chat_sessions.add_new_chat("New Chat")
     panel.chat_sessions.switch_to(session_id)
@@ -1893,12 +1898,12 @@ def test_a_rename_persists_and_reaches_the_header(panel):
     panel.update_header_title(session_id)
 
     assert panel.title_label.text() == "bracket revision"
-    stored = {s["log"]: s["name"] for s in settings_manager.instance().get_sessions()}
+    stored = {s["log"]: s["name"] for s in settings.instance().get_sessions()}
     assert stored[log] == "bracket revision"
 
 
 def test_deleting_a_session_takes_its_transcript_with_it(panel, tmp_path, monkeypatch):
-    from bridge import settings_manager
+    from core import settings
     from conftest import QtWidgets
 
     log = str(tmp_path / "doomed.jsonl")
@@ -1911,7 +1916,7 @@ def test_deleting_a_session_takes_its_transcript_with_it(panel, tmp_path, monkey
     panel.delete_session(session_id)
 
     assert not os.path.exists(log), "delete hid the Session and kept the transcript"
-    assert "doomed" not in [s["name"] for s in settings_manager.instance().get_sessions()]
+    assert "doomed" not in [s["name"] for s in settings.instance().get_sessions()]
 
 
 def test_nothing_grabs_the_left_button_off_the_transcript():
