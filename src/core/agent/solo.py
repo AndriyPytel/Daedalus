@@ -1,7 +1,7 @@
 """
 The loop's builder: one model choosing its own route over the kernel, the read tools and the render, with no Design, Plan, Plan Gate or Review around it.
 
-Each `code` call is linted, rehearsed in the kernel and landed on the live Document; the first `finish` is answered with the Domain's Assertion, and every `finish` is refused until the Domain's done-check holds. A reply keyed by one of the Domain's own calls is answered by that call, or by the `code` call it answers with.
+Each `code` call is one `apply_step` call, which lints, rehearses and lands it on the live Document; the first `finish` is answered with the Domain's Assertion, and every `finish` is refused until the Domain's done-check holds. A reply keyed by one of the Domain's own calls is answered by that call, or by the `code` call it answers with.
 """
 import json
 import os
@@ -11,8 +11,7 @@ import tempfile
 from core.agent.agent import _feedback, _parsed, _say
 from core.events import (APPLIED, ATTACHED, BUDGET_EXHAUSTED, COMPLETED, ERROR, FAILED, INTENT,
                          PREFLIGHT_FAILED, TOOL_CALL, TOOL_RESULT)
-from core.freecad_apply import TRAPS, discard
-from core.lint import lint
+from core.freecad_apply import TRAPS
 from core.llm import Session
 from core.loop.prompt import _TRAPS_PLACEHOLDER, _as_image
 from core.loop.results import LoopResult
@@ -41,7 +40,7 @@ def run_solo(intent, *, domain, llm, kernel, tools, events, attachments=(), canc
              max_turns):
     """
     Run *intent* under *domain* to an accepted `finish`, the turn ceiling or *cancelled*, and hand back a `LoopResult` that is ok only where something landed and the Domain's done-check holds.
-    *tools* is the registry whose `apply_step` lands a rehearsed `code` call on the live Document.
+    *tools* is the registry whose `apply_step` takes the whole `code` call.
     """
     events.emit(INTENT, text=intent)
     if attachments:
@@ -63,49 +62,23 @@ def run_solo(intent, *, domain, llm, kernel, tools, events, attachments=(), canc
         state["failures"] += 1
         events.emit(PREFLIGHT_FAILED, step=state["applied"] + 1, attempt=state["failures"],
                     traceback=traceback, gate=gate)
-        return {"ok": False, "status": "failed", "traceback": traceback}
-
-    def resync():
-        path = tools.call("document_copy")["path"]
-        kernel.check("pass", document=path)
-        discard(path)
-
-    def land(code, result):
-        arguments = {"code": code, "label": "code", "design_model": False,
-                     "kernel_result": {"created": result.created, "deleted": result.deleted,
-                                       "modified": result.modified, "objects": result.objects,
-                                       "names": result.names, "signature": result.signature}}
-        events.emit(TOOL_CALL, name="apply_step", arguments=dict(arguments))
-        landed = tools.call("apply_step", arguments)
-        events.emit(TOOL_RESULT, name="apply_step", result=landed)
-        return landed
 
     def code_turn(code):
         events.emit(TOOL_CALL, name="code", arguments={"code": code})
-        checked = lint(code, design_model=False)
-        if not checked.ok:
-            answer = refused(checked.report(), "lint")
+        landed = tools.call("apply_step", {"code": code})
+        if landed.get("status") == "applied":
+            state["applied"] += 1
+            state["failures"] = 0
+            events.emit(APPLIED, step=state["applied"], label="code", created=landed["created"])
         else:
-            result = kernel.check(code)
-            answer = _answer(result)
-            if not result.ok:
-                refused(result.traceback, None)
-            elif result.created or result.modified or result.deleted:
-                landed = land(code, result)
-                if landed.get("status") == "applied":
-                    state["applied"] += 1
-                    state["failures"] = 0
-                    events.emit(APPLIED, step=state["applied"], label="code",
-                                created=result.created)
-                else:
-                    resync()
-                    if landed.get("gate") == "ownership":
-                        seen = landed.get("traceback")
-                        ownership_refusals[seen] = ownership_refusals.get(seen, 0) + 1
-                        if ownership_refusals[seen] == 2:
-                            state["stopped"] = "the same deletion was refused twice: %s" % seen
-                    answer = refused(landed.get("traceback") or "The Document refused the call.",
-                                     landed.get("gate"))
+            if landed.get("gate") == "ownership":
+                seen = landed.get("traceback")
+                ownership_refusals[seen] = ownership_refusals.get(seen, 0) + 1
+                if ownership_refusals[seen] == 2:
+                    state["stopped"] = "the same deletion was refused twice: %s" % seen
+            refused(landed.get("traceback") or "The Document refused the call.",
+                    landed.get("gate") or None)
+        answer = {key: value for key, value in landed.items() if key != "description"}
         events.emit(TOOL_RESULT, name="code", result=answer)
         return json.dumps(answer, default=str)
 

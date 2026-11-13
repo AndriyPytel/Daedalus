@@ -262,3 +262,38 @@ def test_a_run_given_its_own_stream_emits_every_event_into_it(kernel):
     assert APPLIED in kinds and COMPLETED in kinds
     assert client.seen == []
     client.close()
+
+
+def test_a_run_seeds_the_kernel_once(kernel, monkeypatch):
+    seeds = []
+    real = kernel.check
+
+    def recording(code, *args, **kwargs):
+        if "document" in kwargs:
+            seeds.append(code)
+        return real(code, *args, **kwargs)
+
+    monkeypatch.setattr(kernel, "check", recording)
+    llm = ScriptedLLMClient([_say(code=BOX), _say(code="print(1)"), _say(finish="done")])
+    client = _client(llm, kernel)
+
+    client.agent("Make a cube")
+
+    assert seeds == ["pass"]
+    client.close()
+
+
+def test_a_code_call_that_changes_nothing_is_refused_in_the_models_next_turn(kernel):
+    from core.prompts import read_prompt
+
+    llm = ScriptedLLMClient([_say(code="print(1)"), _say(code=BOX), _say(finish="done")])
+    client = _client(llm, kernel)
+
+    result = client.agent("Make a cube")
+
+    refusal = json.loads(llm.calls[1][-1]["content"])
+    assert refusal["status"] == "failed" and refusal["gate"] == "changed_nothing"
+    assert refusal["traceback"] == read_prompt("changed_nothing.md")
+    assert result.ok and result.steps_applied == 1
+    assert _kinds(client).count(PREFLIGHT_FAILED) == 1
+    client.close()
