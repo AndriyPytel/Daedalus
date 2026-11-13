@@ -86,3 +86,45 @@ def test_an_effort_the_dial_does_not_offer_is_an_argument_error(monkeypatch):
         run.main()
 
     assert stopped.value.code == 2
+
+
+def test_run_flags(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["run.py", "--help"])
+
+    with pytest.raises(SystemExit) as stopped:
+        run.main()
+
+    assert stopped.value.code == 0
+    flags = capsys.readouterr().out
+    for kept in ("--task", "--intent"):
+        assert kept in flags
+    for gone in ("--base-step", "--base-document", "--base-ifc", "--domain", "--attach"):
+        assert gone not in flags
+
+
+def test_a_run_with_no_task_and_no_intent_is_an_argument_error(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["run.py", "--model", "x"])
+
+    with pytest.raises(SystemExit) as stopped:
+        run.main()
+
+    assert stopped.value.code == 2
+    assert "Intent" in capsys.readouterr().err
+
+
+def test_a_step_is_handed_to_the_record_of_the_run_that_wrote_it(tmp_path):
+    client = _FakeClient(solid=True)
+    path = str(tmp_path / "made.step")
+    recorded = []
+
+    run.finish(client, _Result(ok=True), path, record=recorded.append)
+
+    assert recorded == [path]
+
+
+def test_a_save_that_is_not_a_step_is_not_recorded(tmp_path):
+    recorded = []
+
+    run.finish(_FakeClient(solid=True), _Result(ok=True), str(tmp_path / "made.FCStd"), record=recorded.append)
+
+    assert recorded == []

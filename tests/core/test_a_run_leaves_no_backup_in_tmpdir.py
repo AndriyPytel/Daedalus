@@ -11,7 +11,7 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, "src", "tools"))
 
-import run  # noqa: E402
+import task  # noqa: E402
 from core.freecad_apply import discard  # noqa: E402
 from core.kernel import copy_of  # noqa: E402
 
@@ -45,7 +45,7 @@ def test_the_edit_document_leaves_no_backup_beside_it(tmp_path, monkeypatch):
     scratch.mkdir()
     monkeypatch.setenv("TMPDIR", str(scratch))
     monkeypatch.setattr("tempfile.tempdir", None)
-    path = run.base_document(step)
+    path = task.seed_from_step(step)
     try:
         assert os.listdir(scratch) == [os.path.basename(path)]
     finally:
