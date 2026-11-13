@@ -401,27 +401,27 @@ def check_fc(fc_shape):
     return "; ".join([finding.message] + contacts(shape, finding)[:5])
 
 
-def _finished_within(shape, limit):
-    """Whether the STEP export, the grader's re-export of it and the official deflection ladder all get through *shape* in *limit* seconds. The readers and the mesher are native, so only a killed child process stops them, and a forked FreeCAD process hangs."""
+def _step_outcome(shape, limit):
+    """`(finished, read_back)` for *shape*: whether the STEP export, the grader's re-export of it and the mesh gate on the result all finish in *limit* seconds, and whether that re-exported STEP is valid and manifold. The readers and the mesher are native, so only a killed child process stops them, and a forked FreeCAD process hangs."""
     with tempfile.TemporaryDirectory() as folder:
         path = os.path.join(folder, "shape.brep")
         breptools.Write(shape, path)
+        step = os.path.join(folder, "shape.step")
         program = ("import sys; sys.path.insert(0, %r)\nfrom core import manifold\n"
                    "from OCC.Core.BRep import BRep_Builder\nshape = manifold.TopoDS_Shape()\n"
                    "manifold.breptools.Read(shape, %r, BRep_Builder())\n"
                    "exported = shape\nfor _ in range(2):\n"
                    "    manifold._write(exported, %r, 0)\n    exported = manifold._read(%r)\n"
-                   "manifold.check(shape)\n"
-                   % (os.path.dirname(os.path.dirname(os.path.abspath(__file__))), path,
-                      os.path.join(folder, "shape.step"), os.path.join(folder, "shape.step")))
+                   "sys.exit(0 if manifold._valid_and_manifold(exported) else 1)\n"
+                   % (os.path.dirname(os.path.dirname(os.path.abspath(__file__))), path, step, step))
         child = subprocess.Popen([sys.executable, "-c", program], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
             child.wait(limit)
         except subprocess.TimeoutExpired:
             child.kill()
             child.wait()
-            return False
-        return True
+            return False, False
+        return True, child.returncode == 0
 
 
 def _small_features(fc_shape):
@@ -440,14 +440,24 @@ def _small_features(fc_shape):
     return [line for _size, line in sorted(found)]
 
 
+def mesh_facts_fc(fc_shape, limit=MESH_LIMIT):
+    """
+    `{"unmeshable": ..., "step_readback": ...}` for *fc_shape*: the sentence naming the smallest fillets and chamfers to enlarge or remove where the grader's mesher would not get through it in *limit* seconds, else None; and whether the STEP the grader re-exports reads back valid and manifold, None where it never got that far.
+    """
+    shape = from_freecad(fc_shape)
+    finished, read_back = _step_outcome(shape, limit)
+    if not finished:
+        features = _small_features(fc_shape)
+        return {"unmeshable": "the grader's STEP reader or mesher does not finish on this solid within %g s, so it would score 0; the "
+                              "sub-millimetre fillets and chamfers make it, enlarge or remove the smallest: %s"
+                              % (limit, "; ".join(features[:5]) or "none under %g mm found, simplify the smallest curved faces" % SMALL_FEATURE),
+                "step_readback": None}
+    return {"unmeshable": None, "step_readback": read_back}
+
+
 def unmeshable_fc(fc_shape, limit=MESH_LIMIT):
-    """The sentence naming the smallest fillets and chamfers to enlarge or remove where the grader's mesher would not get through *fc_shape* in *limit* seconds, or None."""
-    if not fc_shape.Solids or _finished_within(from_freecad(fc_shape), limit):
-        return None
-    features = _small_features(fc_shape)
-    return ("the grader's STEP reader or mesher does not finish on this solid within %g s, so it would score 0; the "
-            "sub-millimetre fillets and chamfers make it, enlarge or remove the smallest: %s"
-            % (limit, "; ".join(features[:5]) or "none under %g mm found, simplify the smallest curved faces" % SMALL_FEATURE))
+    """The sentence of `mesh_facts_fc` naming why the grader's mesher would not finish *fc_shape*, or None."""
+    return mesh_facts_fc(fc_shape, limit)["unmeshable"] if fc_shape.Solids else None
 
 
 def _read(path):
@@ -521,8 +531,11 @@ def _reads_back(path):
     if reader.ReadFile(path) != IFSelect_RetDone:
         return False
     reader.TransferRoots()
-    shape = reader.OneShape()
-    return BRepCheck_Analyzer(shape).IsValid() and check(shape) is None
+    return _valid_and_manifold(reader.OneShape())
+
+
+def _valid_and_manifold(shape):
+    return shape is not None and BRepCheck_Analyzer(shape).IsValid() and check(shape) is None
 
 
 def _write(shape, path, mode):

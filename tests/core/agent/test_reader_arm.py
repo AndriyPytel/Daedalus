@@ -1,10 +1,10 @@
 """
 Level 1 -- the reader arm's table is parsed tolerantly, and the finish gate lists differences only.
 """
-from core.agent.reader import _direction, mismatches, parse_table
+from core.agent.reader import _direction, parse_table, refusals
 
-PLATE = {"solid": True, "extents": [100.0, 50.0, 10.0], "volume": 40000.0, "faces": 10,
-         "b0": 1, "b1": 0, "b2": 0}
+PLATE = {"solid": True, "solids": 1, "tree_faults": [], "extents": [100.0, 50.0, 10.0],
+         "volume": 40000.0, "faces": 10, "b0": 1, "b1": 0, "b2": 0}
 
 
 def _table(**fields):
@@ -27,13 +27,13 @@ def test_a_reply_with_no_object_is_no_table():
 
 
 def test_a_part_that_matches_the_table_has_no_differences():
-    assert mismatches(PLATE, _table()) == []
+    assert refusals(PLATE, _table()) == []
 
 
 def test_a_wrong_count_is_not_a_difference_and_a_wrong_size_is_only_a_note_to_check_the_crop():
     table = _table(overall={"x": 120.0, "y": 50.0, "z": 10.0}, through_count=4, thin_walled=True)
 
-    found = mismatches(dict(PLATE, volume=45000.0), table)
+    found = refusals(dict(PLATE, volume=45000.0), table)
 
     assert len(found) == 2
     assert found[0].startswith("The table read 120 mm") and "Check it on the crop" in found[0]
@@ -44,28 +44,28 @@ def test_a_wrong_count_is_not_a_difference_and_a_wrong_size_is_only_a_note_to_ch
 def test_a_size_read_off_a_flat_pattern_is_not_compared_with_the_formed_part():
     table = _table(overall={"x": 300.0, "y": 150.0, "z": 3.0}, flat_pattern_present=True)
 
-    assert mismatches(dict(PLATE, extents=[290.0, 150.0, 70.0], volume=5000.0), table) == []
+    assert refusals(dict(PLATE, extents=[290.0, 150.0, 70.0], volume=5000.0), table) == []
 
 
 def test_an_overall_size_within_two_percent_or_half_a_millimetre_is_not_a_difference():
     table = _table(overall={"x": 101.5, "y": 50.4, "z": 10.0})
 
-    assert mismatches(PLATE, table) == []
+    assert refusals(PLATE, table) == []
 
 
 def test_an_edit_that_changed_nothing_is_a_difference_and_a_changed_part_is_not():
     same = dict(PLATE, base={"volume": 40000.0, "faces": 10})
     changed = dict(PLATE, volume=39000.0, base={"volume": 40000.0, "faces": 10})
 
-    assert len(mismatches(same, None)) == 1 and "not been made" in mismatches(same, None)[0]
-    assert mismatches(changed, None) == []
+    assert len(refusals(same, None)) == 1 and "not been made" in refusals(same, None)[0]
+    assert refusals(changed, None) == []
 
 
 def test_the_overall_size_ignores_which_axis_the_part_was_built_along():
     stood_up = dict(PLATE, extents=[10.0, 100.0, 50.0])
 
-    assert mismatches(stood_up, _table()) == []
-    assert len(mismatches(stood_up, _table(overall={"x": 120.0, "y": 50.0, "z": 10.0}))) == 1
+    assert refusals(stood_up, _table()) == []
+    assert len(refusals(stood_up, _table(overall={"x": 120.0, "y": 50.0, "z": 10.0}))) == 1
 
 
 def test_a_views_name_is_matched_to_a_standard_view_by_substring_and_a_bare_section_is_drawn_from_the_front():

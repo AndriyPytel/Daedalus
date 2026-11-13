@@ -27,9 +27,9 @@ class Domain:
     calls: dict = field(default_factory=dict)
 
 
-def unfinished(kernel, check, refusals, name, unmeasurable):
-    """Why the Document is not finished under *name*'s Assertion, one line per failing condition of *refusals* over the facts *check* measures, or `None` where it holds; *unmeasurable* is said where the facts could not be had."""
-    facts = kernel.measure(check)
+def unfinished(kernel, check, refusals, name, unmeasurable, timeout=None):
+    """Why the Document is not finished under *name*'s Assertion, one line per failing condition of *refusals* over the facts *check* measures in *timeout* seconds, or `None` where it holds; *unmeasurable* is said where the facts could not be had."""
+    facts = kernel.measure(check, timeout=timeout)
     if facts is None:
         return unmeasurable
     found = refusals(facts)
