@@ -208,8 +208,8 @@ def respawn_through(argv, database_url, monkeypatch, tmp_path):
 
 
 def assert_edited_with_history(first, second, before, after, tmp_path, calls):
-    assert volumes_of(before, tmp_path) == {"Box": pytest.approx(1000.0)}
-    assert volumes_of(after, tmp_path)["Box"] == pytest.approx(2000.0)
+    assert volumes_of(before, tmp_path)["Body"] == pytest.approx(1000.0)
+    assert volumes_of(after, tmp_path)["Body"] == pytest.approx(2000.0)
     workers = list(dict.fromkeys(call["worker"] for call in calls))
     assert len(workers) == 2
     sent = [call for call in calls if call["worker"] == workers[1]][0]["messages"]

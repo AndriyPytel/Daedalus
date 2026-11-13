@@ -22,9 +22,14 @@ from test_service_worker_channel import FAKE, until
 
 
 @pytest.fixture
-def server(database_url, monkeypatch):
+def worker_argv():
+    return FAKE
+
+
+@pytest.fixture
+def server(database_url, worker_argv, monkeypatch):
     monkeypatch.setenv(db.URL_VARIABLE, database_url)
-    monkeypatch.setenv("DAEDALUS_WORKER_ARGV", json.dumps(FAKE))
+    monkeypatch.setenv("DAEDALUS_WORKER_ARGV", json.dumps(worker_argv))
     monkeypatch.setenv("DAEDALUS_TOKEN", TOKEN)
     sock = socket.socket()
     sock.bind(("127.0.0.1", 0))

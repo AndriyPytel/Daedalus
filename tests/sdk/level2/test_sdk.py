@@ -50,7 +50,7 @@ def test_control_stops_a_run_already_in_flight():
     client.close()
 
 
-def test_kill_provider_reaches_this_clients_own_llm(monkeypatch):
+def test_stop_cancels_the_run_and_kills_this_clients_own_llm(monkeypatch):
     """
     What `Mod/ui/daedalus_panel.py`'s `LoopWorker.stop`/`abort` need of
     `core.llm.claude.kill`, reached through the SDK instead of a second
@@ -63,9 +63,10 @@ def test_kill_provider_reaches_this_clients_own_llm(monkeypatch):
     client = sdk.Client.__new__(sdk.Client)
     client._live = object()
 
-    client.kill_provider()
+    client.stop()
 
     assert calls == [client._live]
+    assert client._stop
 
 
 def test_a_fresh_document_is_created_through_dispatch_not_on_this_thread():
