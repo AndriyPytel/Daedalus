@@ -22,12 +22,12 @@ already hovers a popup row with, reused rather than a second version of the
 same idea. Figma names no Session Picker component of its own, so this is a
 design-language translation, not a component the spec hands over.
 """
-    selected = QtCore.Signal(int)
-    deleted = QtCore.Signal(int)
+    selected = QtCore.Signal(str)
+    deleted = QtCore.Signal(str)
 
-    def __init__(self, index, name, created_at: float, document: str = ""):
+    def __init__(self, session_id, name, created_at: float, document: str = ""):
         super().__init__()
-        self.index = index
+        self.session_id = session_id
         self.setObjectName("HistoryItem")
         self.setFixedHeight(28)
         self.setCursor(QtCore.Qt.PointingHandCursor)
@@ -68,7 +68,7 @@ design-language translation, not a component the spec hands over.
                 font-size: 14px;
             }
         """ % (CONTROL_DENSE, CONTROL_DENSE))
-        self.del_btn.clicked.connect(lambda: self.deleted.emit(self.index))
+        self.del_btn.clicked.connect(lambda: self.deleted.emit(self.session_id))
         layout.addWidget(self.del_btn)
 
         self.setStyleSheet("""
@@ -109,7 +109,7 @@ under every FreeCAD dark theme.
 
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.LeftButton:
-            self.selected.emit(self.index)
+            self.selected.emit(self.session_id)
         super().mousePressEvent(event)
 
 class HistoryPopup(QtWidgets.QFrame):
@@ -127,8 +127,8 @@ and an oversized scrollbar.
 """
     CEILING = 0.6
 
-    session_selected = QtCore.Signal(int)
-    session_deleted = QtCore.Signal(int)
+    session_selected = QtCore.Signal(str)
+    session_deleted = QtCore.Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -178,30 +178,28 @@ and an oversized scrollbar.
 
     def populate(self, rows: list):
         """
-        Rebuild the list from `(position, session)` pairs: the position is given
-rather than counted, because the picker shows a subset -- only the Sessions
-that have had an Intent -- and the row it emits has to name the Session in
-the manager, not the row in this list. Counting was how a filter would open
-the wrong Session.
+        Rebuild the list from the Sessions' records: the picker shows a subset
+-- only the Sessions that have had an Intent -- and the row it emits has to
+name the Session by its id, not by the row's place in this list.
 """
         while self.list_layout.count() > 1:
             item = self.list_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
 
-        for i, info in rows:
-            item = HistoryItem(i, info["name"], info.get("created_at"),
+        for info in rows:
+            item = HistoryItem(info["id"], info["name"], info.get("created_at"),
                                info.get("document") or "")
             item.selected.connect(self._on_selected)
             item.deleted.connect(self._on_deleted)
             self.list_layout.insertWidget(self.list_layout.count() - 1, item)
             
-    def _on_selected(self, index):
-        self.session_selected.emit(index)
+    def _on_selected(self, session_id):
+        self.session_selected.emit(session_id)
         self.close()
 
-    def _on_deleted(self, index):
-        self.session_deleted.emit(index)
+    def _on_deleted(self, session_id):
+        self.session_deleted.emit(session_id)
 
     def filter_items(self, text):
         text = text.lower()
