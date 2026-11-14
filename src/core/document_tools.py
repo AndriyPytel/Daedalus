@@ -432,8 +432,7 @@ def _inventoried(obj):
     Every property the object has, as the running FreeCAD reports it, shared
     by `describe_object` and `describe_type`. An enumeration is named where
     there is one -- `'Through all'` for `ThroughAll` is a Preflight failure
-    no property list would catch. An empty-string value is dropped: a third
-    of one listing was `"group": ""` and `"documentation": ""`.
+    no property list would catch. An empty-string value is dropped.
     """
     inventory = []
     for prop in obj.PropertiesList:

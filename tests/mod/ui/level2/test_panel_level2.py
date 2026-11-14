@@ -1454,9 +1454,9 @@ def _rows_in_the_picker(panel):
 
 def test_a_session_with_no_intent_is_not_in_the_picker_either(panel):
     """
-    QA against FreeCAD 1.1.3 found the invariant enforced in the durable session_id
+    QA against FreeCAD 1.1.3 found the invariant enforced in the durable index
     and not in the picker: `toggle_history` built the popup from every Session
-    in the stack, so a fresh dock showed one `New Chat` row against an session_id
+    in the stack, so a fresh dock showed one `New Chat` row against an index
     holding none of it.
     """
     session_id, _ = panel.chat_sessions.add_new_chat("New Chat")
@@ -1884,8 +1884,8 @@ def test_an_event_kind_the_panel_does_not_know_is_skipped_not_fatal(panel, tmp_p
 
 def test_a_rename_persists_and_reaches_the_header(panel):
     """
-    Only a Session that has had an Intent is in the session_id at all, and the
-    session_id no longer lines up positionally with the open Sessions.
+    Only a Session that has had an Intent is in the index at all, and the
+    index no longer lines up positionally with the open Sessions.
     """
     from core import settings
 

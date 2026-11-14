@@ -1,26 +1,7 @@
 """
-Level 2 -- the geometry fingerprint the Assertion check compares, off a
-real headless FreeCAD Document.
-
-The check itself lives in the Assertion phase (core/loop.py::run,
-core/loop.py::_geometry_regressions), keyed on `entries_a_retry_touched`
-(core/loop.py:2463) rather than on anything Preflight can see -- Preflight's
-own `_recompute_scope` means nothing outside a Step's declared scope can ever
-have a different Shape within one Preflight call (`core/kernel_worker.py`),
-so a per-Step "untouched but moved" check can only ever fire on a legitimate
-dependency cascade (`tests/test_apply_level2.py::
-test_a_dependent_recompute_is_not_reported_as_a_modification`). What
-Preflight can measure, and what a check hands the Assertion phase
-every time it runs, is the current fingerprint -- Volume and BoundBox, read
-straight off `KernelResult.geometry` (`core/kernel_worker.py::
-_geometry_snapshot`). This is that wiring, proved against a real Document;
-the comparison itself is Level 1 (tests/test_geometry_regression_across_a_run.py,
-tests/test_loop.py).
-
-Reproduced with `Part::Fillet` on a `Part::Box`, the same fixture shape
-`test_preflight_worker_recompute_scope.py` already uses for "a dependent left
-stale by a scoped recompute": editing the Box moves the Fillet's own Shape as
-a side effect, without the Step ever naming Fillet.
+Level 2 -- the geometry fingerprint a Preflight hands back, off a real headless FreeCAD Document.
+It is the Volume and BoundBox of every feature, read straight off `KernelResult.geometry`.
+Editing a Box moves its Fillet's own Shape without the Step ever naming the Fillet.
 """
 import pytest
 

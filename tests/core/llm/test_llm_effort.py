@@ -1,5 +1,5 @@
 """
-Level 1 -- the Effort a client is asked for: the one it was built with, which
+Level 1 and 2 -- the Effort a client is asked for: the one it was built with, which
 the factory reads from the single stored `effort` setting.
 """
 import pytest

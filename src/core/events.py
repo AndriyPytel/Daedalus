@@ -1,15 +1,13 @@
 """
 The typed event stream: the loop emits, the panel renders, and a run can be
 inspected from this stream alone without reproducing it, with the loop
-itself asserting on it and never substituting for it. A run ends one of six
+itself asserting on it and never substituting for it. A run ends one of four
 ways that a rate over the stream may never merge: `completed`, `blocked`,
-`budget_exhausted`, `stopped` (the user's Stop, in-flight Step checkpointed),
-`aborted` (the user's Abort, that Step discarded), or `failed`. Measured: 22.4
-of a recorded run's 23.6 minutes of provider time fell after the last
-`thought` of every call, so most of the wait is the reply, not the reasoning;
-`cost.usd` is present only when the client reported a price, and
-`cost.usage_unavailable` marks a truncated call whose provider reported no
-usage at all.
+`budget_exhausted`, or `failed`. Measured: 22.4 of a recorded run's 23.6
+minutes of provider time fell after the last `thought` of every call, so most
+of the wait is the reply, not the reasoning; `cost.usd` is present only when
+the client reported a price, and `cost.usage_unavailable` marks a truncated
+call whose provider reported no usage at all.
 """
 import json
 import time

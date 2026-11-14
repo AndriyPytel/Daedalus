@@ -1460,5 +1460,3 @@ def _raster_where(box, width, height):
 
 def _as_tuple(rect):
     return (round(rect.x0, 1), round(rect.y0, 1), round(rect.x1, 1), round(rect.y1, 1))
-
-

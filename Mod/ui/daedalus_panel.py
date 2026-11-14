@@ -416,9 +416,7 @@ measured as sixteen `QObject::setParent` (different thread) warnings, one
 `queue_widget.py :: _NowLabel.set_full`; a bound method of a main-thread
 QObject gives Qt that QObject as the context instead, which is what makes
 the hop queued, and `Qt.QueuedConnection` on the lambda does not help since
-it still posts to the context's thread, which is still this object. The
-client is held rather than built per run, and builds its own model client
-from settings on every send.
+it still posts to the context's thread, which is still this object.
 """
 
     finished = QtCore.Signal(object, str)
@@ -1124,9 +1122,9 @@ left over is what the name is elided to.
             UIHelpers.get_icon("chevron_down", size=ICON_DENSE, on=self.domain_button))
 
     def toggle_history(self):
-        """The picker holds only indexed Sessions, each carrying its own
-        position: a Session enters on its first Intent (when it gets its
-        name), and the live empty Session is on screen, not in the history.
+        """The picker holds only indexed Sessions, each named by its id: a
+        Session enters on its first Intent (when it gets its name), and the
+        live empty Session is on screen, not in the history.
 
         It shows the Document in front of the user, not the archive: a chat
         belongs to the file it was about. Everything is still reachable -- a

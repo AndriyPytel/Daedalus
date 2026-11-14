@@ -271,7 +271,7 @@ MAKES_A_DOCUMENT = {
 
 def test_only_the_child_makes_a_document():
     """
-    The rule `core/freecad_apply.py` states, checked against the source rather than
+    The rule `core/document_tools.py` states, checked against the source rather than
     trusted: a Document mutation off the main thread is how FreeCAD gets taken
     down, and the loop's phases all run on the worker thread.
 
