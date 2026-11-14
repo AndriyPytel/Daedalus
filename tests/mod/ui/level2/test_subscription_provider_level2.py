@@ -69,6 +69,7 @@ def manager(settings_are_the_tests_own, provider_endpoint, monkeypatch):
 
     instance = provider_manager.instance()
     drain_fetches(instance)
+    instance.forget_model_lists()
     instance.get_models_for_provider(CLAUDE)
     drain_fetches(instance)
     return instance

@@ -72,6 +72,10 @@ class ModelLists:
             if ask != self._credentials(provider):
                 del self._landed[provider]
 
+    def forget(self):
+        self._landed.clear()
+        self._in_flight.clear()
+
     def available(self) -> list:
         """``{id, display, provider}`` for every landed list of a configured provider."""
         return [{"id": m["id"], "display": m["display"], "provider": provider}
