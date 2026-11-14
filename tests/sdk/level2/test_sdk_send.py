@@ -1,30 +1,17 @@
 """
 Level 2 -- `Client.send` is the whole run: the Kernel is seeded once per send, the Domain is inferred when none is chosen, an Owned Object is asked about only when someone is there to ask, and the model is the chat's as it is at each send.
 """
-import json
-
 import pytest
 
 from core.agent.domain import ASSEMBLY, PART
 from core.events import ANSWER, DOMAIN, QUESTION
-from core.kernel import Kernel, find_freecadcmd
 from core.llm import ScriptedLLMClient
-from chat_helpers import set_the_chat, say  # noqa: F401
+from chat_helpers import kernel, set_the_chat, say  # noqa: F401
 
 pytestmark = pytest.mark.freecad
 
 BOX = "doc.addObject('Part::Box', 'Box')\ndoc.recompute()"
 DELETING = say(code="doc.removeObject('UserBox')")
-
-
-@pytest.fixture(scope="module")
-def kernel():
-    try:
-        find_freecadcmd()
-    except RuntimeError as exc:
-        pytest.skip(str(exc))
-    with Kernel(timeout=120) as running:
-        yield running
 
 
 def _client(kernel, llm=None, **options):

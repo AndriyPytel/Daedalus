@@ -9,6 +9,7 @@ import pytest
 
 from core.freecad_apply import ApplyPipeline
 from core.kernel import KernelResult
+from tests.fake_kernel import FakeKernel
 
 
 class FakeObject:
@@ -34,19 +35,6 @@ class FakeMainWindow:
         return []
 
 
-class FakeWorker:
-    """Records what it was asked, including the name map."""
-
-    def __init__(self, result=None):
-        self.result = result
-
-    def rehearse(self, code, timeout=None):
-        return self.result
-
-    def seed(self, path=None, rules=None):
-        return self.result
-
-
 @pytest.fixture
 def trace():
     return []
@@ -54,7 +42,7 @@ def trace():
 
 def _pipeline(trace, result):
     doc = FakeDocument()
-    worker = FakeWorker(result)
+    worker = FakeKernel(result)
 
     def transaction(document, code, label, names=None, expected_signature=None):
         trace.append(("transaction", label, dict(names or {})))
@@ -92,7 +80,7 @@ def test_a_successful_apply_updates_the_accumulator_from_the_rehearsal(trace):
 
 def test_start_run_resets_the_accumulated_names():
     doc = FakeDocument()
-    worker = FakeWorker(KernelResult(ok=True))
+    worker = FakeKernel(KernelResult(ok=True))
 
     def dispatch(func, timeout=None):
         return func()

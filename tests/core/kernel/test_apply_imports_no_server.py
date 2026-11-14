@@ -1,21 +1,25 @@
 """
-Level 1 -- the GUI's replay and the Step modules never import the kernel's server file, and the server imports nothing of a Domain.
+Level 1 -- no module of `core` but the Kernel's client imports the kernel's server file, and the server imports nothing of a Domain.
 """
 import ast
+import importlib.util
+import os
+import pkgutil
 
 from core import freecad_apply
-from core.agent import part_rules
-from core.kernel import kernel_worker, step_namespace
+from core.kernel import kernel_worker
 
 SERVER = "core.kernel.kernel_worker"
+CLIENT = "core.kernel.kernel"
 
 
-def _imports_the_server(module):
-    with open(module.__file__, encoding="utf-8") as handle:
+def _imports_the_server(name):
+    with open(importlib.util.find_spec(name).origin, encoding="utf-8") as handle:
         tree = ast.parse(handle.read())
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
-            named = [node.module] + [node.module + "." + alias.name for alias in node.names]
+            module = node.module or ""
+            named = [module] + [module + "." + alias.name for alias in node.names]
         elif isinstance(node, ast.Import):
             named = [alias.name for alias in node.names]
         else:
@@ -26,7 +30,10 @@ def _imports_the_server(module):
 
 
 def test_apply_imports_no_server():
-    assert not any(_imports_the_server(module) for module in (freecad_apply, step_namespace, part_rules))
+    package = os.path.dirname(freecad_apply.__file__)
+    names = [found.name for found in pkgutil.walk_packages([package], "core.")]
+
+    assert not [name for name in names if name not in (SERVER, CLIENT) and _imports_the_server(name)]
 
 
 def test_the_kernel_worker_imports_nothing_under_core_agent():

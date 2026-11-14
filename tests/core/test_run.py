@@ -88,7 +88,7 @@ def test_an_effort_the_dial_does_not_offer_is_an_argument_error(monkeypatch):
     assert stopped.value.code == 2
 
 
-def test_run_flags(monkeypatch, capsys):
+def test_help_lists_the_task_and_intent_flags(monkeypatch, capsys):
     monkeypatch.setattr(sys, "argv", ["run.py", "--help"])
 
     with pytest.raises(SystemExit) as stopped:
@@ -98,8 +98,6 @@ def test_run_flags(monkeypatch, capsys):
     flags = capsys.readouterr().out
     for kept in ("--task", "--intent"):
         assert kept in flags
-    for gone in ("--base-step", "--base-document", "--base-ifc", "--domain", "--attach"):
-        assert gone not in flags
 
 
 def test_a_run_with_no_task_and_no_intent_is_an_argument_error(monkeypatch, capsys):

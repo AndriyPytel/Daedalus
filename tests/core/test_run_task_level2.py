@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.join(ROOT, "src", "tools"))
 
 import run  # noqa: E402
 from core.llm import ScriptedLLMClient  # noqa: E402
+from chat_helpers import say  # noqa: E402
 
 pytestmark = pytest.mark.freecad
 
@@ -40,10 +41,6 @@ doc.recompute()
 """
 
 
-def _say(**turn):
-    return json.dumps(turn)
-
-
 def _run(monkeypatch, replies, *flags):
     import sdk
 
@@ -70,7 +67,7 @@ def test_an_edit_task_leaves_its_numbers_and_the_base_beside_the_saved_step(monk
     save = str(tmp_path / "out" / "run.step")
     os.makedirs(os.path.dirname(save))
 
-    code = _run(monkeypatch, [_say(code=ADD_A_BLOCK), _say(finish="a block on top")],
+    code = _run(monkeypatch, [say(code=ADD_A_BLOCK), say(finish="a block on top")],
                 "--task", folder, "--log", str(tmp_path / "run.jsonl"), "--save", save)
 
     assert code == 0
@@ -89,7 +86,7 @@ def test_an_edit_task_leaves_its_numbers_and_the_base_beside_the_saved_step(monk
 def test_a_part_run_from_an_intent_alone_leaves_its_numbers_and_no_base(monkeypatch, tmp_path):
     save = str(tmp_path / "run.step")
 
-    code = _run(monkeypatch, [_say(code=A_CUBE), _say(finish="a 10 mm cube")],
+    code = _run(monkeypatch, [say(code=A_CUBE), say(finish="a 10 mm cube")],
                 "--intent", "Make a 10 mm cube.", "--log", str(tmp_path / "run.jsonl"), "--save", save)
 
     assert code == 0

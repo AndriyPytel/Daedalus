@@ -3,27 +3,25 @@ from core.kernel import KernelResult
 
 
 class FakeKernel:
-    def __init__(self, rehearsal=None, probing=None, drawing=None, facts=None):
+    def __init__(self, rehearsal=None, drawing=None, facts=None):
         self.rehearsal = rehearsal or KernelResult(ok=True, created=["Box"])
-        self.probing = probing or KernelResult(ok=True)
         self.drawing = drawing or KernelResult(ok=True, render=None)
         self.facts = facts
-        self.rehearsed, self.probed, self.seeded, self.rendered, self.measured = [], [], [], [], []
+        self.rehearsed, self.seeded, self.rules, self.measured = [], [], [], []
 
     def rehearse(self, code, timeout=None):
         self.rehearsed.append(code)
         return self.rehearsal
 
     def probe(self, code, timeout=None):
-        self.probed.append(code)
-        return self.probing
+        return KernelResult(ok=True)
 
     def seed(self, path=None, rules=None):
         self.seeded.append(path)
-        return KernelResult(ok=True)
+        self.rules.append(rules)
+        return self.rehearsal
 
     def render(self, path, view=None):
-        self.rendered.append((path, view))
         return self.drawing
 
     def measure(self, script, timeout=None):

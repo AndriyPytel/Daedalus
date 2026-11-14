@@ -253,13 +253,16 @@ def test_the_agent_builds_into_the_clients_own_document(kernel):
     client.close()
 
 
-def test_a_design_intent_goes_to_the_agent_unless_the_pipeline_is_asked_for(kernel):
+def test_a_design_intent_goes_to_the_agent(kernel):
     llm = ScriptedLLMClient([_say(code=BOX), _say(finish="done")])
     client = _client(llm, kernel)
 
     result = client.send("Make a cube", route_first=False, choice="part")
 
     assert result.ok
+    kinds = _kinds(client)
+    assert kinds.count(COST) == 2
+    assert APPLIED in kinds and COMPLETED in kinds
     client.close()
 
 

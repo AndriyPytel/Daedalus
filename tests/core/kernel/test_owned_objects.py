@@ -19,8 +19,9 @@ import pytest
 
 from core.freecad_apply import ApplyPipeline, refuse_without_asking
 from core.kernel import KernelResult
-from tests.core.kernel.test_apply_pipeline import FakeDocument, FakeObject, FakeWorker, applying
+from tests.core.kernel.test_apply_pipeline import FakeDocument, FakeObject, applying
 from tests.event_helpers import first_event
+from tests.fake_kernel import FakeKernel
 
 
 class Asked:
@@ -42,7 +43,7 @@ def pipeline(confirm=None, owned=None, created=("Box",), events=None):
         for name in created:
             document.Objects.append(FakeObject(name))
 
-    built = ApplyPipeline(document=doc, worker=FakeWorker(),
+    built = ApplyPipeline(document=doc, worker=FakeKernel(),
                           dispatch=lambda func, timeout=None: func(),
                           transaction=transaction, confirm=confirm, owned=owned,
                           events=events)
@@ -280,7 +281,7 @@ def modelled(objects, confirm=None, owned=None, events=None):
     def transaction(document, code, label, **_):
         pass
 
-    return ApplyPipeline(document=doc, worker=FakeWorker(),
+    return ApplyPipeline(document=doc, worker=FakeKernel(),
                          dispatch=lambda func, timeout=None: func(),
                          transaction=transaction, confirm=confirm,
                          owned=owned, events=events)
@@ -308,7 +309,8 @@ def test_clearing_the_feature_tree_asks_even_when_the_assistant_built_it():
 
 
 def test_refusing_the_rebuild_stops_the_step_and_says_edit_instead():
-    result = applying(modelled(THE_TREE, confirm=Asked(answer=False), owned=OURS), "wipe()", rehearsal=touching(deleted=EVERYTHING))
+    result = applying(modelled(THE_TREE, confirm=Asked(answer=False), owned=OURS), "wipe()",
+                      rehearsal=touching(deleted=EVERYTHING))
 
     assert not result.ok
     assert "rebuild of a model that is already there" in result.traceback
@@ -325,7 +327,8 @@ def test_replacing_one_feature_and_its_sketch_is_a_correction_not_a_rebuild():
     """
     asked = Asked(answer=True)
 
-    result = applying(modelled(THE_TREE, confirm=asked, owned=OURS), "redo_the_bore()", rehearsal=touching(deleted=["SketchBoreLeft", "PocketBoreLeft"]))
+    result = applying(modelled(THE_TREE, confirm=asked, owned=OURS), "redo_the_bore()",
+                      rehearsal=touching(deleted=["SketchBoreLeft", "PocketBoreLeft"]))
 
     assert result.ok
     assert asked.asks == []
@@ -334,7 +337,8 @@ def test_replacing_one_feature_and_its_sketch_is_a_correction_not_a_rebuild():
 def test_deleting_sketches_alone_is_not_counted_as_a_rebuild():
     asked = Asked(answer=True)
 
-    applying(modelled(THE_TREE, confirm=asked, owned=OURS), "tidy()", rehearsal=touching(deleted=["SketchBoreLeft", "SketchBoreRight"]))
+    applying(modelled(THE_TREE, confirm=asked, owned=OURS), "tidy()",
+             rehearsal=touching(deleted=["SketchBoreLeft", "SketchBoreRight"]))
 
     assert asked.asks == []
 
@@ -344,7 +348,8 @@ def test_deleting_the_body_is_a_rebuild_by_itself():
     body = Feature("Body", "PartDesign::Body", ("PartDesign::Body",))
     asked = Asked(answer=False)
 
-    result = applying(modelled(THE_TREE + [body], confirm=asked, owned=OURS | {"Body"}), "del_body()", rehearsal=touching(deleted=["Body", "PadOuterProfile"]))
+    result = applying(modelled(THE_TREE + [body], confirm=asked, owned=OURS | {"Body"}), "del_body()",
+                      rehearsal=touching(deleted=["Body", "PadOuterProfile"]))
 
     assert not result.ok
     assert asked.asks == [{"rebuild": ["Body", "PadOuterProfile"]}]
@@ -387,7 +392,8 @@ def test_both_questions_are_asked_when_a_step_does_both():
     theirs = Feature("UserPad")
     asked = Asked(answer=True)
 
-    result = applying(modelled(THE_TREE + [theirs], confirm=asked, owned=OURS), "wipe()", rehearsal=touching(deleted=EVERYTHING + ["UserPad"]))
+    result = applying(modelled(THE_TREE + [theirs], confirm=asked, owned=OURS), "wipe()",
+                      rehearsal=touching(deleted=EVERYTHING + ["UserPad"]))
 
     assert result.ok
     assert asked.asks == [{"delete": ["UserPad"]},
@@ -399,7 +405,8 @@ def test_refusing_the_first_question_never_reaches_the_second():
     asked = Asked(answer=False)
     theirs = Feature("UserPad")
 
-    result = applying(modelled(THE_TREE + [theirs], confirm=asked, owned=OURS), "wipe()", rehearsal=touching(deleted=EVERYTHING + ["UserPad"]))
+    result = applying(modelled(THE_TREE + [theirs], confirm=asked, owned=OURS), "wipe()",
+                      rehearsal=touching(deleted=EVERYTHING + ["UserPad"]))
 
     assert not result.ok
     assert asked.asks == [{"delete": ["UserPad"]}]
@@ -412,7 +419,7 @@ def unattended(objects, owned, confirm=None):
     def transaction(document, code, label, **_):
         pass
 
-    return ApplyPipeline(document=doc, worker=FakeWorker(),
+    return ApplyPipeline(document=doc, worker=FakeKernel(),
                          dispatch=lambda func, timeout=None: func(),
                          transaction=transaction, confirm=confirm,
                          owned=owned, unattended=True)
@@ -432,7 +439,8 @@ def only_deleting(kinds):
 
 
 def test_an_unattended_run_still_refuses_to_rebuild_what_was_there_before_it():
-    result = applying(unattended(THE_TREE, set(), confirm=only_deleting), "wipe()", rehearsal=touching(deleted=EVERYTHING))
+    result = applying(unattended(THE_TREE, set(), confirm=only_deleting), "wipe()",
+                      rehearsal=touching(deleted=EVERYTHING))
 
     assert not result.ok
     assert result.gate == "ownership"
@@ -443,7 +451,8 @@ def test_an_unattended_rebuild_counts_only_the_features_it_did_not_create():
     one_before = OURS - {"PadOuterProfile"}
     two_before = OURS - {"PadOuterProfile", "PocketBoreLeft"}
 
-    corrected = applying(unattended(THE_TREE, one_before, confirm=only_deleting), "wipe()", rehearsal=touching(deleted=EVERYTHING))
+    corrected = applying(unattended(THE_TREE, one_before, confirm=only_deleting), "wipe()",
+                         rehearsal=touching(deleted=EVERYTHING))
     rebuilt = applying(unattended(THE_TREE, two_before, confirm=only_deleting), "wipe()", rehearsal=touching(deleted=EVERYTHING))
 
     assert corrected.ok

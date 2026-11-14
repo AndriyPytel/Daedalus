@@ -125,7 +125,7 @@ def test_a_sheet_or_a_bare_task_needs_an_intent():
 
 
 def test_the_lane_imports_no_freecad():
-    """Neither the lane nor the reading half of the Task module, which is every function not named `seed_*`, imports FreeCAD, Part or Import."""
+    """No tool imports FreeCAD, Part or Import except `run.py`, which launches the kernel, and the `seed_*` functions of the Task module."""
     banned = {"FreeCAD", "FreeCADGui", "Part", "Import"}
 
     def imports(tree):
@@ -137,8 +137,11 @@ def test_the_lane_imports_no_freecad():
                 found.add(node.module.split(".")[0])
         return found
 
-    for name in ("lane.py", "task.py"):
-        path = os.path.join(ROOT, "src", "tools", name)
+    tools = os.path.join(ROOT, "src", "tools")
+    for name in sorted(os.listdir(tools)):
+        if not name.endswith(".py") or name == "run.py":
+            continue
+        path = os.path.join(tools, name)
         tree = ast.parse(open(path, encoding="utf-8").read(), path)
         tree.body = [node for node in tree.body
                      if not (isinstance(node, ast.FunctionDef) and node.name.startswith("seed_"))]
