@@ -1,5 +1,70 @@
 # Changelog
 
+## 1.4.0 — 2026-11-14
+
+### Breaking
+- `run.py --task <folder>` opens a fixture (Part, edit, Assembly or BIM); `--intent` gives a bare Intent. It replaces five flags.
+- `--base-step`, `--base-document`, `--base-ifc`, `--domain` and `--attach` are gone; `run.py` rejects them.
+- The Gateway's Preferences are `{provider, model, effort, keys, addresses}`; no Role table is accepted.
+- The `default_model` and `naming_model` settings are gone.
+
+### Agent loop
+- A `code` call lints once, inside Apply, with the GUI selection; the loop no longer lints.
+- A `code` call that changes nothing is refused (`changed_nothing`), and Apply is the one place that rule lives.
+- The Kernel is seeded once per run, by `start_run`; the panel and `run.py` no longer seed it.
+- A Part finish measures once: one facts script serves the done-check and the Assertion.
+- A Part finish refuses a Document with more than one solid, and a STEP that does not read back valid and manifold.
+- The Part Domain owns its Step rules and hands them to the Kernel when it seeds; Assembly and BIM run none.
+
+### Kernel and Apply
+- The Kernel has five verbs: `rehearse`, `probe`, `seed`, `render`, `measure`. The wire protocol is private to it.
+- `Kernel.measure` runs a facts script and reads the answer back; Domains no longer carry their own copy.
+- `freecad_apply.py` is split into Apply, Document Tools (`core/document_tools.py`) and Traps (`core/freecad_traps.py`).
+- `kernel_worker.py` is split into the wire server, the Step namespace (`step_namespace.py`) and the Step rules.
+- Lint no longer checks the typeid of the Operation a Step names.
+
+### Panel and providers
+- One model and one Effort serve a whole run. The chat's model pill and Effort pill write them, and nothing else does.
+- The router, Domain inference, the Session title and Assembly's part sub-agents use that same model and Effort.
+- The Roles page in Preferences is gone.
+- `Client.send` is the whole run: the lock, the seed, the Domain choice, the Document's name and the question callback. The panel and the Gateway worker only build the Event stream and call it.
+- A change of model between two runs takes effect on the next send; nothing is invalidated.
+- A Session is found by its log's id; the panel's twelve one-line delegations are gone.
+- An Event kind is registered once, with its data keys and its narration. An unknown kind draws nothing in the chat and writes one logger line.
+- The model list lives in a Qt-free module, `core/model_lists.py`; the provider manager keeps only the thread and the signal.
+
+### Gateway
+- An interactive Run asks its question again: the worker writes a `question` line and waits for the `answer`.
+- An unattended run (no callback) never asks; an Owned Object deletion is refused and the agent finds another way.
+
+### Lane and CLI
+- The Lane takes `run_one` as a parameter, so its tests no longer patch the module.
+- The Lane imports no FreeCAD. It decides the volume ratio and the base fallback from the result file `run.py` writes beside the saved STEP.
+- One Task module opens a fixture for both `run.py --task` and the Lane.
+- Lane Smoke on the integration branch, one validation task per Domain: Part, Assembly and BIM each finish with their Assertion run.
+
+### Removed
+- The Role table and everything behind it: `core/llm/roles.py`, `core/model_registry.py`, `core/role_defaults.py`, `settings_manager`.
+- The sketch check and `Kernel.reading`.
+- Five Tools nothing calls, and the review capture.
+- The edit guard; the Part edit Assertion already checks same volume and same faces.
+- The sheet fields `printed`, `drawn` and `between`.
+- Event kinds nothing emits, and the panel's renderers for them.
+- Tests that pinned only what is gone.
+
+### Tests
+- Suite: 1750 passed, 102 skipped (was 1897 passed, 106 skipped).
+- `src` + `Mod`: 23 748 lines, now 19 929.
+- A test that scans the tree derives its list instead of holding one.
+- The model-list test no longer depends on test order.
+
+### Knowledge base
+- The decision "One model and one Effort per run; no Role table" is an ADR; *Roles and models* is rewritten.
+- The Glossary entries Edit guard and Role read the new design.
+- The Lane and `run.py` article describes `--task`.
+
+Tickets: DAE-609 and its children DAE-593, DAE-610..DAE-622; ADR-0030.
+
 ## 1.3.0 — 2026-11-07
 
 ### Agent loop
