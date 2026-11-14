@@ -21,7 +21,16 @@ GUI report-view message FreeCAD never writes when there is no GUI, per a
 comment dated 2026-08-02. There is no console message this kernel could
 capture, so there is nothing here for a sixth check to run.
 """
-from core.kernel import kernel_worker
+from core.agent import part_rules
+from core.kernel import kernel_worker, step_namespace
+
+MODULES = (kernel_worker, step_namespace, part_rules)
+
+
+def _defined(name):
+    return next((getattr(module, name) for module in MODULES
+                 if getattr(getattr(module, name, None), "__module__", None) == module.__name__), None)
+
 
 OLD_CHECKS = {
     "a recompute left an object Invalid": "_objects_left_in_error",
@@ -36,13 +45,12 @@ OLD_CHECKS = {
 def test_every_old_preflight_check_still_runs_after_a_step():
     called, pending = set(), ["_run_step_body"]
     while pending:
-        function = getattr(kernel_worker, pending.pop(), None)
+        function = _defined(pending.pop())
         if function is None or not hasattr(function, "__code__"):
             continue
         reached = set(function.__code__.co_names) - called
         called |= reached
-        pending += [name for name in reached if getattr(getattr(kernel_worker, name, None), "__module__", None)
-                    == kernel_worker.__name__]
-    called |= {defect.__name__ for defect, _, _ in kernel_worker._BODY_CHECKS}
+        pending += list(reached)
+    called |= {defect.__name__ for defect, _, _ in part_rules._BODY_CHECKS}
     dropped = {label: name for label, name in OLD_CHECKS.items() if name not in called}
     assert not dropped, "check(s) no longer reached from _run_step_body: %s" % dropped

@@ -13,19 +13,20 @@ import os
 import re
 import tempfile
 
-from core import events, freecad_apply, model_catalog
+from core import events, model_catalog
 from core import settings as _settings
 from core.arch import arch_type, export_ifc, named_in
 from core import furniture, nativeifc
 from core.equipment import write_attribution
-from core.freecad_apply import ApplyPipeline, active_document, build_registry
+from core.document_tools import active_document, build_registry
+from core.freecad_apply import ApplyPipeline
 from core.events import (APPLIED, ASSERTION, BLOCKED, COMPLETED, COST, REVIEW_VERDICT,
                          EventStream, replay)
 from core.kernel import Kernel
-from core.llm import (EFFORTS, call_ceiling, ORCHESTRATOR, TEXT, ScriptedLLMClient, Session,
-                      client_from_roles, effort_is_honoured, selected_model_name,
+from core.llm import (EFFORTS, call_ceiling, TEXT, ScriptedLLMClient, Session, litellm_model_name,
                       unusable_attachments)
-from core.llm.factory import client_from_settings
+from core.llm.factory import client_for, client_from_settings, effort
+from core.model_catalog import configured
 from core.agent.assembly import PART_SHARE, part_summary, run_assembly, unfinished
 from core.agent.bim import run_bim
 from core.agent.domain import ASSEMBLY, BIM, PART, label as domain_label
@@ -35,7 +36,7 @@ from core.narrate import narrate
 from core.orchestrator import CONTROL, DESIGN, RUN_QUESTION, route
 from core.prompts import read_prompt
 from core.session_title import fallback, generate
-from core.sessions import Sessions
+from core.sessions import Sessions, log_id
 
 _LAZY = {
     "manifold": ("core.manifold", None),
@@ -62,7 +63,7 @@ def __getattr__(name):
 
 
 def providers():
-    """Every provider name a role or the Providers page can offer."""
+    """Every provider name the Providers page and the model picker can offer."""
     return _settings.instance().get_providers()
 
 
@@ -116,14 +117,6 @@ def set_base_url_for_provider(provider, url):
     _settings.instance().set_base_url_for_provider(provider, url)
 
 
-def get_default_model():
-    return _settings.instance().get_default_model()
-
-
-def set_default_model(model_id):
-    _settings.instance().set_default_model(model_id)
-
-
 def get_domain():
     return _settings.instance().get_domain()
 
@@ -132,76 +125,27 @@ def set_domain(choice):
     _settings.instance().set_domain(choice)
 
 
-def get_naming_model():
-    return _settings.instance().get_naming_model()
-
-
-def set_naming_model(model_id):
-    _settings.instance().set_naming_model(model_id)
-
-
 def get_last_model():
+    """The ``(provider, model)`` last picked in the chat, or ``("", "")``."""
     return _settings.instance().get_last_model()
 
 
-def set_last_model(model_id):
-    _settings.instance().set_last_model(model_id)
+def set_last_model(provider, model):
+    _settings.instance().set_last_model(provider, model)
 
 
 def get_effort():
-    return _settings.instance().get_effort()
+    """The Effort in force: the one stored, or the default where none is stored or the stored one is not offered."""
+    return effort()
 
 
 def set_effort(level):
     _settings.instance().set_effort(level)
 
 
-def get_role_table():
-    """One row per role -- ``provider``, ``model``, ``effort``."""
-    return _settings.instance().get_role_table()
-
-
-def set_role_table(table):
-    _settings.instance().set_role_table(table)
-
-
-def get_role_model(role):
-    """The stored row for *role*, or ``None`` if it has none."""
-    return _settings.instance().get_role_model(role)
-
-
-def get_llm_credentials(model_id=None):
-    """``(provider, model_id, api_key)`` for *model_id*, or the last-used one."""
-    return _settings.instance().get_llm_credentials(model_id)
-
-
 def fetch_models(provider, api_key, base_url=None):
     """``[{id, display}]`` *provider* actually reports for *api_key*."""
     return model_catalog.fetch(provider, api_key, base_url=base_url)
-
-
-def remember_model(model_id, provider):
-    """Name *provider* as the one that reports *model_id*, as the panel's fetch does, for a process that runs no panel."""
-    from core import model_registry
-
-    model_registry.remember(model_id, provider, model_id)
-
-
-def remember_listed(provider):
-    """Ask *provider* for its model list with the stored key and address and remember every model on it, as the panel's fetch does."""
-    from core import model_registry
-
-    sm = _settings.instance()
-    for model in model_catalog.fetch(provider, sm.get_api_key_for_provider(provider),
-                                     base_url=sm.get_base_url_for_provider(provider) or None):
-        model_registry.remember(model["id"], provider, model["display"], model.get("max_output"))
-
-
-def get_model_entry(model_id):
-    """The last-known ``{id, display, provider}`` for *model_id*, or ``None``."""
-    from core import model_registry
-
-    return model_registry.get_model_entry(model_id)
 
 
 class _NoKernel:
@@ -225,20 +169,13 @@ def native_document(ifc, work, path):
 
 class Client:
     """
-    *document* is a path to open, `None` for a fresh one, or an already-open
-    FreeCAD Document object (live-document mode, so the panel binds to the
-    Document it already has). *llm* and *kernel* default to a real provider
-    and a real headless kernel, a test hands in its own, and `NO_KERNEL` runs
-    in-process without a subprocess. Without an *answer* callback `send`
-    pauses in a blocked, resumable `needs-answer` state rather than guessing,
-    and *confirm* and *dispatch* set the corresponding `ApplyPipeline` callables,
-    *dispatch* also carrying the open or create of the Document itself, since
-    `FreeCAD.newDocument` on a worker thread has the GUI instantiate an MDI
-    window off the main thread and macOS aborts FreeCAD for it.
+    *document* is a path to open, `None` for a fresh one, or an already-open Document object; *llm* and *kernel* default to the chat's model and a real headless kernel, and `NO_KERNEL` runs in-process without one.
+    *confirm* is asked before an object the assistant did not create is deleted, and left out nothing is asked and the deletion is refused; *dispatch* carries every touch of the Document, its open included, because `FreeCAD.newDocument` off the main thread aborts FreeCAD on macOS.
+    *history* is the conversation to continue and *on_document* is told the Document's name at each send.
     """
 
     def __init__(self, document=None, llm=None, kernel=None,
-                 confirm=None, dispatch=None):
+                 confirm=None, dispatch=None, history=(), on_document=None):
         import FreeCAD
 
         self.dispatch = dispatch or (lambda func, timeout=None: func())
@@ -259,12 +196,14 @@ class Client:
         else:
             self.kernel = kernel
 
-        self._llm = llm
+        self._injected = self._live = llm
         self._intent = None
+        self._on_document = on_document
         self._confirm = confirm or (lambda kinds: False)
         self.events = EventStream()
         self.session = Session()
-        self.pipeline = ApplyPipeline(
+        self.session.messages.extend(history)
+        self._pipeline = ApplyPipeline(
             document=self.document,
             worker=self.kernel,
             dispatch=self.dispatch,
@@ -281,59 +220,65 @@ class Client:
         return bool(self._intent and names
                     and self.dispatch(lambda: named_in(self._intent, self.document, names)))
 
-    @property
-    def llm(self):
-        if self._llm is None:
-            self._llm = client_from_roles()
-        return self._llm
-
-    @llm.setter
-    def llm(self, value):
-        self._llm = value
+    def _the_llm(self):
+        """The client a run is made with: the one handed in, else the chat's model and Effort as they are now."""
+        self._live = self._injected or client_from_settings()
+        return self._live
 
     def watch(self, callback):
         """Subscribe *callback* to every event a `send` emits, as it happens."""
         self.events.subscribe(callback)
 
     def send(self, prompt, attachments=(), cancelled=None, route_first=True, events=None,
-             domain=PART):
+             choice=AUTO):
         """
-        Run *prompt* to the end, blocking. *route_first* classifies it via the orchestrator (default), and *events* overrides this Client's stream for this run only.
-        The loop builds under *domain*.
+        Run *prompt* to the end, blocking: the GUI is locked where there is one, *route_first* classifies the prompt via the orchestrator, and a design builds under the Domain *choice* names or, left `AUTO`, the one inferred.
+        *events* overrides this Client's stream for this run only.
         """
         stream = events if events is not None else self.events
-        self.pipeline.events = stream
+        self._pipeline.events = stream
 
         self._stop = False
-        tools = build_registry(document=self.document, pipeline=self.pipeline,
+        llm = self._the_llm()
+        tools = build_registry(document=self.document, pipeline=self._pipeline,
                                dispatch=self.dispatch)
 
         def is_cancelled():
             return self._stop or bool(cancelled and cancelled())
 
         def design(message, decision=None):
+            types, arch = self.dispatch(lambda: ([o.TypeId for o in self.document.Objects],
+                                                 any(arch_type(o) for o in self.document.Objects)))
+            domain = choose(choice, message, types, llm, stream, arch=arch)
             return self.agent(message, attachments=attachments, cancelled=is_cancelled,
                               base=tools.call("base_inventory")["inventory"] is not None,
-                              domain=domain, events=stream)
-
-        orchestrator = (self.llm.for_role(ORCHESTRATOR)
-                        if hasattr(self.llm, "for_role") else self.llm)
+                              domain=domain, events=stream, llm=llm)
 
         def run_question(message, decision):
-            return "".join(chunk.text for chunk in self.session.turn(orchestrator, message)
+            return "".join(chunk.text for chunk in self.session.turn(llm, message)
                            if chunk.kind == TEXT)
 
         def control(message, decision):
             self._stop = True
 
-        if route_first:
-            return route(prompt, llm=orchestrator, events=stream,
-                         handlers={DESIGN: design, RUN_QUESTION: run_question, CONTROL: control},
-                         session=self.session)
-        else:
-            return design(prompt)
+        import FreeCAD
 
-    def part_builder(self, folder, cancelled, budget_usd, events):
+        locked = bool(FreeCAD.GuiUp)
+        if locked:
+            self._pipeline.lock()
+        try:
+            if self._on_document:
+                self._on_document(str(tools.call("snapshot").get("document") or ""))
+            if route_first:
+                return route(prompt, llm=llm, events=stream,
+                             handlers={DESIGN: design, RUN_QUESTION: run_question, CONTROL: control},
+                             session=self.session)
+            return design(prompt)
+        finally:
+            if locked:
+                self._pipeline.end_run()
+
+    def part_builder(self, folder, cancelled, budget_usd, events, llm):
         """
         The `build_part` of the Assembly Domain: each call runs the Part Domain in a Client of its own, with its own kernel, Document and Session, and saves its Body in *folder*.
         Only its cost reaches *events*, and the call ends once it has spent `PART_SHARE` of *budget_usd*.
@@ -350,7 +295,7 @@ class Client:
                     spent["usd"] += event.data.get("usd") or 0.0
                     events.emit(COST, **event.data)
 
-            sub = Client(llm=self.llm, dispatch=self.dispatch)
+            sub = Client(llm=llm, dispatch=self.dispatch)
             sub.events.subscribe(forward)
             try:
                 result = sub.agent(intent, attachments=attachments, domain=PART,
@@ -368,56 +313,52 @@ class Client:
         return build
 
     def agent(self, prompt, attachments=(), cancelled=None, base=False, domain=PART,
-              budget_usd=None, events=None):
+              budget_usd=None, events=None, llm=None):
         """
         The loop under *domain*: for the Part Domain the drawing is read into a table, then one model
         builds over this Client's kernel and lands each code call on this
         Client's Document, so `save` and `export_step` write what it built.
         *base* says the Document already holds the part to edit; under the Assembly Domain it is the Assembly the intent changes, and *budget_usd* is the cap its parts' shares are taken from.
-        *events* overrides this Client's stream for this run only.
+        *events* overrides this Client's stream for this run only, and *llm* its model.
         """
         if self.kernel is None:
             raise ValueError("the agent works through a kernel")
         if domain not in (PART, ASSEMBLY, BIM):
             raise ValueError("no such Domain: %r" % domain)
         self._intent = prompt if base and domain != PART else None
+        llm = llm or self._the_llm()
         stream = events if events is not None else self.events
-        self.pipeline.events = stream
-        tools = build_registry(document=lambda: self.document, pipeline=self.pipeline,
+        self._pipeline.events = stream
+        tools = build_registry(document=lambda: self.document, pipeline=self._pipeline,
                                dispatch=self.dispatch)
-        seed = tools.call("document_copy")["path"]
-        self.kernel.check("pass", document=seed)
-        freecad_apply.discard(seed)
+        start = self._pipeline.start_run
         if domain == ASSEMBLY:
             with tempfile.TemporaryDirectory(prefix="fcc-parts-") as folder:
-                return run_assembly(prompt, llm=self.llm, kernel=self.kernel, tools=tools,
-                                    events=stream, attachments=list(attachments),
+                return run_assembly(prompt, llm=llm, kernel=self.kernel, tools=tools,
+                                    events=stream, start=start, attachments=list(attachments),
                                     cancelled=cancelled,
-                                    build_part=self.part_builder(folder, cancelled, budget_usd, stream),
+                                    build_part=self.part_builder(folder, cancelled, budget_usd, stream, llm),
                                     edit=base)
         if domain == BIM:
             native = bool(base and self.dispatch(lambda: nativeifc.projects(self.document)))
             if native:
                 nativeifc.without_geometry()
-            return run_bim(prompt, llm=self.llm, kernel=self.kernel, tools=tools, events=stream,
+            return run_bim(prompt, llm=llm, kernel=self.kernel, tools=tools, events=stream, start=start,
                            attachments=list(attachments), cancelled=cancelled, edit=base, native=native)
-        return run_reader(prompt, llm=self.llm, kernel=self.kernel, tools=tools,
-                          events=stream, attachments=list(attachments),
+        return run_reader(prompt, llm=llm, kernel=self.kernel, tools=tools,
+                          events=stream, start=start, attachments=list(attachments),
                           cancelled=cancelled, base=base)
 
-    def domain_for(self, intent, choice=AUTO, events=None):
-        """The Domain *intent* builds under for the panel's *choice*, said on *events* (this Client's own where none is given); the Document's object types are read where `dispatch` runs."""
-        orchestrator = self.llm.for_role(ORCHESTRATOR)
-        types, arch = self.dispatch(lambda: ([o.TypeId for o in self.document.Objects],
-                                             any(arch_type(o) for o in self.document.Objects)))
-        return choose(choice, intent, types, orchestrator,
-                      events if events is not None else self.events, arch=arch)
-
-    def kill_provider(self):
-        """End this Client's own live provider process at once."""
+    def stop(self):
+        """End the run in flight at once: it is cancelled between calls and the provider call under way is killed, the kernel left to checkpoint its Step."""
         from core.llm.claude import kill
 
-        kill(self._llm)
+        self._stop = True
+        kill(self._live)
+
+    def shutdown(self):
+        """Kill the kernel now, so the Step in flight comes back a crash and stays out of the Document."""
+        self._pipeline.shutdown()
 
     def save(self, path):
         """Write this Client's Document to *path* and hand the path back."""
@@ -430,7 +371,7 @@ class Client:
         the path back -- `save` writes a Document; `saveAs` would otherwise
         append `.FCStd` to a STEP-shaped name and leave no STEP behind. *only* names the one object written.
         """
-        from core.freecad_apply import export_step
+        from core.document_tools import export_step
 
         return export_step(self.document, path, only)
 
@@ -443,7 +384,7 @@ class Client:
 
     def has_solid(self):
         """Whether this Client's Document holds a solid; a document without one has no STEP to write."""
-        from core.freecad_apply import has_solid
+        from core.document_tools import has_solid
 
         return has_solid(self.document)
 

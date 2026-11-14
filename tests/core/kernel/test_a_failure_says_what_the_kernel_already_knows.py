@@ -18,9 +18,10 @@ No FreeCAD: every check here reads volumes and PropertiesList off objects,
 and a fake carries both.
 """
 from core.agent.agent import _feedback
+from core.agent.part_rules import _idle_feature_report, hints
 from core.kernel.kernel import KernelResult
-from core.kernel.kernel_worker import (_idle_feature_report, _volume_moved,
-                                       introspect, run_step)
+from core.kernel.kernel_worker import introspect, run_step
+from core.kernel.step_namespace import volume_moved
 
 
 class FakeShape:
@@ -105,16 +106,15 @@ def test_the_report_names_what_it_could_not_compute_instead_of_going_silent():
 
 
 def test_a_failed_step_is_told_what_its_idle_feature_did():
-    called = set(run_step.__code__.co_names)
-
-    assert "_idle_feature_report" in called
+    assert "hints" in run_step.__code__.co_names
+    assert "_idle_feature_report" in hints.__code__.co_names
 
 
 def test_what_each_feature_moved_is_measured_for_the_model():
     pad = FakeFeature("Pad", "PartDesign::Pad", volume=1000.0)
     pocket = FakeFeature("Pocket", "PartDesign::Pocket", base=pad, volume=750.0)
 
-    moved = _volume_moved(FakeDoc(pad, pocket), ["Pad", "Pocket"])
+    moved = volume_moved(FakeDoc(pad, pocket), ["Pad", "Pocket"])
 
     assert moved == {"Pad": {"before": 0.0, "after": 1000.0, "moved": 1000.0},
                      "Pocket": {"before": 1000.0, "after": 750.0, "moved": -250.0}}

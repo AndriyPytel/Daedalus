@@ -1,10 +1,7 @@
 """
-A Domain is what one loop builds under: a system prompt, the first message, the Assertion asked once at the first accepted `finish`, and the done-check that refuses every `finish` until the Document is what the Domain builds.
+A Domain is what one loop works under: a system prompt, the first message, the Assertion asked once at the first accepted `finish`, and the done-check that refuses every `finish` until the Document is what the Domain asks for.
 The Part Domain is the reader's wiring, the Assembly Domain is `core.agent.assembly` and the BIM Domain is `core.agent.bim`; `PART` is the default wherever a caller names none.
 """
-import json
-import os
-import tempfile
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -20,7 +17,7 @@ def label(domain):
 
 @dataclass(frozen=True)
 class Domain:
-    """*assertion* answers with the content to send back and the names of the views it draws, or `None`; *done_check* answers with why the Document is not finished, or `None`; *calls* maps a reply's key to the handler that answers it with a dict."""
+    """*assertion* answers with the content to send back and the names of the views it draws, or `None`; *done_check* answers with why the Document is not finished, or `None`; *calls* maps a reply's key to the handler that answers it with a dict; *rules* is the module the Kernel holds every Step to from the seed on, or `None`."""
 
     name: str
     system: str
@@ -28,30 +25,12 @@ class Domain:
     assertion: Callable
     done_check: Callable
     calls: dict = field(default_factory=dict)
+    rules: object = None
 
 
-def measured(kernel, check):
-    """The facts *check* prints as its last `FACTS ` line, or `None` where the measuring itself failed.
-    A line `FACTS @` says they are in the JSON file *check* wrote to `FACTS_PATH`, which the kernel's 4000 characters of output could not hold.
-    """
-    handle, path = tempfile.mkstemp(suffix=".json")
-    os.close(handle)
-    try:
-        result = kernel.check("FACTS_PATH = %r\n" % path + check, exploring=True)
-        for line in reversed((result.stdout or "").splitlines()):
-            if line == "FACTS @":
-                with open(path, encoding="utf-8") as facts:
-                    return json.load(facts)
-            if line.startswith("FACTS "):
-                return json.loads(line[len("FACTS "):])
-        return None
-    finally:
-        os.remove(path)
-
-
-def unfinished(kernel, check, refusals, name, unmeasurable):
-    """Why the Document is not finished under *name*'s Assertion, one line per failing condition of *refusals* over the facts *check* measures, or `None` where it holds; *unmeasurable* is said where the facts could not be had."""
-    facts = measured(kernel, check)
+def unfinished(kernel, check, refusals, name, unmeasurable, timeout=None):
+    """Why the Document is not finished under *name*'s Assertion, one line per failing condition of *refusals* over the facts *check* measures in *timeout* seconds, or `None` where it holds; *unmeasurable* is said where the facts could not be had."""
+    facts = kernel.measure(check, timeout=timeout)
     if facts is None:
         return unmeasurable
     found = refusals(facts)

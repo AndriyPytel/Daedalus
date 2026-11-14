@@ -6,7 +6,8 @@ The solver returns 0 for some inconsistent joints and leaves one unsatisfied, so
 import json
 import os
 
-from core.agent.domain import ASSEMBLY, Domain, measured as domain_measured, unfinished as domain_unfinished
+from core.agent.domain import ASSEMBLY, Domain, unfinished as domain_unfinished
+from core.agent.solids import top_solids
 from core.agent.solo import run_solo
 from core.loop.prompt import _attached
 from core.prompts import read_prompt
@@ -69,11 +70,6 @@ if len(assemblies) == 1:
                                        "smaller": min(one.Shape.Volume, other.Shape.Volume)})
 print("FACTS " + json.dumps(facts))
 """
-
-
-def measured(kernel):
-    """The Assembly's facts as the kernel's solver leaves them, or `None` where the measuring itself failed."""
-    return domain_measured(kernel, FACTS_CHECK)
 
 
 def refusals(facts):
@@ -141,9 +137,7 @@ def part_summary(document):
     """The bounding box, volume and face count of the one solid *document* holds at the top, or `None` where it holds none."""
     import Part
 
-    solids = [o.Shape for o in document.Objects
-              if not o.InList and getattr(o, "Shape", None) is not None
-              and not o.Shape.isNull() and o.Shape.Solids]
+    solids = [o.Shape for o in top_solids(document)]
     if not solids:
         return None
     shape = solids[0] if len(solids) == 1 else Part.Compound(solids)
@@ -162,12 +156,14 @@ def part_call(build_part):
     return call
 
 
-def run_assembly(intent, *, llm, kernel, tools, events, attachments=(), cancelled=None,
+def run_assembly(intent, *, llm, kernel, tools, events, start, attachments=(), cancelled=None,
                  build_part=None, edit=False):
-    """Build the Assembly *intent* asks for from the parts in the Document and *attachments*, under the Assembly Domain; *build_part* builds a part the Document lacks in a Session of its own, and *edit* says the Document already holds the Assembly the intent changes."""
+    """Build the Assembly *intent* asks for from the parts in the Document and *attachments*, under the Assembly Domain; *build_part* makes a part the Document lacks in a Session of its own, and *edit* says the Document already holds the Assembly the intent changes.
+    *start* seeds the kernel under the Domain's rules once the Domain is built."""
     system = read_prompt("assembly.md") + ("\n\n" + read_prompt("assembly_edit.md") if edit else "")
     domain = Domain(ASSEMBLY, system, opening(intent, list(attachments)),
                     lambda: None, unfinished,
                     {"build_part": part_call(build_part)} if build_part else {})
+    start(domain.rules)
     return run_solo(intent, domain=domain, llm=llm, kernel=kernel, tools=tools, events=events,
                     attachments=attachments, cancelled=cancelled, max_turns=MAX_TURNS)

@@ -44,7 +44,6 @@ def _say(session, llm, content, phase=None, stream=None):
 
 
 def _one_turn(session, llm, content, phase=None, stream=None):
-    llm = llm.for_phase(phase) if hasattr(llm, "for_phase") else llm
     model = getattr(llm, "model", None)
     ceiling = getattr(llm, "timeout", None)
     if hasattr(llm, "stall"):

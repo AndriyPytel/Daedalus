@@ -14,7 +14,7 @@ import json
 
 import pytest
 
-from conftest import NO_QT, QT_APP
+from conftest import NO_QT, QT_APP, drain_fetches
 
 pytestmark = pytest.mark.freecad
 
@@ -26,9 +26,9 @@ def settings_are_the_tests_own():
     """The developer's own keys and addresses are not the suite's to spend."""
     if QT_APP is None:
         pytest.skip(NO_QT)
-    from bridge import settings_manager
+    from core import settings
 
-    sm = settings_manager.instance()
+    sm = settings.instance()
     their_keys, their_urls = sm.get_api_keys(), sm.get_base_urls()
     sm.set_api_keys([])
     sm.set_base_urls({})
@@ -151,53 +151,22 @@ def test_clearing_the_address_removes_it(providers_page, settings_are_the_tests_
     assert sm.get_base_url_for_provider(LOCAL) == ""
 
 
-def _drain(manager, timeout_turns=400):
-    """
-    Let every fetch already in flight finish before a test starts recording.
-
-    The tests above save addresses nothing is listening on, so their fetches
-    fail late. Clearing `_threads` hides such a thread instead of waiting for
-    it, and its warning then lands in whichever test is recording at the time.
-
-    A worker thread posts its `fetched`/`failed` signal with a queued
-    connection and then returns, so `isRunning()` can go false before that
-    posted event is dispatched. Returning the instant it does would hand the
-    caller back before the event lands, so quiescence has to be seen twice
-    in a row before it is trusted.
-    """
-    quiet = 0
-    for _ in range(timeout_turns):
-        QT_APP.processEvents()
-        if not any(thread.isRunning() for thread in manager._threads.values()):
-            quiet += 1
-            if quiet >= 2:
-                return
-        else:
-            quiet = 0
-        QT_APP.thread().msleep(5)
-
-
 @pytest.fixture(autouse=True)
-def _provider_manager_threads_join_before_the_next_test():
+def _fetches_finish_before_the_next_test():
     """
     Wait out this test's own fetch threads before the next test installs its
     monkeypatch on the same process-wide `provider_manager.instance()`.
 
-    `_threads.clear()` above drops the dict entry without joining the thread;
-    a thread still in flight then lands its `fetched`/`failed` signal after a
-    later test's warnings list is being recorded, and that later test fails on
-    an address that is not its own.
+    A thread still in flight lands its `fetched`/`failed` signal after a later
+    test's warnings list is being recorded, and that later test fails on an
+    address that is not its own.
     """
     yield
     if QT_APP is None:
         return
     from bridge import provider_manager
 
-    manager = provider_manager.instance()
-    _drain(manager)
-    for thread in manager._threads.values():
-        thread.wait()
-    manager._threads.clear()
+    drain_fetches(provider_manager.instance())
 
 
 def test_no_address_means_no_fetch_and_nothing_said(settings_are_the_tests_own, monkeypatch):
@@ -208,21 +177,20 @@ def test_no_address_means_no_fetch_and_nothing_said(settings_are_the_tests_own, 
     """
     import FreeCAD
     from bridge import provider_manager
+    from core import model_catalog
 
     manager = provider_manager.instance()
-    _drain(manager)
+    drain_fetches(manager)
 
-    warnings = []
+    warnings, asked = [], []
     monkeypatch.setattr(FreeCAD.Console, "PrintWarning", warnings.append)
-
-    manager._fetched.clear()
-    manager._threads.clear()
+    monkeypatch.setattr(model_catalog, "fetch",
+                        lambda provider, *args, **kwargs: asked.append(provider) or [])
 
     manager.get_available_models()
-    for _ in range(40):
-        QT_APP.processEvents()
+    drain_fetches(manager)
 
-    assert LOCAL not in manager._threads, "a fetch was started with nothing to ask with"
+    assert LOCAL not in asked, "a fetch was started with nothing to ask with"
     assert not any(m["provider"] == LOCAL for m in manager.get_available_models())
     assert not [line for line in warnings if LOCAL in line], \
         "an empty address was reported as a failure: %s" % warnings
@@ -248,18 +216,16 @@ def test_an_unreachable_address_names_itself_and_leaves_the_rest_working(
     from core import model_catalog
 
     manager = provider_manager.instance()
-    _drain(manager)
+    drain_fetches(manager)
 
     warnings = []
     monkeypatch.setattr(FreeCAD.Console, "PrintWarning", warnings.append)
     monkeypatch.setattr(model_catalog, "fetch", _refused)
 
-    manager._fetched.clear()
-    manager._threads.clear()
     settings_are_the_tests_own.set_base_url_for_provider(LOCAL, "http://127.0.0.1:1")
 
     manager.get_available_models()
-    _drain(manager)
+    drain_fetches(manager)
 
     assert warnings, "an unreachable server failed silently"
     assert "127.0.0.1:1" in " ".join(warnings), \
@@ -267,107 +233,15 @@ def test_an_unreachable_address_names_itself_and_leaves_the_rest_working(
     assert isinstance(manager.get_available_models(), list)
 
 
-def _naming_rows(page):
-    return [(page.naming_model_combo.itemText(i), page.naming_model_combo.itemData(i))
-            for i in range(page.naming_model_combo.count())]
-
-
-def _choose_naming_model(page):
-    """Pick the first real model — row 0 is 'Same as the chat model'."""
-    for row, (_, model_id) in enumerate(_naming_rows(page)):
-        if model_id:
-            page.naming_model_combo.setCurrentIndex(row)
-            return model_id
-    pytest.skip("no models to choose from on this machine")
-
-
-def test_a_naming_model_survives_the_save_that_stores_it(providers_page,
-                                                         settings_are_the_tests_own):
-    """
-    QA against FreeCAD 1.1.3: choose a naming model, press OK, and the setting
-    comes back empty. `saveSettings` wrote the API keys first, which emits
-    `api_keys_changed` → `models_changed` → `_refresh_models`, rebuilding the
-    combo and re-selecting it from the *stored* value — and only then read the
-    combo it had just overwritten.
-
-    The test uses an unsaved key edit so the save takes the branch that writes
-    the keys.
-    """
-    sm = settings_are_the_tests_own
-    sm.set_api_key_for_provider("OpenAI", "sk-test")
-    _select(providers_page, "OpenAI")
-
-    wanted = _choose_naming_model(providers_page)
-    providers_page.key_edit.setText("sk-test-changed")
-
-    providers_page.saveSettings()
-
-    assert sm.get_naming_model() == wanted, \
-        "the choice was destroyed by the save meant to persist it"
-
-
-def test_the_default_model_survives_it_too(providers_page, settings_are_the_tests_own):
-    """The same line above it, and the same failure."""
-    sm = settings_are_the_tests_own
-    sm.set_api_key_for_provider("OpenAI", "sk-test")
-    _select(providers_page, "OpenAI")
-
-    combo = providers_page.default_model_combo
-    if combo.count() < 2:
-        pytest.skip("no models to choose from on this machine")
-    combo.setCurrentIndex(1)
-    wanted = combo.currentData()
-    providers_page.key_edit.setText("sk-test-changed")
-
-    providers_page.saveSettings()
-
-    assert sm.get_default_model() == wanted
-
-
-def test_same_as_the_chat_model_is_a_choice_and_is_stored(providers_page,
-                                                          settings_are_the_tests_own):
-    """
-    Empty is a decision, not an absence — it must overwrite a real model. The
-    first row of the naming combo is "Same as the chat model", which is what
-    stores the empty.
-    """
-    sm = settings_are_the_tests_own
-    sm.set_api_key_for_provider("OpenAI", "sk-test")
-    _select(providers_page, "OpenAI")
-    _choose_naming_model(providers_page)
-    providers_page.saveSettings()
-
-    providers_page.naming_model_combo.setCurrentIndex(0)
-    providers_page.saveSettings()
-
-    assert sm.get_naming_model() == ""
-
-
-def test_the_page_shows_what_was_stored_after_a_save(providers_page,
-                                                     settings_are_the_tests_own):
-    """The mid-save rebuild re-selected the old value; the page must not keep it."""
-    sm = settings_are_the_tests_own
-    sm.set_api_key_for_provider("OpenAI", "sk-test")
-    _select(providers_page, "OpenAI")
-    wanted = _choose_naming_model(providers_page)
-    providers_page.key_edit.setText("sk-test-changed")
-
-    providers_page.saveSettings()
-
-    assert providers_page.naming_model_combo.currentData() == wanted
-    assert sm.get_naming_model() == wanted
-
-
 def test_a_provider_added_by_name_lists_its_models_and_runs_them(
         providers_page, settings_are_the_tests_own, monkeypatch):
     """
-    Add a provider, save its address and key, and its models reach the picker
-    and the role table, and a run with one of them goes to that address.
+    Add a provider, save its address and key, and its models reach the picker,
+    and a run with one of them goes to that address.
     """
     from bridge import provider_manager
     from core import model_catalog
     from core.llm.factory import client_from_settings
-    from ui.roles_page import RolesPage
 
     asked = []
 
@@ -379,9 +253,7 @@ def test_a_provider_added_by_name_lists_its_models_and_runs_them(
 
     monkeypatch.setattr(model_catalog, "fetch", _groq)
     manager = provider_manager.instance()
-    _drain(manager)
-    for cache in ("_fetched", "_fetched_with", "_threads"):
-        monkeypatch.setattr(manager, cache, {})
+    drain_fetches(manager)
 
     _add(providers_page, "Groq")
     _select(providers_page, "Groq")
@@ -389,14 +261,14 @@ def test_a_provider_added_by_name_lists_its_models_and_runs_them(
     providers_page.key_edit.setText("gsk-test")
     providers_page.saveSettings()
     manager.get_available_models()
-    _drain(manager)
+    drain_fetches(manager)
 
     assert ("Groq", "gsk-test", "https://api.groq.com/openai/v1") in asked
     assert {"id": "openai/gpt-oss-120b", "display": "GPT OSS 120B",
             "provider": "Groq"} in manager.get_available_models()
-    assert "Groq" in RolesPage()._providers()
 
-    client = client_from_settings("openai/gpt-oss-120b")
+    settings_are_the_tests_own.set_last_model("Groq", "openai/gpt-oss-120b")
+    client = client_from_settings()
     assert client.model == "openai/openai/gpt-oss-120b"
     assert client.api_base == "https://api.groq.com/openai/v1"
     assert client.api_key == "gsk-test"

@@ -19,7 +19,7 @@ from typing import Callable, Iterator
 
 from core.llm.types import REASONING, TEXT, Chunk
 from core.llm.exceptions import CallStalled, ProviderRefused
-from core.llm.effort_policy import _CEILING, _resolved_effort
+from core.llm.effort_policy import _CEILING, _SUBSCRIPTION_EFFORT
 from core.llm.claude_stream import (
     _system_of,
     _user_turn,
@@ -39,8 +39,7 @@ class Run:
     """
     The live `claude` processes one run's calls have spawned.
 
-    One per `ClaudeCodeClient`, so `kill` walking a role table or a
-    thinking/doing profile ends the processes of that client tree alone --
+    One per `ClaudeCodeClient`, so `kill` walking a client tree ends the processes of that client tree alone --
     where `core/llm.py`'s global `_live` could only ever kill every run at
     once, which is the whole of Stop and Abort's problem.
     """
@@ -67,30 +66,14 @@ class Run:
 
 def kill(client):
     """
-    End every live `claude` process reachable from *client*'s own tree.
+    End every live `claude` process *client* has spawned.
 
-    `RoleClient` and `ProfiledClient` (`core/llm/__init__.py`) name no process
-    of their own -- the process belongs to whichever `ClaudeCodeClient` a role
-    or profile resolves to, and a fan-out (`ThreadPoolExecutor`) may hold
-    several of those live under the one `Run` at once. *client* is `None`
-    where a Session has not built one yet, which is a no-op rather than an
-    error: there is nothing running to kill.
+    *client* is `None` where a run has not built one yet, and a client that
+    bills a key spawns no process of its own, so both are a no-op rather than
+    an error.
     """
-    if client is None:
-        return
     if isinstance(client, ClaudeCodeClient):
         client.run.end()
-        return
-    roles = getattr(client, "roles", None)
-    if roles is not None:
-        for role_client in roles.values():
-            kill(role_client)
-        kill(getattr(client, "caller", None))
-        return
-    for profile in ("thinking", "doing"):
-        nested = getattr(client, profile, None)
-        if nested is not None:
-            kill(nested)
 
 
 _CLAUDE_CANDIDATES = (
@@ -170,7 +153,7 @@ class ClaudeCodeClient:
                  timeout: float = None, effort: str = None, run: Run = None,
                  stall: float = None):
         self.model = model
-        self.effort = _resolved_effort(effort)
+        self.effort = effort or _SUBSCRIPTION_EFFORT
         self.timeout = _CEILING[self.effort] if timeout is None else timeout
         self.stall = stall
         self.last_cost = None

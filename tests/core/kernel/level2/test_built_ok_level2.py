@@ -174,10 +174,10 @@ print('solids', len(sh.Solids))
 
 
 def test_a_step_that_calls_isError_on_an_additive_pipe_raises_attributeerror(kernel):
-    setup = kernel.check(with_design(A_RIB_PAD, DESIGN))
+    setup = kernel.rehearse(with_design(A_RIB_PAD, DESIGN))
     assert setup.ok, setup.traceback
 
-    result = kernel.check(with_design(STEP_4_WITH_ISERROR, DESIGN))
+    result = kernel.rehearse(with_design(STEP_4_WITH_ISERROR, DESIGN))
 
     assert not result.ok
     assert "AttributeError" in result.traceback
@@ -185,9 +185,9 @@ def test_a_step_that_calls_isError_on_an_additive_pipe_raises_attributeerror(ker
 
 
 def test_the_same_step_using_built_ok_recomputes_clean(kernel):
-    setup = kernel.check(with_design(A_RIB_PAD, DESIGN))
+    setup = kernel.rehearse(with_design(A_RIB_PAD, DESIGN))
     assert setup.ok, setup.traceback
 
-    result = kernel.check(with_design(STEP_4_RIB_ROUND_SWEEP, DESIGN))
+    result = kernel.rehearse(with_design(STEP_4_RIB_ROUND_SWEEP, DESIGN))
 
     assert result.ok, result.traceback

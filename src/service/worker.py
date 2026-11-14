@@ -11,8 +11,10 @@ import sys
 import tempfile
 import threading
 
-from sdk import (Client, remember_model, set_api_keys, set_base_urls, set_default_model, set_effort,
-                 set_naming_model, set_role_table)
+from sdk import Client, set_api_keys, set_base_urls, set_effort, set_last_model
+
+
+AFFIRMATIVE = ("y", "yes", "ok", "true")
 
 
 def artifacts(client, directory):
@@ -56,15 +58,9 @@ def configure(environ):
 
 
 def apply_settings(settings):
-    """Put the resolved settings of a send into `sdk`, and name each model's provider to the registry the panel's fetch fills in a GUI."""
-    if "role_table" in settings:
-        set_role_table(settings["role_table"])
-        for row in settings["role_table"]:
-            remember_model(row["model"], row["provider"])
-    for key, setter in (("default_model", set_default_model), ("naming_model", set_naming_model)):
-        if settings.get(key):
-            setter(settings[key]["model"])
-            remember_model(settings[key]["model"], settings[key]["provider"])
+    """Put the resolved model and Effort of a send into `sdk`, where the run's client is built from them."""
+    if settings.get("provider") and settings.get("model"):
+        set_last_model(settings["provider"], settings["model"])
     if "effort" in settings:
         set_effort(settings["effort"])
 
@@ -72,21 +68,25 @@ def apply_settings(settings):
 def main():
     channel, sys.stdout = sys.stdout, sys.stderr
     write = threading.Lock()
-    jobs, answers, cancelled, current = queue.Queue(), queue.Queue(), threading.Event(), {"confirm": False}
+    jobs, answers, cancelled = queue.Queue(), queue.Queue(), threading.Event()
+    current = {"confirm": False, "interactive": False}
 
     def put(**message):
         with write:
             channel.write(json.dumps(message, default=str) + "\n")
             channel.flush()
 
-    def ask(question):
-        put(op="question", text=question)
+    def confirm(kinds):
+        if not current["interactive"]:
+            return current["confirm"]
+        put(op="question", text="Allow the assistant to delete %s?" % ", ".join(
+            name for names in kinds.values() for name in names))
         while not cancelled.is_set():
             try:
-                return answers.get(timeout=0.2)
+                return answers.get(timeout=0.2).strip().lower() in AFFIRMATIVE
             except queue.Empty:
                 continue
-        return ""
+        return False
 
     def listen():
         for line in sys.stdin:
@@ -106,7 +106,7 @@ def main():
 
     configure(os.environ)
     budget = Budget()
-    client, applied = None, None
+    client = None
 
     def open_client(restore, directory):
         path = None
@@ -114,8 +114,7 @@ def main():
             path = os.path.join(directory, "restored.FCStd")
             with open(path, "wb") as out:
                 out.write(base64.b64decode(restore["checkpoint"]))
-        opened = Client(document=path, confirm=lambda kinds: current["confirm"])
-        opened.session.messages.extend(restore.get("history") or ())
+        opened = Client(document=path, confirm=confirm, history=restore.get("history") or ())
         opened.watch(budget.watch)
         opened.watch(lambda event: put(op="event", kind=event.kind, at=event.at, data=event.data))
         return opened
@@ -128,11 +127,9 @@ def main():
             break
         answers.queue.clear()
         current["confirm"] = job.get("confirm") is True
+        current["interactive"] = job.get("interactive") is True
         settings = job.get("settings") or {}
         apply_settings(settings)
-        if client is not None and applied is not None and settings != applied:
-            client.llm = None
-        applied = settings
         budget.start(settings.get("budget_usd"))
         with tempfile.TemporaryDirectory() as directory:
             try:

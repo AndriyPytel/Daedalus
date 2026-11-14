@@ -13,7 +13,7 @@ either way.
 """
 import json
 
-from core.kernel.kernel_worker import _idle_feature_cause, _diagnose_idle_feature
+from core.agent.part_rules import _idle_feature_cause, _diagnose_idle_feature
 from tests import modelmania_harness
 
 FIXTURE = modelmania_harness.RECORDED_DIR / "preflight_volume_neutral_failures.json"

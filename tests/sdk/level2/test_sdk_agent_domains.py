@@ -8,7 +8,7 @@ import pytest
 from core.agent.domain import ASSEMBLY, BIM
 from core.events import APPLIED, COMPLETED, COST, DOMAIN, TOOL_RESULT, EventStream
 from core.kernel import Kernel, find_freecadcmd
-from core.llm import RoleClient, ScriptedLLMClient
+from core.llm import ScriptedLLMClient
 from tests.assembly_helpers import PARTS, SOLVED
 from tests.bim_helpers import FLAT, WITHOUT_SPACE
 
@@ -117,23 +117,23 @@ def test_a_domain_that_does_not_exist_is_refused(kernel):
 
 def test_the_domain_comes_from_the_documents_assembly_with_no_call_and_from_the_model_otherwise(kernel):
     llm = ScriptedLLMClient(["part"])
-    client = _client(RoleClient({}, llm), kernel)
+    client = _client(llm, kernel)
 
-    assert client.domain_for("Make a bracket.") == "part"
-    assert len(llm.calls) == 1
-
+    client.send("Make a bracket.", route_first=False, cancelled=lambda: len(llm.calls) >= 1)
     client.document.addObject("Assembly::AssemblyObject", "Assembly")
+    client.send("Make a bracket.", route_first=False, cancelled=lambda: len(llm.calls) >= 1)
 
-    assert client.domain_for("Make a bracket.") == ASSEMBLY
+    assert [e.data["domain"] for e in client.seen if e.kind == DOMAIN] == ["part", ASSEMBLY]
     assert len(llm.calls) == 1
+    client.close()
 
 
 def test_a_subscribed_but_still_empty_stream_receives_the_domain_and_its_cost(kernel):
-    client = _client(RoleClient({}, ScriptedLLMClient(["part"])), kernel)
+    client = _client(ScriptedLLMClient(["part"]), kernel)
     seen = []
     stream = EventStream([seen.append])
 
-    client.domain_for("Make a bracket.", events=stream)
+    client.send("Make a bracket.", route_first=False, events=stream, cancelled=lambda: True)
     client.close()
 
     assert {DOMAIN, COST} <= {event.kind for event in seen}

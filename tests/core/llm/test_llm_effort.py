@@ -1,82 +1,67 @@
 """
-Level 1 -- the effort dial: what a client is asked for, and what it falls
-back to.
-
-Effort is per role now, carried on the role's row of the table
-(`core.settings :: get_role_table`) and handed to `client_from_settings`;
-a row that names none leaves the client on the single stored dial.
+Level 1 and 2 -- the Effort a client is asked for: the one it was built with, which
+the factory reads from the single stored `effort` setting.
 """
-from core.llm import ClaudeCodeClient
-from core.llm.effort_policy import _CEILING
+import pytest
+
+from core import settings
+from core.events import CALL_STARTED
+from core.llm import ClaudeCodeClient, factory
+from core.llm.effort_policy import _CEILING, _SUBSCRIPTION_EFFORT
+from chat_helpers import kernel, say, set_the_chat  # noqa: F401
 
 MODEL = "sonnet"
 
 
-def test_the_ceiling_follows_each_clients_own_effort_and_not_one_global_dial():
-    low = ClaudeCodeClient(MODEL, effort="low")
-    high = ClaudeCodeClient(MODEL, effort="high")
-
-    assert low.timeout == _CEILING["low"]
-    assert high.timeout == _CEILING["high"]
-
-
-def test_xhigh_reaches_the_cli_flag_and_is_not_swapped_for_the_dial(monkeypatch):
-    import os
-    import sys
-
-    from core import settings
-
-    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-    from test_llm_claude_code import client_replaying, a_turn
-    from conftest import collect
-
-    monkeypatch.setattr(settings.instance(), "get_effort", lambda: "medium")
-    client, spawn = client_replaying(effort="xhigh")
-    collect(client.stream(a_turn()))
-
-    assert spawn.argv[spawn.argv.index("--effort") + 1] == "xhigh"
-
-
-def test_max_reaches_the_cli_flag_and_is_not_swapped_for_the_dial(monkeypatch):
-    import os
-    import sys
-
-    from core import settings
-
-    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-    from test_llm_claude_code import client_replaying, a_turn
-    from conftest import collect
-
-    monkeypatch.setattr(settings.instance(), "get_effort", lambda: "medium")
-    client, spawn = client_replaying(effort="max")
-    collect(client.stream(a_turn()))
-
-    assert spawn.argv[spawn.argv.index("--effort") + 1] == "max"
-
-
-def test_an_explicit_effort_wins_over_whatever_the_dial_is_set_to(monkeypatch):
-    from core import settings
-
-    monkeypatch.setattr(settings.instance(), "get_effort", lambda: "high")
-
+def test_the_ceiling_follows_each_clients_own_effort():
     assert ClaudeCodeClient(MODEL, effort="low").timeout == _CEILING["low"]
+    assert ClaudeCodeClient(MODEL, effort="high").timeout == _CEILING["high"]
 
 
-def test_no_explicit_effort_still_reads_the_global_dial(monkeypatch):
-    from core import settings
+@pytest.mark.parametrize("level", ["xhigh", "max"])
+def test_the_levels_above_high_reach_the_cli_flag(level):
+    import os
+    import sys
 
-    monkeypatch.setattr(settings.instance(), "get_effort", lambda: "high")
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from test_llm_claude_code import client_replaying, a_turn
+    from conftest import collect
 
-    assert ClaudeCodeClient(MODEL).timeout == _CEILING["high"]
+    client, spawn = client_replaying(effort=level)
+    collect(client.stream(a_turn()))
+
+    assert spawn.argv[spawn.argv.index("--effort") + 1] == level
 
 
-def test_an_effort_the_dial_does_not_offer_is_refused_and_not_swapped_for_the_dial(monkeypatch):
-    import pytest
-    from core import settings
-    from core.llm.effort_policy import _resolved_effort
+def test_a_client_built_with_no_effort_is_asked_at_the_default():
+    assert ClaudeCodeClient(MODEL).effort == _SUBSCRIPTION_EFFORT
 
-    monkeypatch.setattr(settings.instance(), "get_effort", lambda: "medium")
 
-    with pytest.raises(ValueError):
-        _resolved_effort("ultra")
-    assert _resolved_effort(None) == "medium"
+def test_the_factory_reads_the_one_stored_effort():
+    settings.instance().set_effort("high")
+    settings.instance().set_last_model("Claude (subscription)", MODEL)
+
+    assert factory.client_from_settings().effort == "high"
+
+
+def test_an_effort_the_dial_does_not_offer_falls_back_to_the_default():
+    settings.instance().set_effort("ultra")
+
+    assert factory.effort() == _SUBSCRIPTION_EFFORT
+
+
+@pytest.mark.freecad
+def test_the_loops_calls_are_logged_at_the_effort_the_chat_names(monkeypatch, kernel):
+    from sdk import Client
+
+    set_the_chat(monkeypatch, "haiku", "high", [say(probe="print(1)"), say(finish="done")])
+    client = Client(kernel=kernel)
+    seen = []
+    client.watch(seen.append)
+
+    client.agent("Make a 10 mm cube")
+    client.close()
+
+    started = [event.data for event in seen if event.kind == CALL_STARTED]
+    assert started
+    assert {call["effort"] for call in started} == {"high"}

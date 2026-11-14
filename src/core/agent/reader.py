@@ -1,5 +1,5 @@
 """
-The reader arm: the drawing is read once into a table, then one agent builds with the drawing and the table in front of it.
+The reader arm: the drawing is read once into a table, then one agent works with the drawing and the table in front of it.
 
 The Assertion, asked at the first `finish`, measures the solid against the table and returns the differences, never a verdict, because an agent told its part conforms stops looking. It asks once, so it cannot loop.
 """
@@ -7,8 +7,9 @@ import json
 import os
 import tempfile
 
+from core.agent import part_rules
 from core.agent.agent import _say
-from core.agent.domain import PART, Domain
+from core.agent.domain import PART, Domain, unfinished as domain_unfinished
 from core.agent.solo import run_solo
 from core.events import ERROR, FAILED, WARNING
 from core.llm import IMAGE_SUFFIXES, PDF_SUFFIXES, Session
@@ -29,89 +30,44 @@ MESH_CHECK_TIMEOUT = 90
 
 FACTS_CHECK = """
 import json
+from core.agent.solids import top_solids
+from core.manifold import mesh_facts_fc
 from core.topology import betti_numbers
 
-solids = [o.Shape for o in doc.Objects
-          if not o.InList and getattr(o, "Shape", None) is not None
-          and not o.Shape.isNull() and o.Shape.Solids]
-facts = {"solid": bool(solids)}
-if solids:
-    shape = solids[0] if len(solids) == 1 else Part.Compound(solids)
+roots = top_solids(doc)
+facts = {"solid": bool(roots)}
+if roots:
+    shape = roots[0].Shape if len(roots) == 1 else Part.Compound([o.Shape for o in roots])
     box = shape.BoundBox
     points, facets = shape.tessellate(0.001 * box.DiagonalLength)
     b0, b1, b2 = betti_numbers([(p.x, p.y, p.z) for p in points], facets)
-    facts.update(extents=[box.XLength, box.YLength, box.ZLength], volume=shape.Volume,
-                 faces=len(shape.Faces), b0=b0, b1=b1, b2=b2)
+    facts.update(solids=len(shape.Solids), extents=[box.XLength, box.YLength, box.ZLength],
+                 volume=shape.Volume, faces=len(shape.Faces), b0=b0, b1=b1, b2=b2, tree_faults=[])
+    for o in roots:
+        if o.TypeId != "PartDesign::Body":
+            facts["tree_faults"].append("%s is a %s, not a PartDesign::Body" % (o.Name, o.TypeId))
+        elif o.Tip is None or not o.Tip.TypeId.startswith("PartDesign::") \\
+                or not any(f.TypeId.startswith("PartDesign::") for f in o.Group):
+            facts["tree_faults"].append("Body %s has no PartDesign feature as its Tip" % o.Name)
     for body in doc.Objects:
         if body.TypeId == "PartDesign::Body" and body.BaseFeature is not None:
             facts["base"] = {"volume": body.BaseFeature.Shape.Volume,
                              "faces": len(body.BaseFeature.Shape.Faces)}
+    if not facts["tree_faults"]:
+        facts.update(mesh_facts_fc(shape))
 print("FACTS " + json.dumps(facts))
-"""
-
-TREE_CHECK = """
-import json
-
-solids = [o for o in doc.Objects
-          if not o.InList and getattr(o, "Shape", None) is not None
-          and not o.Shape.isNull() and o.Shape.Solids]
-found = []
-for o in solids:
-    tip = o.Tip if o.TypeId == "PartDesign::Body" else None
-    features = [f.TypeId for f in o.Group if f.TypeId.startswith("PartDesign::")] if tip else []
-    found.append({"name": o.Name, "type": o.TypeId, "tip": tip.TypeId if tip else None,
-                  "features": features})
-print("TREE " + json.dumps(found))
 """
 
 NO_TREE = ("The Document's solid is not a feature tree: %s. Build the part in a PartDesign::Body "
            "from sketches and PartDesign features (Pad, Pocket, Revolution, ...) so it can be "
-           "edited, then finish.")
-
-
-def without_feature_tree(kernel):
-    """Why the kernel's Document does not hold a PartDesign::Body whose Tip is a feature, or `None` where it does."""
-    result = kernel.check(TREE_CHECK, exploring=True)
-    found = None
-    for line in reversed((result.stdout or "").splitlines()):
-        if line.startswith("TREE "):
-            found = json.loads(line[len("TREE "):])
-            break
-    if not found:
-        return NO_TREE % "the Document holds no solid"
-    faults = []
-    for entry in found:
-        if entry["type"] != "PartDesign::Body":
-            faults.append("%s is a %s, not a PartDesign::Body" % (entry["name"], entry["type"]))
-        elif not entry["tip"] or not entry["tip"].startswith("PartDesign::") or not entry["features"]:
-            faults.append("Body %s has no PartDesign feature as its Tip" % entry["name"])
-    return NO_TREE % "; ".join(faults) if faults else None
-
-
-MESH_CHECK = """
-import json
-from core.manifold import unmeshable_fc
-
-solids = [o.Shape for o in doc.Objects
-          if not o.InList and getattr(o, "Shape", None) is not None
-          and not o.Shape.isNull() and o.Shape.Solids]
-shape = solids[0] if len(solids) == 1 else Part.Compound(solids)
-print("MESH " + json.dumps(unmeshable_fc(shape) if solids else None))
-"""
-
-def unmeshable(kernel):
-    """Why the grader's mesher would not get through the kernel's solid, or `None` where it would or where the check could not run."""
-    result = kernel.check(MESH_CHECK, exploring=True, timeout=MESH_CHECK_TIMEOUT)
-    for line in reversed((result.stdout or "").splitlines()):
-        if line.startswith("MESH "):
-            found = json.loads(line[len("MESH "):])
-            return "The grader could not tessellate this solid: %s. Fix this, then finish." % found if found else None
-    return None
+           "edited.")
+UNMEASURABLE = "The Document could not be measured. Check that it recomputes, then finish."
 
 
 def unfinished_part(kernel):
-    """Why the Part Domain is not finished: the feature tree first, then the grader's mesher, or `None`."""
-    return without_feature_tree(kernel) or unmeshable(kernel)
+    """Why the Part Domain is not finished: the feature tree, the solid count and the grader's mesher and STEP reader, or `None`."""
+    return domain_unfinished(kernel, FACTS_CHECK, lambda facts: refusals(facts, None, asserting=False),
+                             "Part", UNMEASURABLE, MESH_CHECK_TIMEOUT)
 
 
 def _number(value):
@@ -217,14 +173,29 @@ def _close(measured, printed):
     return abs(measured - printed) <= max(EXTENT_TOLERANCE[0] * printed, EXTENT_TOLERANCE[1])
 
 
-def mismatches(facts, table):
+def refusals(facts, table, asserting=True):
     """
-    How the measured solid differs from the table and from the part it edits, largest first; empty where nothing differs.
+    What fails of the Part Domain over *facts*, in the order the agent can mend it, empty where nothing fails; with *asserting*, also how the solid differs from the table and from the part it edits.
 
     Only differences are listed, because a check that can say the part conforms is read as permission to stop.
     """
-    if not facts.get("solid"):
-        return ["The Document holds no solid."]
+    if not facts["solid"]:
+        return [NO_TREE % "the Document holds no solid"]
+    found = []
+    if facts["tree_faults"]:
+        found.append(NO_TREE % "; ".join(facts["tree_faults"]))
+    if facts["solids"] > 1:
+        found.append("The Document holds %d separate solids; the part is one. Fuse them into one."
+                     % facts["solids"])
+    if facts.get("unmeshable"):
+        found.append("The grader could not tessellate this solid: %s." % facts["unmeshable"])
+    if facts.get("step_readback") is False:
+        found.append("The STEP written from this solid does not read back valid and manifold, so the "
+                     "grader would refuse it. Simplify the faces it fails on.")
+    return found + (_differences(facts, table) if asserting else [])
+
+
+def _differences(facts, table):
     found = []
     extents = facts["extents"]
     if table is not None and not table["flat_pattern_present"]:
@@ -238,8 +209,6 @@ def mismatches(facts, table):
             if not _close(built, read):
                 found.append("The table read %g mm for an overall dimension; the solid measures %.1f mm "
                              "there. Check it on the crop." % (read, built))
-    if facts["b0"] != 1:
-        found.append("The Document holds %d separate solids; the part is one." % facts["b0"])
     if table is not None:
         box = extents[0] * extents[1] * extents[2]
         hollow = table["thin_walled"] or table["body_family"] in THIN_FAMILIES
@@ -255,15 +224,6 @@ def mismatches(facts, table):
         found.append("The part is the same as the one you were given to edit: same volume, same face "
                      "count. The edit has not been made.")
     return found
-
-
-def measured(kernel):
-    """The facts of the Document's solid as the kernel sees it, or `None` where the measuring itself failed."""
-    result = kernel.check(FACTS_CHECK, exploring=True)
-    for line in reversed((result.stdout or "").splitlines()):
-        if line.startswith("FACTS "):
-            return json.loads(line[len("FACTS "):])
-    return None
 
 
 COMPARE = ("Compare each view with the drawing. Name each feature of the drawing the part lacks or "
@@ -283,8 +243,8 @@ def assert_part(kernel, sheet, table, renders, events):
     """
     What to send back at the first `finish`: the differences found, the part in each view the table names beside that view's crop, and the order to compare them, with the names of the views drawn; `None` where there is neither a difference nor a picture to compare.
     """
-    facts = measured(kernel)
-    found = mismatches(facts, table) if facts else []
+    facts = kernel.measure(FACTS_CHECK, timeout=MESH_CHECK_TIMEOUT)
+    found = refusals(facts, table) if facts else []
     blocks, drawn_views = [], {}
     for entry in (table or {}).get("views") or ():
         view, number = _direction(str(entry.get("view") or "")), _count(entry.get("crop"))
@@ -293,8 +253,7 @@ def assert_part(kernel, sheet, table, renders, events):
                                          "or no such crop on the sheet" % (entry.get("view"), entry.get("crop")))
             continue
         if view not in drawn_views:
-            drawn = kernel.check("pass", render_path=os.path.join(renders, "assertion-%s.png" % view),
-                                 render_view=view)
+            drawn = kernel.render(os.path.join(renders, "assertion-%s.png" % view), view)
             drawn_views[view] = _as_image(drawn.render) if drawn.ok else None
             if not drawn_views[view]:
                 events.emit(WARNING, message="the Assertion dropped the %s view: the part could not be drawn" % view)
@@ -308,10 +267,11 @@ def assert_part(kernel, sheet, table, renders, events):
     return [{"type": "text", "text": listed + COMPARE}] + blocks, sorted(view for view, picture in drawn_views.items() if picture)
 
 
-def run_reader(intent, *, llm, kernel, tools, events, attachments=(), cancelled=None, base=False):
+def run_reader(intent, *, llm, kernel, tools, events, start, attachments=(), cancelled=None, base=False):
     """
     Read the drawing once, then build with `run_solo` under the table and the Assertion; an edit (*base*) has no drawing to read and is asserted on changing the part.
     A drawing that two reads could not turn into a table ends the run, since a build without it has nothing to be measured against.
+    *start* seeds the kernel under the Domain's rules once the Domain is built.
     """
     sheet = None
     for path in () if base else attachments:
@@ -327,6 +287,8 @@ def run_reader(intent, *, llm, kernel, tools, events, attachments=(), cancelled=
         return LoopResult(ok=False, reason=NOT_READ)
     with tempfile.TemporaryDirectory(prefix="fcc-assertion-") as renders:
         domain = Domain(PART, read_prompt("reader.md"), opening(intent, sheet, table, attachments, base),
-                        lambda: assert_part(kernel, sheet, table, renders, events), unfinished_part)
+                        lambda: assert_part(kernel, sheet, table, renders, events), unfinished_part,
+                        rules=part_rules)
+        start(domain.rules)
         return run_solo(intent, domain=domain, llm=llm, kernel=kernel, tools=tools, events=events,
                         attachments=attachments, cancelled=cancelled, max_turns=MAX_TURNS)

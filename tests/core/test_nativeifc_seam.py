@@ -5,7 +5,8 @@ import FreeCAD
 import pytest
 
 from core import nativeifc
-from core.kernel.kernel_worker import _properties_snapshot, signature_of, signatures_match
+from core.kernel.kernel_worker import _properties_snapshot
+from core.kernel.step_namespace import signature_of, signatures_match
 
 pytestmark = pytest.mark.freecad
 

@@ -26,7 +26,7 @@ def _document(tmp_path, with_base):
 def test_the_inventory_names_the_bounding_box_the_planes_and_the_hole(tmp_path):
     import FreeCAD
 
-    from core.freecad_apply import base_inventory
+    from core.document_tools import base_inventory
 
     doc = _document(tmp_path, with_base=True)
     try:
@@ -42,7 +42,7 @@ def test_the_inventory_names_the_bounding_box_the_planes_and_the_hole(tmp_path):
 def test_a_document_without_a_base_has_no_inventory(tmp_path):
     import FreeCAD
 
-    from core.freecad_apply import base_inventory
+    from core.document_tools import base_inventory
 
     doc = _document(tmp_path, with_base=False)
     try:
@@ -54,7 +54,7 @@ def test_a_document_without_a_base_has_no_inventory(tmp_path):
 def test_the_loop_reads_the_inventory_through_a_tool_not_a_freecad_import(tmp_path):
     import FreeCAD
 
-    from core.freecad_apply import build_registry
+    from core.document_tools import build_registry
 
     doc = _document(tmp_path, with_base=True)
     try:
@@ -68,7 +68,7 @@ def test_the_bounding_box_is_the_surface_s_and_not_the_tessellation_s(tmp_path):
     import FreeCAD
     import Part
 
-    from core.freecad_apply import base_inventory
+    from core.document_tools import base_inventory
 
     doc = FreeCAD.newDocument("Curved")
     feature = doc.addObject("Part::Feature", "Imported")

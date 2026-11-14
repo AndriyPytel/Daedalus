@@ -2,9 +2,9 @@
 The Tool registry: Tools are plain functions carrying a JSON Schema, and
 nothing here knows how a Tool is called, `describe()` hands out
 transport-independent descriptions for a caller to adapt. The Document is
-also reachable through `core/kernel_worker.py::step_namespace`, which runs a
+also reachable through `core/kernel/step_namespace.py::step_namespace`, which runs a
 Step's code directly against FreeCAD. This module never imports FreeCAD; the
-FreeCAD-backed Tools live in `core/freecad_apply.py`, and a fake registry for
+FreeCAD-backed Tools live in `core/document_tools.py`, and a fake registry for
 Level 1 is just a few plain functions handed to `ToolRegistry`.
 """
 from dataclasses import dataclass, field

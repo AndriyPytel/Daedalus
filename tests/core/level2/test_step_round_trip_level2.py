@@ -88,7 +88,7 @@ def broken_body():
 
 
 def test_the_body_is_valid_in_memory_and_still_refused_after_a_round_trip(broken_body):
-    from core.kernel.kernel_worker import _body_defects
+    from core.agent.part_rules import _body_defects
 
     assert broken_body.Body.Shape.isValid()
     refusal = _body_defects(broken_body)
@@ -105,7 +105,7 @@ def test_the_refusal_names_at_most_five_faces(broken_body):
 
 
 def test_a_body_that_survives_the_round_trip_is_not_refused():
-    from core.kernel.kernel_worker import _body_defects
+    from core.agent.part_rules import _body_defects
     from core.manifold import step_round_trip_fc
 
     doc = _document_with(("Flange", 0, 21, _racetrack), ("Arms", 21, 103, _racetrack))

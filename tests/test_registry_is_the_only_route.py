@@ -6,21 +6,20 @@ If this fails, either the new code took a shortcut around the Tool registry, or
 a module earned its place on ALLOWED and nobody said so.
 
 The Document is reached from exactly these places, and each has a reason:
-  - core/freecad_apply.py: The Tools themselves, and where the transaction resolves
-    the Document to hand it to. This is the sanctioned route.
+  - core/freecad_apply.py: Where the transaction resolves the Document to hand it to,
+    and the 3D view it fits. This is the sanctioned route.
+  - core/document_tools.py: The FreeCAD-backed Tools themselves: they read the Document
+    in focus, and probe a type on a scratch one.
   - core/kernel/kernel_worker.py: Runs inside the kernel's own process, against its
     own checkpointed Document. It never touches the user's Document.
-  - core/sheets/sketch_check.py: Builds the reading as a sketch in a document of its
-    own, to ask the solver whether what was read can be true at once, and
-    closes it in a `finally`. It reads a drawing and never the user's Document.
   - core/equipment.py: `place_library` opens a library file in a document of its own to copy
     its shape, closes it in a `finally` and makes the user's Document active again. The guard
     allows a file, not a function, so the rest of the module is covered by this line too.
   - src/sdk.py: `Client` owns the Document a caller hands it, opening the
     path or making the empty one the whole run is then applied to. It is the
     assembly point, above the registry rather than around it.
-  - src/tools/run.py: `base_document` builds the Document an editing run starts from, in
-    a process of its own, and hands its path to `Client`. It is the assembly point
+  - src/tools/task.py: `seed_from_step` builds the Document an editing run starts from, in
+    a process of its own, and `run.py` hands its path to `Client`. It is the assembly point
     for a headless run, the same role `sdk.py` plays for a caller.
 
 Reaching the live Document means one of these: ActiveDocument, openDocument,
@@ -35,11 +34,11 @@ from tests.source_tree import ROOT, sources
 
 ALLOWED = {
     "src/core/freecad_apply.py",
+    "src/core/document_tools.py",
     "src/core/kernel/kernel_worker.py",
-    "src/core/sheets/sketch_check.py",
     "src/core/equipment.py",
     "src/sdk.py",
-    "src/tools/run.py",
+    "src/tools/task.py",
 }
 
 DOCUMENT_ACCESS = ("ActiveDocument", "openDocument", "newDocument", "listDocuments", "getDocument")

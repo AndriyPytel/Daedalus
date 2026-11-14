@@ -19,6 +19,12 @@ sys.path.insert(0, os.path.join(ROOT, "src", "tools"))
 import lane  # noqa: E402
 
 
+def _exemplars(monkeypatch, tmp_path):
+    monkeypatch.setenv("DAE_MODELMANIA_DIR", str(tmp_path))
+    (tmp_path / "exemplar").mkdir(exist_ok=True)
+    return tmp_path / "exemplar"
+
+
 def test_a_retry_gets_its_own_stem_for_both_the_log_and_the_step(tmp_path):
     """
     A retry no longer overwrites the previous attempt's `.step` -- each of
@@ -31,19 +37,14 @@ def test_a_retry_gets_its_own_stem_for_both_the_log_and_the_step(tmp_path):
     class FakeProcess:
         returncode = 1
 
-    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider):
+    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider, native=False):
         open(log, "w").close()
         open(log[: -len(".jsonl")] + ".step", "w").close()
         return FakeProcess()
 
-    lane.run_one, real_run_one = fake_run_one, lane.run_one
-    lane.watch, real_watch = lambda *a, **k: "exited", lane.watch
-    try:
-        lane.sweep([("mm24-opus", "sheet.pdf")], ["opus"], "medium", None, "Build it.", out,
-                  1800, 3, False, "Claude (subscription)", None,
-                  timestamp=lambda: next(stamps))
-    finally:
-        lane.run_one, lane.watch = real_run_one, real_watch
+    lane.sweep([("mm24-opus", "sheet.pdf")], ["opus"], "medium", None, "Build it.", out,
+               1800, 3, False, "Claude (subscription)", None,
+               timestamp=lambda: next(stamps), run_one=fake_run_one, watch=lambda *a, **k: "exited")
 
     jsonls = sorted(glob.glob(os.path.join(out, "opus", "mm24-opus.*.jsonl")))
     steps = sorted(glob.glob(os.path.join(out, "opus", "mm24-opus.*.step")))
@@ -124,33 +125,69 @@ def test_status_prints_the_same_table_compare_builds(tmp_path, capsys):
     assert capsys.readouterr().out.strip() == expected.strip()
 
 
-def test_a_run_is_told_which_provider_sells_the_model(monkeypatch):
+def test_a_run_is_told_which_provider_sells_the_model():
     """`run.py` resolves a model through the provider named to it, not a fetch."""
-    spawned = {}
+    cmd = lane.run_command("sheet.pdf", "glm-5.3-flash", "medium", None,
+                           "/tmp/mm25.jsonl", "Build it.", "OpenCode Go")
 
-    def fake_popen(cmd):
-        spawned["cmd"] = cmd
-        return None
-
-    monkeypatch.setattr(lane.subprocess, "Popen", fake_popen)
-
-    lane.run_one("mm25", "sheet.pdf", "glm-5.3-flash", "medium", None,
-                 "/tmp/mm25.jsonl", "Build it.", "OpenCode Go")
-
-    cmd = spawned["cmd"]
     assert cmd[cmd.index("--provider") + 1] == "OpenCode Go"
     assert cmd[cmd.index("--model") + 1] == "glm-5.3-flash"
 
 
-def test_a_task_with_no_sheet_attaches_nothing(monkeypatch):
+def test_a_run_is_given_its_task_and_where_to_save():
+    cmd = lane.run_command("/data/sheet.pdf", "sonnet", "medium", 5.0, "/tmp/a.jsonl",
+                           "Build it.", "Claude (subscription)")
+
+    assert cmd[cmd.index("--task") + 1] == "/data/sheet.pdf"
+    assert cmd[cmd.index("--intent") + 1] == "Build it."
+    assert cmd[cmd.index("--save") + 1] == "/tmp/a.step"
+    assert cmd[cmd.index("--budget-usd") + 1] == "5.0"
+    assert "--native" not in cmd
+
+
+def test_a_task_with_no_sheet_is_an_intent_alone():
     """A part named by a standard is an Intent with no page to read."""
-    spawned = {}
-    monkeypatch.setattr(lane.subprocess, "Popen", lambda cmd: spawned.setdefault("cmd", cmd))
+    cmd = lane.run_command("", "sonnet", "medium", None, "/tmp/b.jsonl",
+                           "Model an M12 nut.", "Claude (subscription)")
 
-    lane.run_one("bolt-nut", "", "sonnet", "medium", None, "/tmp/b.jsonl",
-                 "Model an M12 nut.", "Claude (subscription)")
+    assert "--task" not in cmd
+    assert cmd[cmd.index("--intent") + 1] == "Model an M12 nut."
 
-    assert "--attach" not in spawned["cmd"]
+
+def test_a_run_saves_the_file_its_task_leaves(tmp_path):
+    folder = tmp_path / "from_scratch_01"
+    folder.mkdir()
+    (folder / "task.json").write_text(json.dumps({"text": "Model it.", "inputs": {"graph": {}}}))
+
+    cmd = lane.run_command(str(folder), "sonnet", "medium", None, "/tmp/c.jsonl", "unused",
+                           "Claude (subscription)")
+
+    assert cmd[cmd.index("--save") + 1] == "/tmp/c.FCStd"
+    assert cmd[cmd.index("--task") + 1] == str(folder)
+
+
+def test_sweep_runs_every_task_for_every_model_through_the_run_one_it_is_given(tmp_path):
+    ran = []
+
+    class FakeProcess:
+        returncode = 0
+
+        def poll(self):
+            return 0
+
+    def fake_run_one(label, path, model, effort, budget_usd, log, intent, provider, native=False):
+        ran.append((label, path, model, intent))
+        open(log, "w").close()
+        open(log[: -len(".jsonl")] + ".step", "w").close()
+        return FakeProcess()
+
+    stopped = lane.sweep([("a", "a.pdf"), ("b", "")], ["opus", "sonnet"], "medium", None, "Build it.",
+                         str(tmp_path), 1800, 1, False, "Claude (subscription)", None,
+                         run_one=fake_run_one)
+
+    assert not stopped
+    assert ran == [("a", "a.pdf", "opus", "Build it."), ("b", "", "opus", "Build it."),
+                   ("a", "a.pdf", "sonnet", "Build it."), ("b", "", "sonnet", "Build it.")]
 
 
 def test_a_run_that_never_stops_is_killed_on_the_wall_clock():
@@ -297,8 +334,8 @@ def test_score_for_is_none_without_a_matching_exemplar(tmp_path):
 
 
 def test_score_for_is_none_without_a_saved_step(tmp_path, monkeypatch):
-    monkeypatch.setattr(lane, "EXEMPLAR_DIR", str(tmp_path))
-    exemplar = tmp_path / "mm2025-phase1.step"
+    exemplars = _exemplars(monkeypatch, tmp_path)
+    exemplar = exemplars / "mm2025-phase1.step"
     exemplar.write_text("not a real step")
     log = str(tmp_path / "mm2025-phase1-rep1.jsonl")
     open(log, "w").close()
@@ -307,8 +344,8 @@ def test_score_for_is_none_without_a_saved_step(tmp_path, monkeypatch):
 
 
 def test_score_for_reads_the_scorer_when_both_files_exist(tmp_path, monkeypatch):
-    monkeypatch.setattr(lane, "EXEMPLAR_DIR", str(tmp_path))
-    (tmp_path / "mm2025-phase1.step").write_text("exemplar")
+    exemplars = _exemplars(monkeypatch, tmp_path)
+    (exemplars / "mm2025-phase1.step").write_text("exemplar")
     log = str(tmp_path / "mm2025-phase1-rep1.jsonl")
     open(log, "w").close()
     (tmp_path / "mm2025-phase1-rep1.step").write_text("candidate")
@@ -325,10 +362,10 @@ def test_sheet_stem_keeps_an_arm_suffix_past_the_repeat():
 
 
 def test_exemplar_for_ignores_an_arm_suffix(monkeypatch, tmp_path):
-    monkeypatch.setattr(lane, "EXEMPLAR_DIR", str(tmp_path))
-    (tmp_path / "mm2025-phase1.step").write_text("exemplar")
+    exemplars = _exemplars(monkeypatch, tmp_path)
+    (exemplars / "mm2025-phase1.step").write_text("exemplar")
 
-    assert lane._exemplar_for("mm2025-phase1-rep1-off") == str(tmp_path / "mm2025-phase1.step")
+    assert lane._exemplar_for("mm2025-phase1-rep1-off") == str(exemplars / "mm2025-phase1.step")
 
 
 def test_smoke_tasks_takes_a_sheet_argument():
@@ -351,9 +388,7 @@ def test_smoke_cli_selects_mm2024_phase1(monkeypatch, tmp_path):
         called["tasks"] = tasks
         return None
 
-    monkeypatch.setattr(lane, "sweep", fake_sweep)
-
-    lane.main()
+    lane.main(sweep=fake_sweep)
 
     assert len(called["tasks"]) == 1
     label, sheet = called["tasks"][0]
@@ -370,7 +405,7 @@ def test_pinned_needs_exactly_one_model(monkeypatch):
     assert "exactly one --model" in str(excinfo.value)
 
 
-def test_sweep_resumes_by_skipping_a_run_state_already_marks_done(tmp_path, monkeypatch):
+def test_sweep_resumes_by_skipping_a_run_state_already_marks_done(tmp_path):
     """The resume path, against a recorded state file -- no real run is spawned for it."""
     out = str(tmp_path)
     os.makedirs(os.path.join(out, "opus"))
@@ -387,18 +422,15 @@ def test_sweep_resumes_by_skipping_a_run_state_already_marks_done(tmp_path, monk
         def poll(self):
             return 0
 
-    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider):
+    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider, native=False):
         spawned.append(label)
         open(log, "w").close()
         open(log[: -len(".jsonl")] + ".step", "w").write("ISO-10303-21;")
         return FakeProcess()
 
-    monkeypatch.setattr(lane, "run_one", fake_run_one)
-    monkeypatch.setattr(lane, "watch", lambda *a, **k: "exited")
-
     tasks = [("mm2025-phase1-rep1", "sheet1.pdf"), ("mm2025-phase1-rep2", "sheet1.pdf")]
     lane.sweep(tasks, ["opus"], "medium", None, "Build it.", out, 1800, 3, True,
-              "Claude (subscription)", None)
+              "Claude (subscription)", None, run_one=fake_run_one, watch=lambda *a, **k: "exited")
 
     assert spawned == ["mm2025-phase1-rep2"]
     with open(os.path.join(out, "state.json"), encoding="utf-8") as handle:
@@ -408,8 +440,8 @@ def test_sweep_resumes_by_skipping_a_run_state_already_marks_done(tmp_path, monk
 
 
 def test_report_states_the_noise_floor_from_repeats_of_the_same_sheet(tmp_path, monkeypatch):
-    monkeypatch.setattr(lane, "EXEMPLAR_DIR", str(tmp_path))
-    (tmp_path / "mm2025-phase1.step").write_text("exemplar")
+    exemplars = _exemplars(monkeypatch, tmp_path)
+    (exemplars / "mm2025-phase1.step").write_text("exemplar")
     for rep in (1, 2, 3):
         _write_events(str(tmp_path / "opus" / ("mm2025-phase1-rep%d.jsonl" % rep)),
                      [(1, "review_verdict", {"verdict": "pass", "reason": "ok"})])
@@ -454,10 +486,9 @@ def test_pinned_defaults_the_budget_ceiling_above_the_run_a_30_dollar_cap_cut_of
     def fake_sweep(tasks, models, effort, budget_usd, *rest, **kwargs):
         captured["budget_usd"] = budget_usd
 
-    monkeypatch.setattr(lane, "sweep", fake_sweep)
     monkeypatch.setattr(sys, "argv", ["lane.py", "--pinned", "--model", "opus", "--out", str(tmp_path)])
 
-    lane.main()
+    lane.main(sweep=fake_sweep)
 
     assert captured["budget_usd"] == lane.PINNED_BUDGET_USD
 
@@ -468,12 +499,11 @@ def test_an_explicit_budget_overrides_the_pinned_default(monkeypatch, tmp_path):
     def fake_sweep(tasks, models, effort, budget_usd, *rest, **kwargs):
         captured["budget_usd"] = budget_usd
 
-    monkeypatch.setattr(lane, "sweep", fake_sweep)
     monkeypatch.setattr(sys, "argv", [
         "lane.py", "--pinned", "--model", "opus", "--budget-usd", "55", "--out", str(tmp_path),
     ])
 
-    lane.main()
+    lane.main(sweep=fake_sweep)
 
     assert captured["budget_usd"] == 55.0
 
@@ -488,23 +518,20 @@ def _quota_log(path, resets_at=1791057600):
 
 
 def test_a_quota_refusal_is_not_retried_and_stops_the_sweep_with_its_reset_time(
-        tmp_path, monkeypatch, capsys):
+        tmp_path, capsys):
     out = str(tmp_path)
     spawned = []
 
     class FakeProcess:
         returncode = 1
 
-    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider):
+    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider, native=False):
         spawned.append(label)
         _quota_log(log)
         return FakeProcess()
 
-    monkeypatch.setattr(lane, "run_one", fake_run_one)
-    monkeypatch.setattr(lane, "watch", lambda *a, **k: "exited")
-
     stopped = lane.sweep([("126", "a.pdf"), ("142", "b.pdf")], ["opus"], "medium", None,
-                         "Build it.", out, 1800, 3, False, "Claude (subscription)", None)
+                         "Build it.", out, 1800, 3, False, "Claude (subscription)", None, run_one=fake_run_one, watch=lambda *a, **k: "exited")
 
     assert spawned == ["126"]
     assert stopped
@@ -514,7 +541,7 @@ def test_a_quota_refusal_is_not_retried_and_stops_the_sweep_with_its_reset_time(
     assert run["status"] == "quota"
 
 
-def test_a_quota_stopped_run_is_run_again_by_resume(tmp_path, monkeypatch):
+def test_a_quota_stopped_run_is_run_again_by_resume(tmp_path):
     out = str(tmp_path)
     os.makedirs(os.path.join(out, "opus"))
     state = {"runs": {"126/opus": {"label": "126", "model": "opus", "log": "x.jsonl",
@@ -526,56 +553,47 @@ def test_a_quota_stopped_run_is_run_again_by_resume(tmp_path, monkeypatch):
     class FakeProcess:
         returncode = 1
 
-    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider):
+    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider, native=False):
         spawned.append(label)
         open(log, "w").close()
         return FakeProcess()
 
-    monkeypatch.setattr(lane, "run_one", fake_run_one)
-    monkeypatch.setattr(lane, "watch", lambda *a, **k: "exited")
-
     lane.sweep([("126", "a.pdf")], ["opus"], "medium", None, "Build it.", out, 1800, 1, True,
-               "Claude (subscription)", None)
+               "Claude (subscription)", None, run_one=fake_run_one, watch=lambda *a, **k: "exited")
 
     assert spawned == ["126"]
 
 
-def test_an_ordinary_refusal_is_still_retried(tmp_path, monkeypatch):
+def test_an_ordinary_refusal_is_still_retried(tmp_path):
     out = str(tmp_path)
     spawned = []
 
     class FakeProcess:
         returncode = 1
 
-    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider):
+    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider, native=False):
         spawned.append(label)
         _write_events(log, [(1.0, "blocked", {"reason": "opus refused the request: you are "
                                                         "being rate limited", "tried": []})])
         return FakeProcess()
 
-    monkeypatch.setattr(lane, "run_one", fake_run_one)
-    monkeypatch.setattr(lane, "watch", lambda *a, **k: "exited")
-
     assert not lane.sweep([("126", "a.pdf")], ["opus"], "medium", None, "Build it.", out, 1800,
-                          3, False, "Claude (subscription)", None)
+                          3, False, "Claude (subscription)", None, run_one=fake_run_one, watch=lambda *a, **k: "exited")
     assert spawned == ["126"] * 3
 
 
-def test_a_run_that_exits_0_without_a_step_is_recorded_failed(tmp_path, monkeypatch):
+def test_a_run_that_exits_0_without_a_step_is_recorded_failed(tmp_path):
     out = str(tmp_path)
 
     class FakeProcess:
         returncode = 0
 
-    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider):
+    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider, native=False):
         open(log, "w").close()
         return FakeProcess()
 
-    monkeypatch.setattr(lane, "run_one", fake_run_one)
-    monkeypatch.setattr(lane, "watch", lambda *a, **k: "exited")
-
     lane.sweep([("126", "a.pdf")], ["opus"], "medium", None, "Build it.", out, 1800, 1, False,
-               "Claude (subscription)", None)
+               "Claude (subscription)", None, run_one=fake_run_one, watch=lambda *a, **k: "exited")
 
     with open(os.path.join(out, "state.json"), encoding="utf-8") as handle:
         assert json.load(handle)["runs"]["126/opus"]["status"] == "failed"
@@ -586,7 +604,7 @@ def test_an_attempt_timestamp_survives_freecad_binding_datetime_to_the_class_in_
     import datetime
     import re
 
-    monkeypatch.setattr(lane, "datetime", datetime.datetime, raising=False)
+    monkeypatch.setitem(vars(lane), "datetime", datetime.datetime)
 
     assert re.fullmatch(r"\d{8}-\d{6}-\d{6}", lane._attempt_timestamp())
 
@@ -611,10 +629,9 @@ def test_a_disputed_end_is_reported_unverified_and_is_not_a_blocked_run(tmp_path
 
 
 def _main_with(monkeypatch, tmp_path, *flags):
-    monkeypatch.setattr(lane, "sweep", lambda *a, **k: pytest.fail("sweep must not start"))
     monkeypatch.setattr(sys, "argv", ["lane.py", "--model", "opus", "--task", "a=a.pdf",
                                       "--out", str(tmp_path), *flags])
-    return lane.main
+    return lambda: lane.main(sweep=lambda *a, **k: pytest.fail("sweep must not start"))
 
 
 def test_a_paid_run_without_a_budget_refuses_to_start(monkeypatch, tmp_path, capsys):
@@ -650,15 +667,13 @@ def _sweep_once(monkeypatch, tmp_path, outcome, events, returncode):
 
     FakeProcess.returncode = returncode
 
-    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider):
+    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider, native=False):
         spawned.append(label)
         _write_events(log, events)
         return FakeProcess()
 
-    monkeypatch.setattr(lane, "run_one", fake_run_one)
-    monkeypatch.setattr(lane, "watch", lambda *a, **k: outcome)
     lane.sweep([("126", "a.pdf")], ["opus"], "medium", 3.0, "Build it.", str(tmp_path), 1800,
-               3, False, "Claude (subscription)", 60.0)
+               3, False, "Claude (subscription)", 60.0, run_one=fake_run_one, watch=lambda *a, **k: outcome)
     with open(os.path.join(str(tmp_path), "state.json"), encoding="utf-8") as handle:
         return spawned, json.load(handle)["runs"]["126/opus"]
 
@@ -723,13 +738,9 @@ def _sweep_of_attempts(tmp_path, attempts):
                 handle.write("ISO-10303-21;")
         return FakeProcess()
 
-    lane.run_one, real_run_one = fake_run_one, lane.run_one
-    lane.watch, real_watch = lambda *a, **k: "exited", lane.watch
-    try:
-        lane.sweep([("t", "sheet.pdf")], ["opus"], "medium", None, "Build it.", out, 1800,
-                   len(attempts), False, "Claude (subscription)", None, timestamp=lambda: next(stamps))
-    finally:
-        lane.run_one, lane.watch = real_run_one, real_watch
+    lane.sweep([("t", "sheet.pdf")], ["opus"], "medium", None, "Build it.", out, 1800,
+               len(attempts), False, "Claude (subscription)", None, timestamp=lambda: next(stamps),
+               run_one=fake_run_one, watch=lambda *a, **k: "exited")
     with open(os.path.join(out, "state.json"), encoding="utf-8") as handle:
         return json.load(handle)["runs"]["t/opus"]
 
@@ -760,23 +771,21 @@ def test_an_attempt_the_agent_called_ok_beats_one_with_more_steps(tmp_path):
 
 
 def test_an_effort_the_dial_does_not_offer_is_an_argument_error(monkeypatch, tmp_path):
-    monkeypatch.setattr(lane, "sweep", lambda *args, **kwargs: None)
     monkeypatch.setattr(sys, "argv", [
         "lane.py", "--pinned", "--model", "opus", "--effort", "ultra", "--out", str(tmp_path),
     ])
 
     with pytest.raises(SystemExit) as stopped:
-        lane.main()
+        lane.main(sweep=lambda *args, **kwargs: None)
 
     assert stopped.value.code == 2
 
 
 def _hang_limit_of(monkeypatch, tmp_path, *flags):
     seen = {}
-    monkeypatch.setattr(lane, "sweep", lambda tasks, models, effort, budget, intent, out, hang_seconds, *a, **k: seen.update(hang=hang_seconds))
     monkeypatch.setattr(sys, "argv", ["lane.py", "--model", "opus", "--task", "a=a.pdf",
                                       "--budget-usd", "5", "--out", str(tmp_path), *flags])
-    lane.main()
+    lane.main(sweep=lambda tasks, models, effort, budget, intent, out, hang_seconds, *a, **k: seen.update(hang=hang_seconds))
     return seen["hang"]
 
 

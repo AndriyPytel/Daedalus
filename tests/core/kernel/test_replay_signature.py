@@ -9,6 +9,7 @@ import pytest
 
 from core.freecad_apply import ApplyPipeline
 from core.kernel import KernelResult
+from tests.fake_kernel import FakeKernel
 
 
 class FakeObject:
@@ -34,19 +35,6 @@ class FakeMainWindow:
         return []
 
 
-class FakeWorker:
-    """Records what it was asked, including the name map."""
-
-    def __init__(self, result=None):
-        self.result = result
-        self.checked = []
-
-    def check(self, code, document=None, render_path=None, timeout=None, names=None,
-              ephemeral=False):
-        self.checked.append({"code": code, "document": document, "names": names})
-        return self.result
-
-
 @pytest.fixture
 def trace():
     return []
@@ -54,7 +42,7 @@ def trace():
 
 def _pipeline(trace, result):
     doc = FakeDocument()
-    worker = FakeWorker(result)
+    worker = FakeKernel(result)
 
     def transaction(document, code, label, names=None, expected_signature=None):
         trace.append(("transaction", label, dict(names or {})))
@@ -70,21 +58,19 @@ def _pipeline(trace, result):
 
 
 def test_apply_hands_the_accumulated_names_to_the_transaction(trace):
-    pipeline = _pipeline(trace, None)
+    pipeline = _pipeline(trace, KernelResult(ok=True, created=["Box001"], names={"Box": "Box001"}))
     pipeline._names = {"Earlier": "Earlier001"}
 
-    pipeline.apply("box = doc.addObject('Part::Box', 'Box')",
-                   kernel_result={"created": ["Box001"], "names": {"Box": "Box001"}})
+    pipeline.apply("box = doc.addObject('Part::Box', 'Box')")
 
     assert trace[0][2] == {"Earlier": "Earlier001"}, \
         "the replay's own namespace did not see the accumulator's own names"
 
 
-def test_a_successful_apply_updates_the_accumulator_from_the_kernel_result(trace):
-    pipeline = _pipeline(trace, None)
+def test_a_successful_apply_updates_the_accumulator_from_the_rehearsal(trace):
+    pipeline = _pipeline(trace, KernelResult(ok=True, created=["Box001"], names={"Box": "Box001"}))
 
-    outcome = pipeline.apply("box = doc.addObject('Part::Box', 'Box')",
-                             kernel_result={"created": ["Box001"], "names": {"Box": "Box001"}})
+    outcome = pipeline.apply("box = doc.addObject('Part::Box', 'Box')")
 
     assert outcome.ok, outcome.traceback
     assert pipeline._names == {"Box": "Box001"}
@@ -94,7 +80,7 @@ def test_a_successful_apply_updates_the_accumulator_from_the_kernel_result(trace
 
 def test_start_run_resets_the_accumulated_names():
     doc = FakeDocument()
-    worker = FakeWorker(KernelResult(ok=True))
+    worker = FakeKernel(KernelResult(ok=True))
 
     def dispatch(func, timeout=None):
         return func()

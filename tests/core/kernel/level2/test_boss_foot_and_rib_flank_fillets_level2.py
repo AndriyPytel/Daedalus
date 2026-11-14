@@ -11,6 +11,7 @@ the conflicting feature and edge instead of the bare OCC exception.
 """
 import pytest
 
+from core.agent import part_rules
 from core.kernel import Kernel, find_freecadcmd
 
 pytestmark = pytest.mark.freecad
@@ -23,6 +24,7 @@ def kernel():
     except RuntimeError as exc:
         pytest.skip(str(exc))
     with Kernel() as running:
+        assert running.seed(rules=part_rules).ok
         yield running
 
 
@@ -480,14 +482,14 @@ assert len(body.Shape.Solids)==1, 'body left in %d solids' % len(body.Shape.Soli
 
 def _build_through_step_8(kernel):
     for step in (STEP_1_PLATE, STEP_2_BOSS, STEP_3_LUG, STEP_4_RIB, STEP_5_RIB_ROUND, STEP_6_BORE, STEP_7_LUG_BORE, STEP_8_FILLET_RIB_TO_BOSS,):
-        result = kernel.check(with_design(step, DESIGN))
+        result = kernel.rehearse(with_design(step, DESIGN))
         assert result.ok, result.traceback
 
 
 def test_boss_foot_fillet_refuses_naming_the_conflicting_feature(kernel):
     _build_through_step_8(kernel)
 
-    result = kernel.check(with_design(STEP_9_FILLET_BOSS_FOOT, DESIGN))
+    result = kernel.rehearse(with_design(STEP_9_FILLET_BOSS_FOOT, DESIGN))
 
     assert not result.ok
     assert "FilletRibBoss" in result.traceback, (
@@ -503,7 +505,7 @@ def test_rib_flank_fillet_refuses_at_every_radius_naming_the_conflicting_feature
         code = STEP_10_FILLET_RIB_FLANKS.replace(
             "rad = float(re.findall(r'[\\d.]+', fu['radius']['value'])[0])",
             "rad = %r" % radius)
-        result = kernel.check(with_design(code, DESIGN))
+        result = kernel.rehearse(with_design(code, DESIGN))
 
         assert not result.ok, "R%s built where the recorded run found every radius refused" % radius
         assert "FilletRibBoss" in result.traceback, (

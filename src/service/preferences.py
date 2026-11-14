@@ -5,7 +5,7 @@ The schema forbids unknown keys, so a provider key or base URL, which are server
 """
 import json
 import os
-from typing import List, Optional
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -17,22 +17,9 @@ class Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class ModelChoice(Strict):
-    provider: str
-    model: str
-
-
-class RoleRow(Strict):
-    role: str
-    provider: str
-    model: str
-    effort: Optional[str] = None
-
-
 class Preferences(Strict):
-    role_table: Optional[List[RoleRow]] = None
-    default_model: Optional[ModelChoice] = None
-    naming_model: Optional[ModelChoice] = None
+    provider: Optional[str] = None
+    model: Optional[str] = None
     effort: Optional[str] = None
     interactive: Optional[bool] = None
     confirm: Optional[bool] = None

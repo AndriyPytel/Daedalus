@@ -18,7 +18,7 @@ pytestmark = pytest.mark.freecad
 class _NoKernel:
     """A worker never asked to run anything, for a route that never reaches Design."""
 
-    def check(self, code, document=None, render_path=None, timeout=None, names=None, ephemeral=None):
+    def rehearse(self, code, timeout=None):
         raise AssertionError("a route that isn't design must never reach the kernel")
 
     def kill(self):
@@ -38,19 +38,6 @@ def test_run_question_answers_through_the_session_without_touching_the_document(
     client.close()
 
 
-def test_the_role_table_client_routes_and_answers_from_the_orchestrator_row():
-    from sdk import Client
-    from core.llm import ORCHESTRATOR, RoleClient
-
-    llm = RoleClient(roles={ORCHESTRATOR: ScriptedLLMClient(
-        ["run_question", "It finished after one Step."])},
-        caller=ScriptedLLMClient([]))
-    client = Client(kernel=_NoKernel(), llm=llm)
-
-    assert client.send("what happened to the last run?") == "It finished after one Step."
-    client.close()
-
-
 def test_control_stops_a_run_already_in_flight():
     from sdk import Client
 
@@ -63,7 +50,7 @@ def test_control_stops_a_run_already_in_flight():
     client.close()
 
 
-def test_kill_provider_reaches_this_clients_own_llm(monkeypatch):
+def test_stop_cancels_the_run_and_kills_this_clients_own_llm(monkeypatch):
     """
     What `Mod/ui/daedalus_panel.py`'s `LoopWorker.stop`/`abort` need of
     `core.llm.claude.kill`, reached through the SDK instead of a second
@@ -74,11 +61,12 @@ def test_kill_provider_reaches_this_clients_own_llm(monkeypatch):
     calls = []
     monkeypatch.setattr("core.llm.claude.kill", lambda client: calls.append(client))
     client = sdk.Client.__new__(sdk.Client)
-    client._llm = object()
+    client._live = object()
 
-    client.kill_provider()
+    client.stop()
 
-    assert calls == [client._llm]
+    assert calls == [client._live]
+    assert client._stop
 
 
 def test_a_fresh_document_is_created_through_dispatch_not_on_this_thread():

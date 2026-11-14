@@ -1,4 +1,4 @@
-from core.freecad_apply import RETIRED_TRAPS, SEED_TRAPS, TRAPS
+from core.freecad_traps import RETIRED_TRAPS, SEED_TRAPS, TRAPS
 
 
 def test_every_seed_trap_carries_a_script():

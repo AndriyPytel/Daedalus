@@ -5,8 +5,9 @@ The gateway tests run the app over `tests/fake_worker.py` against a real Postgre
 The real-worker tests run `deploy/worker/scripted_worker.py` in the `dae-501-worker` image on the home server and skip when it is unreachable.
 """
 import json
+import os
 import subprocess
-import threading
+import sys
 
 import httpx
 import pytest
@@ -17,7 +18,8 @@ from service.app import app
 from service.owner import current_owner
 from test_service_events import frames, server  # noqa: F401
 from test_service_postgres import _admin_url, conn, database_url, repo  # noqa: F401
-from test_service_runs import AUTH, TOKEN, api, final, start  # noqa: F401
+from test_service_runs import AUTH, FINAL, TOKEN, api, final, start  # noqa: F401
+from test_service_session_life import SCRIPTED, real_kernel
 from test_service_worker_channel import FAKE, HOST, ROOT, _ssh, alive, until
 
 
@@ -66,44 +68,51 @@ def test_cancelling_a_run_in_a_final_state_or_an_unknown_one_is_refused_with_pro
         app.dependency_overrides.clear()
 
 
+@pytest.fixture
+def worker_argv(monkeypatch):
+    real_kernel()
+    monkeypatch.setenv("DAE_SCRIPT", "delete")
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join(p for p in sys.path if p))
+    return SCRIPTED
+
+
+def run_state(server, run_id):
+    return httpx.get("%s/v1/runs/%s" % (server, run_id), headers=AUTH).json()["state"]
+
+
 def test_an_interactive_run_waits_in_needs_answer_shows_its_question_in_the_stream_and_continues_after_answer(server, database_url):
-    run = httpx.post(server + "/v1/runs", json={"prompt": "asks", "interactive": True}, headers=AUTH).json()
+    run = httpx.post(server + "/v1/runs", json={"prompt": "Remove the box", "interactive": True}, headers=AUTH).json()
     assert run["interactive"] is True
-    until(lambda: httpx.get("%s/v1/runs/%s" % (server, run["id"]), headers=AUTH).json()["state"] == "needs-answer")
+    until(lambda: run_state(server, run["id"]) == "needs-answer", seconds=120)
     seen = []
     with httpx.stream("GET", "%s/v1/runs/%s/events" % (server, run["id"]), headers=AUTH, timeout=30) as response:
         for frame in frames(response.iter_lines()):
             seen.append(frame)
             if frame["event"] == "question":
                 break
-    assert json.loads(seen[-1]["data"]) == {"text": "solid or hollow?"}
-    answered = httpx.post("%s/v1/runs/%s:answer" % (server, run["id"]), json={"answer": "solid"}, headers=AUTH)
+    assert json.loads(seen[-1]["data"]) == {"text": "The assistant wants to delete UserBox."}
+    answered = httpx.post("%s/v1/runs/%s:answer" % (server, run["id"]), json={"answer": "yes"}, headers=AUTH)
     assert answered.status_code == 202
-    until(lambda: httpx.get("%s/v1/runs/%s" % (server, run["id"]), headers=AUTH).json()["state"] == "completed")
+    until(lambda: run_state(server, run["id"]) == "completed", seconds=120)
     answers = [payload for kind, payload in kinds(database_url, run["id"]) if kind == "answer"]
-    assert answers == [{"text": "solid", "by": "user"}]
+    assert answers == [{"text": "You allowed it to delete UserBox.", "by": "user"}]
 
 
-def test_a_non_interactive_run_never_enters_needs_answer_even_when_the_worker_asks(api):
-    seen = set()
-    stop = threading.Event()
-    run = start(api, "nags").json()
+def test_a_non_interactive_run_never_enters_needs_answer_and_its_deletion_is_refused(server, database_url):
+    run = httpx.post(server + "/v1/runs", json={"prompt": "Remove the box"}, headers=AUTH).json()
     assert run["interactive"] is False and run["confirm"] is False
+    states = set()
 
-    def watch():
-        while not stop.is_set():
-            seen.add(state(api, run["id"]))
+    def settled():
+        state = run_state(server, run["id"])
+        states.add(state)
+        return state in FINAL
 
-    thread = threading.Thread(target=watch)
-    thread.start()
-    try:
-        assert final(api, run["id"])["state"] == "completed"
-    finally:
-        stop.set()
-        thread.join()
-    assert "needs-answer" not in seen
-    quiet = start(api, "asks").json()
-    assert final(api, quiet["id"])["state"] == "completed"
+    until(settled, seconds=120)
+    assert run_state(server, run["id"]) == "completed"
+    assert "needs-answer" not in states
+    answers = [payload for kind, payload in kinds(database_url, run["id"]) if kind == "answer"]
+    assert answers == [{"text": "You refused to let it delete UserBox.", "by": "user"}]
 
 
 def test_answer_on_a_run_that_is_not_waiting_is_409_problem_json(api):

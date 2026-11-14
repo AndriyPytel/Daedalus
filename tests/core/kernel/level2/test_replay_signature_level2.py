@@ -5,29 +5,12 @@ before it commits when what landed does not match what Preflight verified,
 and the allocated-name map crosses from one Step's Preflight into the
 next Step's replay of a real Document.
 """
-import functools
-
 import pytest
 
 from core.freecad_apply import ApplyPipeline, SignatureMismatch, run_in_transaction
-from core.kernel import Kernel, copy_of, find_freecadcmd
-from core.kernel.kernel_worker import signature_of
+from core.kernel import Kernel, find_freecadcmd
+from core.kernel.step_namespace import signature_of
 
-
-def _kernel_result(worker, doc, code, names=None):
-    """What `apply()` now expects a caller to already have from the kernel's own
-    run of *code*, rather than a rehearsal `apply()` runs itself (DAE-A-53)."""
-    import os
-
-    copy = copy_of(doc)
-    try:
-        result = worker.check(code, document=copy, names=names or {}, ephemeral=True)
-    finally:
-        os.remove(copy)
-    assert result.ok, result.traceback
-    return {"created": result.created, "deleted": result.deleted,
-            "modified": result.modified, "objects": result.objects,
-            "names": result.names, "signature": result.signature}
 
 pytestmark = pytest.mark.freecad
 
@@ -55,11 +38,10 @@ def doc():
 
 
 @pytest.fixture
-def pipeline(doc, worker, tmp_path):
+def pipeline(doc, worker):
     pipeline = ApplyPipeline(document=doc, worker=worker,
-                             dispatch=lambda func, timeout=None: func(),
-                             render_dir=str(tmp_path))
-    pipeline.apply = functools.partial(pipeline.apply, design_model=False)
+                             dispatch=lambda func, timeout=None: func())
+    pipeline.start_run()
     return pipeline
 
 
@@ -85,7 +67,7 @@ def test_a_forged_signature_aborts_before_it_commits(doc):
     assert doc.Objects == []
 
 
-def test_a_step_addresses_an_earlier_steps_object_through_the_pipelines_own_name_map(pipeline, doc, worker):
+def test_a_step_addresses_an_earlier_steps_object_through_the_pipelines_own_name_map(pipeline, doc):
     """
     AC4, through the full apply() pipeline rather than the kernel alone: a
     stray pre-existing object stands in for a hand-edit, Step 1's preferred
@@ -95,10 +77,10 @@ def test_a_step_addresses_an_earlier_steps_object_through_the_pipelines_own_name
     """
     doc.addObject("Part::Box", "Box")
     doc.recompute()
+    pipeline.start_run()
 
     first_code = "box = doc.addObject('Part::Box', 'Box')\nbox.Length = 42\n"
-    first = pipeline.apply(first_code, label="Add the box",
-                           kernel_result=_kernel_result(worker, doc, first_code))
+    first = pipeline.apply(first_code)
     assert first.ok, first.traceback
     assert first.created == ["Box001"], \
         "FreeCAD did not rename the colliding object the way this test assumes"
@@ -106,9 +88,7 @@ def test_a_step_addresses_an_earlier_steps_object_through_the_pipelines_own_name
     second_code = ("target = doc.getObject(names['Box'])\n"
                    "assert target.Length.Value == 42, 'reached the wrong Box'\n"
                    "target.Width = 7\n")
-    second = pipeline.apply(second_code, label="Read the box back",
-                            kernel_result=_kernel_result(worker, doc, second_code,
-                                                         names=pipeline._names))
+    second = pipeline.apply(second_code)
 
     assert second.ok, second.traceback
     assert doc.getObject("Box001").Width.Value == 7

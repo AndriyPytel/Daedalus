@@ -1,29 +1,11 @@
 """
-Level 2 -- the geometry fingerprint the Assertion check compares, off a
-real headless FreeCAD Document.
-
-The check itself lives in the Assertion phase (core/loop.py::run,
-core/loop.py::_geometry_regressions), keyed on `entries_a_retry_touched`
-(core/loop.py:2463) rather than on anything Preflight can see -- Preflight's
-own `_recompute_scope` means nothing outside a Step's declared scope can ever
-have a different Shape within one Preflight call (`core/kernel_worker.py`),
-so a per-Step "untouched but moved" check can only ever fire on a legitimate
-dependency cascade (`tests/test_apply_level2.py::
-test_a_dependent_recompute_is_not_reported_as_a_modification`). What
-Preflight can measure, and what `check_assertions` hands the Assertion phase
-every time it runs, is the current fingerprint -- Volume and BoundBox, read
-straight off `KernelResult.geometry` (`core/kernel_worker.py::
-_geometry_snapshot`). This is that wiring, proved against a real Document;
-the comparison itself is Level 1 (tests/test_geometry_regression_across_a_run.py,
-tests/test_loop.py).
-
-Reproduced with `Part::Fillet` on a `Part::Box`, the same fixture shape
-`test_preflight_worker_recompute_scope.py` already uses for "a dependent left
-stale by a scoped recompute": editing the Box moves the Fillet's own Shape as
-a side effect, without the Step ever naming Fillet.
+Level 2 -- the geometry fingerprint a Preflight hands back, off a real headless FreeCAD Document.
+It is the Volume and BoundBox of every feature, read straight off `KernelResult.geometry`.
+Editing a Box moves its Fillet's own Shape without the Step ever naming the Fillet.
 """
 import pytest
 
+from core.agent import part_rules
 from core.kernel import Kernel, copy_of, find_freecadcmd
 
 pytestmark = pytest.mark.freecad
@@ -58,7 +40,7 @@ def a_box_with_a_fillet():
 
 
 def test_a_successful_check_carries_a_fingerprint_for_every_feature(worker, a_box_with_a_fillet):
-    result = worker.check("pass\n", a_box_with_a_fillet)
+    result = worker.seed(a_box_with_a_fillet, rules=part_rules)
 
     assert result.ok, result.traceback
     assert set(result.geometry) == {"Box", "Fillet"}
@@ -67,14 +49,14 @@ def test_a_successful_check_carries_a_fingerprint_for_every_feature(worker, a_bo
 
 
 def test_editing_the_box_moves_the_fillets_own_fingerprint_too(worker, a_box_with_a_fillet):
-    before = worker.check("pass\n", a_box_with_a_fillet).geometry["Fillet"]
+    before = worker.seed(a_box_with_a_fillet, rules=part_rules).geometry["Fillet"]
 
-    after = worker.check(
+    worker.seed(a_box_with_a_fillet, rules=part_rules)
+    after = worker.rehearse(
         "box = doc.getObject('Box')\n"
         "box.Length = 15\n"
         "box.Width = 15\n"
-        "box.Height = 15\n",
-        a_box_with_a_fillet,
+        "box.Height = 15\n"
     ).geometry["Fillet"]
 
     assert before != after, \
@@ -82,7 +64,7 @@ def test_editing_the_box_moves_the_fillets_own_fingerprint_too(worker, a_box_wit
 
 
 def test_a_check_that_touches_nothing_reports_the_same_fingerprint_twice(worker, a_box_with_a_fillet):
-    first = worker.check("pass\n", a_box_with_a_fillet).geometry
-    second = worker.check("pass\n", a_box_with_a_fillet).geometry
+    first = worker.seed(a_box_with_a_fillet, rules=part_rules).geometry
+    second = worker.seed(a_box_with_a_fillet, rules=part_rules).geometry
 
     assert first == second, "an unedited copy fingerprinted differently across two calls"

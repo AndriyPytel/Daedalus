@@ -7,6 +7,7 @@ that misses the solid at either sign of Reversed).
 """
 import pytest
 
+from core.agent import part_rules
 from core.kernel import Kernel, find_freecadcmd
 
 pytestmark = pytest.mark.freecad
@@ -53,7 +54,8 @@ doc.recompute()
 
 
 def test_a_profile_that_misses_the_solid_either_way_is_told_apart_from_a_direction_error(worker):
-    said = worker.check(MISSES_EITHER_WAY, None).traceback
+    assert worker.seed(rules=part_rules).ok
+    said = worker.rehearse(MISSES_EITHER_WAY).traceback
 
     assert "does not overlap the solid at all" in said, said
     assert "Reversed will not fix this" in said, said

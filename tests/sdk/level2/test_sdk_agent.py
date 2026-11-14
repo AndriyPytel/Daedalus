@@ -6,8 +6,7 @@ import os
 
 import pytest
 
-from core.events import (APPLIED, BUDGET_EXHAUSTED, COMPLETED, COST, DESIGN, GATE, PLAN,
-                         PREFLIGHT_FAILED, REVIEW_VERDICT)
+from core.events import APPLIED, BUDGET_EXHAUSTED, COMPLETED, COST, PREFLIGHT_FAILED
 from core.agent import reader
 from core.kernel import Kernel, find_freecadcmd
 from core.llm import ScriptedLLMClient
@@ -25,6 +24,20 @@ for a, b in [((0, 0), (10, 0)), ((10, 0), (10, 10)), ((10, 10), (0, 10)), ((0, 1
 pad = body.newObject('PartDesign::Pad', 'Pad')
 pad.Profile = sketch
 pad.Length = 10
+doc.recompute()
+"""
+
+TALLER = """
+import Part
+body = doc.getObject('Body')
+sketch = body.newObject('Sketcher::SketchObject', 'Sketch2')
+sketch.AttachmentSupport = [(body.Origin.OriginFeatures[3], '')]
+sketch.MapMode = 'FlatFace'
+for a, b in [((2, 2), (5, 2)), ((5, 2), (5, 5)), ((5, 5), (2, 5)), ((2, 5), (2, 2))]:
+    sketch.addGeometry(Part.LineSegment(App.Vector(*a, 0), App.Vector(*b, 0)))
+pad = body.newObject('PartDesign::Pad', 'Pad2')
+pad.Profile = sketch
+pad.Length = 15
 doc.recompute()
 """
 
@@ -88,7 +101,6 @@ def test_the_agent_picks_its_own_route_and_the_step_it_built_is_exported(kernel,
     assert kinds.count(APPLIED) == 1
     assert kinds.count(PREFLIGHT_FAILED) == 1
     assert COMPLETED in kinds
-    assert not {DESIGN, PLAN, GATE, REVIEW_VERDICT} & set(kinds)
     assert "nope" in _user_text(llm.calls[2])
     assert '"volume": 1000' in _user_text(llm.calls[4])
     assert any(block.get("type") == "image_url" for block in llm.calls[5][-1]["content"])
@@ -152,7 +164,7 @@ def test_a_crash_in_the_agents_code_does_not_end_the_run(kernel):
     llm = ScriptedLLMClient([
         _say(code=BOX),
         _say(code="import os\nos._exit(1)"),
-        _say(code=BOX.replace("'Body'", "'Second'")),
+        _say(code=TALLER),
         _say(finish="done"),
     ])
     client = _client(llm, kernel)
@@ -241,14 +253,16 @@ def test_the_agent_builds_into_the_clients_own_document(kernel):
     client.close()
 
 
-def test_a_design_intent_goes_to_the_agent_unless_the_pipeline_is_asked_for(kernel):
+def test_a_design_intent_goes_to_the_agent(kernel):
     llm = ScriptedLLMClient([_say(code=BOX), _say(finish="done")])
     client = _client(llm, kernel)
 
-    result = client.send("Make a cube", route_first=False)
+    result = client.send("Make a cube", route_first=False, choice="part")
 
     assert result.ok
-    assert not {DESIGN, PLAN, GATE, REVIEW_VERDICT} & set(_kinds(client))
+    kinds = _kinds(client)
+    assert kinds.count(COST) == 2
+    assert APPLIED in kinds and COMPLETED in kinds
     client.close()
 
 
@@ -259,9 +273,43 @@ def test_a_run_given_its_own_stream_emits_every_event_into_it(kernel):
     client = _client(llm, kernel)
     run = []
 
-    client.send("Make a cube", route_first=False, events=EventStream([run.append]))
+    client.send("Make a cube", route_first=False, choice="part", events=EventStream([run.append]))
 
     kinds = [event.kind for event in run]
     assert APPLIED in kinds and COMPLETED in kinds
     assert client.seen == []
+    client.close()
+
+
+def test_a_run_seeds_the_kernel_once(kernel, monkeypatch):
+    seeds = []
+    real = kernel.seed
+
+    def recording(*args, **kwargs):
+        seeds.append(args)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(kernel, "seed", recording)
+    llm = ScriptedLLMClient([_say(code=BOX), _say(code="print(1)"), _say(finish="done")])
+    client = _client(llm, kernel)
+
+    client.agent("Make a cube")
+
+    assert len(seeds) == 1
+    client.close()
+
+
+def test_a_code_call_that_changes_nothing_is_refused_in_the_models_next_turn(kernel):
+    from core.prompts import read_prompt
+
+    llm = ScriptedLLMClient([_say(code="print(1)"), _say(code=BOX), _say(finish="done")])
+    client = _client(llm, kernel)
+
+    result = client.agent("Make a cube")
+
+    refusal = json.loads(llm.calls[1][-1]["content"])
+    assert refusal["status"] == "failed" and refusal["gate"] == "changed_nothing"
+    assert refusal["traceback"] == read_prompt("changed_nothing.md")
+    assert result.ok and result.steps_applied == 1
+    assert _kinds(client).count(PREFLIGHT_FAILED) == 1
     client.close()

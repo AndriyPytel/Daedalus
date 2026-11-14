@@ -1,8 +1,7 @@
 """Guards the settings/llm separation.
 
 `core/settings.py` must not import anything from `core/llm` at all: reading
-one setting should not load the whole LLM stack. The role-table defaults live
-in `core/role_defaults.py`, which neither side imports the other to reach.
+one setting should not load the whole LLM stack.
 """
 import subprocess
 import sys
@@ -28,16 +27,3 @@ def test_llm_py_file_no_longer_exists():
     """core/llm.py should be replaced by the core/llm/ package."""
     assert not (SRC / "core" / "llm.py").exists(), "core/llm.py should not exist"
     assert (SRC / "core" / "llm" / "__init__.py").exists(), "core/llm/ package should exist"
-
-
-def test_role_defaults_does_not_import_settings_or_llm():
-    """role_defaults.py should be standalone data with no imports from core."""
-    result = subprocess.run(
-        [sys.executable, "-c",
-         "import sys; sys.path.insert(0, %r); import core.role_defaults; "
-         "core_modules = [m for m in sys.modules if m.startswith('core.') and m != 'core.role_defaults']; "
-         "assert not core_modules, 'role_defaults imported: %%s' %% core_modules"
-         % str(SRC)],
-        capture_output=True, text=True,
-    )
-    assert result.returncode == 0, result.stderr

@@ -13,24 +13,8 @@ home).
 import pytest
 
 from core.freecad_apply import ApplyPipeline, run_in_transaction
-from core.kernel import Kernel, copy_of, find_freecadcmd
+from core.kernel import Kernel, find_freecadcmd
 
-
-def _kernel_result(kernel, doc, code, names=None):
-    """What `apply()` now expects a caller to already have from the kernel's
-    own run of *code*, rather than a rehearsal `apply()` runs itself
-    (DAE-A-53)."""
-    import os
-
-    copy = copy_of(doc)
-    try:
-        result = kernel.check(code, document=copy, names=names or {}, ephemeral=True)
-    finally:
-        os.remove(copy)
-    assert result.ok, result.traceback
-    return {"created": result.created, "deleted": result.deleted,
-            "modified": result.modified, "objects": result.objects,
-            "names": result.names, "signature": result.signature}
 
 pytestmark = pytest.mark.freecad
 
@@ -47,11 +31,11 @@ def kernel():
 
 def test_a_property_change_is_captured_and_attributed_to_its_step(kernel):
     """AC2: a modification, not just a creation, is captured by the diff."""
-    created = kernel.check("doc.addObject('Part::Box', 'Box')")
+    created = kernel.rehearse("doc.addObject('Part::Box', 'Box')")
     assert created.ok, created.traceback
     assert created.modified == []
 
-    changed = kernel.check("doc.getObject('Box').Length = 20")
+    changed = kernel.rehearse("doc.getObject('Box').Length = 20")
 
     assert changed.ok, changed.traceback
     assert changed.modified == ["Box"]
@@ -81,9 +65,10 @@ def test_a_step_that_bypasses_every_tool_is_still_recorded_as_owned(doc, kernel)
     pipeline = ApplyPipeline(document=doc, worker=kernel,
                              dispatch=lambda func, timeout=None: func(),
                              transaction=run_in_transaction)
+    pipeline.start_run()
 
     code = "doc.addObject('Part::Box', 'RawBox')"
-    result = pipeline.apply(code, kernel_result=_kernel_result(kernel, doc, code))
+    result = pipeline.apply(code)
 
     assert result.ok, result.traceback
     assert "RawBox" in pipeline.owned

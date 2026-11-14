@@ -18,7 +18,6 @@ from PIL import Image
 from core.kernel import Kernel, find_freecadcmd
 from core.kernel import kernel as kernel_module
 from core.kernel.preflight_render import render
-from core.edit_guard import RememberedMeasures
 from tests.core.kernel import part_202
 
 pytestmark = pytest.mark.freecad
@@ -67,7 +66,7 @@ def _a_parent_with_a_kernel(scratch, landing):
     """A separate process that starts a Kernel, optionally lands a Step, and says `up`; returns it with the worker's pid."""
     code = ("import sys, time\nsys.path.insert(0, %r)\nfrom core.kernel import Kernel\nk = Kernel()\n"
             "k.start()\n%sprint('up', k.pid, flush=True)\ntime.sleep(60)\n" % (
-                SRC, "assert k.check(\"doc.addObject('Part::Box', 'Box')\", document=None).ok\n" if landing else ""))
+                SRC, "assert k.seed().ok\nassert k.rehearse(\"doc.addObject('Part::Box', 'Box')\").ok\n" if landing else ""))
     parent = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, text=True,
                               env=dict(os.environ, TMPDIR=str(scratch)))
     said = parent.stdout.readline().split()
@@ -91,29 +90,16 @@ def test_the_render_of_part_202_is_the_picture_the_per_triangle_rasteriser_drew(
     assert differing == 0, "%d of %d pixels differ from the reference render" % (differing, reference.shape[0] * reference.shape[1])
 
 
-def test_the_exact_box_found_from_few_faces_is_the_exact_box_and_is_found_faster(doc):
-    shape = doc.Part__Feature.Shape
-
-    started = time.perf_counter()
-    whole = shape.optimalBoundingBox(False)
-    whole_took = time.perf_counter() - started
-    started = time.perf_counter()
-    found = RememberedMeasures().box(shape)
-    found_took = time.perf_counter() - started
-
-    for side in ("XMin", "YMin", "ZMin", "XMax", "YMax", "ZMax"):
-        assert getattr(found, side) == pytest.approx(getattr(whole, side), abs=1e-6)
-    assert found_took < whole_took, "%.2f s from the faces against %.2f s for the whole shape" % (found_took, whole_took)
-
-
 def test_a_read_only_probe_writes_no_checkpoint_and_no_snapshot_and_costs_a_second_at_most(kernel, scratch):
-    landed = kernel.check("pass", document=part_202.saved_whole(str(scratch)), timeout=300)
+    kernel.timeout = 300
+    landed = kernel.seed(part_202.saved_whole(str(scratch)))
+    kernel.timeout = kernel_module.DEFAULT_TIMEOUT
     assert landed.ok, landed.traceback
     written = os.stat(landed.checkpoint).st_mtime_ns
     files = _leftovers(scratch)
 
     started = time.perf_counter()
-    probe = kernel.check("print(len(doc.Objects))")
+    probe = kernel.rehearse("print(len(doc.Objects))")
     took = time.perf_counter() - started
 
     assert probe.ok, probe.traceback
@@ -126,11 +112,12 @@ def test_a_read_only_probe_writes_no_checkpoint_and_no_snapshot_and_costs_a_seco
 
 
 def test_a_step_that_writes_rewrites_the_checkpoint_and_returns_the_snapshot(kernel):
-    first = kernel.check("doc.addObject('Part::Box', 'Box')", document=None)
+    assert kernel.seed().ok
+    first = kernel.rehearse("doc.addObject('Part::Box', 'Box')")
     assert first.ok, first.traceback
     written = os.stat(first.checkpoint).st_mtime_ns
 
-    second = kernel.check("doc.Box.Length = 7")
+    second = kernel.rehearse("doc.Box.Length = 7")
 
     assert second.ok, second.traceback
     assert os.stat(second.checkpoint).st_mtime_ns != written, "the writing Step left the checkpoint as it was"
@@ -138,8 +125,9 @@ def test_a_step_that_writes_rewrites_the_checkpoint_and_returns_the_snapshot(ker
 
 
 def test_a_kernel_that_is_killed_normally_leaves_no_kernel_checkpoint_behind(kernel, scratch):
-    assert kernel.check("doc.addObject('Part::Box', 'Box')", document=None).ok
-    assert kernel.check("doc.Box.Length = 7").ok
+    assert kernel.seed().ok
+    assert kernel.rehearse("doc.addObject('Part::Box', 'Box')").ok
+    assert kernel.rehearse("doc.Box.Length = 7").ok
     assert _leftovers(scratch), "the run wrote no checkpoint, so there is nothing to clean"
 
     kernel.kill()
@@ -148,10 +136,11 @@ def test_a_kernel_that_is_killed_normally_leaves_no_kernel_checkpoint_behind(ker
 
 
 def test_a_run_whose_kernel_was_sigkilled_leaves_no_kernel_checkpoint_behind(kernel, scratch):
-    assert kernel.check("doc.addObject('Part::Box', 'Box')", document=None).ok
+    assert kernel.seed().ok
+    assert kernel.rehearse("doc.addObject('Part::Box', 'Box')").ok
     os.kill(kernel.pid, signal.SIGKILL)
-    kernel.check("pass")
-    assert kernel.check("doc.Box.Length = 7").ok
+    kernel.rehearse("pass")
+    assert kernel.rehearse("doc.Box.Length = 7").ok
     os.kill(kernel.pid, signal.SIGKILL)
 
     kernel.kill()

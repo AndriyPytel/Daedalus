@@ -30,6 +30,6 @@ assert abs(box.XLength - 30.0) < 1e-6, box.XLength
 assert abs(box.YLength - 30.0) < 1e-6, box.YLength
 assert abs(box.ZLength - 10.0) < 1e-6, box.ZLength
 """
-    result = kernel.check(code)
+    result = kernel.rehearse(code)
 
     assert result.ok, result.traceback

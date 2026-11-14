@@ -18,8 +18,8 @@ class Doc:
 
 
 class Worker:
-    def check(self, *args, **kwargs):
-        return KernelResult(ok=True)
+    def rehearse(self, code, timeout=None):
+        return KernelResult(ok=True, created=["Box"])
 
 
 def _apply(took):
@@ -27,7 +27,7 @@ def _apply(took):
     ticks = iter([100.0, 100.0 + took])
     pipeline = ApplyPipeline(document=doc, worker=Worker(), events=events, clock=lambda: next(ticks),
                              transaction=lambda *a, **k: doc.Objects.append(Box()))
-    result = pipeline.apply("box = 1", kernel_result={"created": ["Box"], "names": {}})
+    result = pipeline.apply("box = 1")
     return events, result
 
 

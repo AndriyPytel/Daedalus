@@ -33,6 +33,7 @@ from ui.design_tokens     import (CONTROL, CONTROL_DENSE, HAIRLINE, ICON, ICON_D
                                   SPACE_SM, SPACE_XS, WASH)
 from ui.typography        import BODY, BODY_STRONG, CAPTION, LABEL, css
 from bridge import provider_manager
+from sdk import Sessions, log_id
 from ui.ui_helpers import UIHelpers
 
 
@@ -415,9 +416,7 @@ measured as sixteen `QObject::setParent` (different thread) warnings, one
 `queue_widget.py :: _NowLabel.set_full`; a bound method of a main-thread
 QObject gives Qt that QObject as the context instead, which is what makes
 the hop queued, and `Qt.QueuedConnection` on the lambda does not help since
-it still posts to the context's thread, which is still this object. The
-client is held rather than built per run, and is dropped so that the next
-run rebuilds it from settings when the model changes.
+it still posts to the context's thread, which is still this object.
 """
 
     finished = QtCore.Signal(object, str)
@@ -431,6 +430,7 @@ run rebuilds it from settings when the model changes.
         self._document = None
         self._stop = threading.Event()
         self._abort = threading.Event()
+        self._transcript = ""
 
     @property
     def document(self):
@@ -440,25 +440,6 @@ run rebuilds it from settings when the model changes.
     def document(self, value):
         self._document = value
         self.sdk_client = None
-
-    @property
-    def client(self):
-        """The LLM client, for the panel to clear when the model changes."""
-        if self.sdk_client is None:
-            return None
-        return self.sdk_client._llm
-
-    @client.setter
-    def client(self, value):
-        if self.sdk_client is not None:
-            self.sdk_client.llm = value
-
-    @property
-    def pipeline(self):
-        """The ApplyPipeline, for abort() to call shutdown()."""
-        if self.sdk_client is None:
-            return None
-        return self.sdk_client.pipeline
 
     def stop(self):
         """
@@ -473,32 +454,34 @@ run rebuilds it from settings when the model changes.
         """
         self._stop.set()
         if self.sdk_client is not None:
-            self.sdk_client.kill_provider()
+            self.sdk_client.stop()
         self.ask.abandon()
+
+    def shutdown(self):
+        """Lets the headless FreeCAD go, the call a Session's own teardown makes."""
+        if self.sdk_client is not None:
+            self.sdk_client.shutdown()
 
     def abort(self):
         """Kills the kernel now, discarding whatever Step is in flight.
         Where `stop` lets the kernel checkpoint the Step on its own, this
-        also calls `pipeline.shutdown` -- the same call a Session's own
-        teardown makes -- so the `Kernel.check` call in flight comes back a
+        also calls `shutdown` -- the same call a Session's own teardown
+        makes -- so the Kernel call in flight comes back a
         crash and `core/kernel.py`'s reopen-the-checkpoint recovery keeps it
         out of the Document. `Kernel.kill` only drops the process, so the
-        next Step run restarts it; `sdk_client.kill_provider()` ends this
-        run's own `claude` process the same way `stop` does.
+        next Step run restarts it.
         """
         self._abort.set()
         if self.sdk_client is not None:
-            self.sdk_client.kill_provider()
-        if self.pipeline is not None:
-            self.pipeline.shutdown()
+            self.sdk_client.stop()
+            self.sdk_client.shutdown()
         self._stop.set()
         self.ask.abandon()
 
     def _get_sdk_client(self):
         """
         The SDK Client for this Document, its own `Kernel()` (`Client`'s
-        default) and all: created once, reused for every Intent, and dropped
-        only when the model changes so the next run rebuilds it from settings.
+        default) and all: created once and reused for every Intent.
         """
         if self.sdk_client is None:
             from bridge.main_thread import on_main_thread
@@ -506,22 +489,30 @@ run rebuilds it from settings when the model changes.
             self.sdk_client = Client(
                 document=self._document,
                 confirm=self.ask.about_objects_we_do_not_own,
-                dispatch=on_main_thread)
+                dispatch=on_main_thread,
+                on_document=self._name_the_document)
         return self.sdk_client
+
+    def _name_the_document(self, name):
+        try:
+            self.document_named.emit(self._transcript, name,
+                                     str(getattr(self._document, "Uid", "") or ""))
+        except Exception:
+            pass  # except-pass-allowed: the panel may already be closing, nothing needs the signal
 
     @QtCore.Slot(str, object, str)
     def do_work(self, intent: str, attachments: list, transcript: str):
         """Runs one Intent and emits the result: a missing transcript log must not
-cost the user their run, nor must a Session that cannot be named after its
-Document, so both fail quietly, and a model that cannot be resolved is a
+cost the user their run, and a model that cannot be resolved is a
 known outcome that belongs in the transcript as a sentence, not a
 traceback.
 """
-        from sdk import events as ev, EventStream, build_registry, get_domain
+        from sdk import events as ev, EventStream, get_domain
         from bridge.logger import generate_crash_report, logger
 
         self._stop.clear()
         self._abort.clear()
+        self._transcript = transcript
         events = EventStream([self.bridge.subscriber()])
         try:
             events.log_to(transcript)
@@ -532,49 +523,31 @@ traceback.
                          if event.kind in (ev.BLOCKED, ev.ERROR) else None)
 
         try:
-            sdk_client = self._get_sdk_client()
+            result = self._get_sdk_client().send(
+                intent, attachments=attachments, cancelled=self._stop.is_set,
+                events=events, choice=get_domain())
         except ValueError as exc:
             events.emit(ev.ERROR, message=str(exc))
-            self.finished.emit(None, transcript)
-            return
-
-        tools = build_registry(document=self._document, pipeline=sdk_client.pipeline,
-                              dispatch=sdk_client.dispatch)
-        try:
-            self.document_named.emit(transcript,
-                                     str(tools.call("snapshot").get("document") or ""),
-                                     str(getattr(self._document, "Uid", "") or ""))
-        except Exception:
-            pass  # except-pass-allowed: the panel may already be closing, nothing needs the signal
-
-        sdk_client.pipeline.start_run()
-        try:
-            domain = sdk_client.domain_for(intent, get_domain(), events)
-            result = sdk_client.send(
-                intent,
-                attachments=attachments,
-                cancelled=self._stop.is_set,
-                events=events, domain=domain)
-            self.finished.emit(result, transcript)
+            result = None
         except Exception as exc:
-            events.emit("error", message=generate_crash_report(exc, "LoopWorker.do_work()"))
-            self.finished.emit(None, transcript)
-        finally:
-            sdk_client.pipeline.end_run()
+            events.emit(ev.ERROR, message=generate_crash_report(exc, "LoopWorker.do_work()"))
+            result = None
+        self.finished.emit(result, transcript)
+
+
 class _TitleThread(QtCore.QThread):
     """One short call naming a Session, off the UI thread so the run is not held up."""
 
     titled = QtCore.Signal(str)
 
-    def __init__(self, intent: str, model_id: str, parent=None):
+    def __init__(self, intent: str, parent=None):
         super().__init__(parent)
         self._intent = intent
-        self._model_id = model_id
 
     def run(self):
         from sdk import generate
 
-        self.titled.emit(generate(self._intent, self._model_id))
+        self.titled.emit(generate(self._intent))
 
 
 RESTORE_CHUNK = 25
@@ -597,7 +570,7 @@ Apply are bound to its own `worker.document`, set once from whichever
 Document is in focus when the Session's first Intent is sent, rather than
 to `FreeCAD.ActiveDocument` at the moment of the call, which is whichever
 Document the user happens to be looking at right then; a Preflight Worker
-comes along for free, living on `worker.pipeline`, this Session's own.
+comes along for free, living on the Client, this Session's own.
 `running` and `sent_attachments` are carried here so a
 Session backgrounded mid-run keeps its own state rather than sharing the
 one the panel happens to be looking at; `dirty` is set when an event lands for
@@ -642,8 +615,7 @@ composer, never queued here.
 
         with stopping():
             self.worker.stop()
-            if self.worker.pipeline is not None:
-                self.worker.pipeline.shutdown()
+            self.worker.shutdown()
             if self.thread.isRunning():
                 self.thread.quit()
                 if not self.thread.wait(grace_ms):
@@ -657,8 +629,8 @@ rendered into a transcript, carrying an object name since
 `QMainWindow::saveState()` drops unnamed docks, losing the panel's restored
 position. The status line sits outside the transcript's scroll area, so an
 unbreakable Step widens the dock and Qt never gives it back. One
-`_SessionWorker` per Session lives in `self._workers`, keyed by its stable
-log path.
+`_SessionWorker` per Session lives in `self._workers`, keyed by the
+Session's id.
 """
 
     _ON_EVENT_DISPATCH = None
@@ -691,7 +663,8 @@ log path.
         header = self._build_header()
         root_layout.addWidget(header)
 
-        self.chat_sessions = ChatSessionManager()
+        self.sessions = Sessions()
+        self.chat_sessions = ChatSessionManager(self.sessions)
         self.chat_sessions.setObjectName("ChatArea")
         self.chat_sessions.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         root_layout.addWidget(self.chat_sessions, stretch=1)
@@ -721,47 +694,44 @@ log path.
             app.aboutToQuit.connect(self._cleanup_thread)
 
         self.chat_sessions.session_changed.connect(self.update_header_title)
-        self.chat_sessions.session_removed.connect(lambda _: self.update_header_title(self.chat_sessions.stack.currentIndex()))
 
         self.chat_sessions.load()
         self.new_chat()
 
     @property
     def worker(self) -> LoopWorker:
-        return self._worker_for(self._current_log()).worker
+        return self._worker_for(self.chat_sessions.current_id()).worker
 
     @property
     def thread(self) -> QtCore.QThread:
-        return self._worker_for(self._current_log()).thread
+        return self._worker_for(self.chat_sessions.current_id()).thread
 
     @property
     def bridge(self) -> EventBridge:
-        return self._worker_for(self._current_log()).bridge
+        return self._worker_for(self.chat_sessions.current_id()).bridge
 
     @property
     def ask(self) -> AskTheUser:
-        return self._worker_for(self._current_log()).ask
+        return self._worker_for(self.chat_sessions.current_id()).ask
 
-    def _current_log(self):
-        info = self.chat_sessions.get_session_info(self.chat_sessions.stack.currentIndex())
-        return info["log"] if info else None
-
-    def _worker_for(self, log: str) -> _SessionWorker:
+    def _worker_for(self, session_id: str) -> _SessionWorker:
         """This Session's own worker, built lazily -- most Sessions never run
         again, avoiding a QThread that still needs stopping on exit.
         `bridge`/`ask` stay on the GUI thread; only `worker` moves onto its
         own QThread (`_SessionWorker.__init__`), so its signals need bound
         methods, not lambdas -- see `LoopWorker`.
         """
-        bundle = self._workers.get(log)
+        bundle = self._workers.get(session_id)
         if bundle is None:
             bundle = _SessionWorker(EventBridge(), AskTheUser())
             bundle.worker.finished.connect(self.on_run_finished)
             bundle.worker.document_named.connect(self.on_document_named)
-            bundle.bridge.event.connect(lambda event, log=log: self._route_event(log, event))
+            bundle.bridge.event.connect(
+                lambda event, session_id=session_id: self._route_event(session_id, event))
             bundle.ask.owned_objects.connect(
-                lambda payload, log=log: self._route_ask(log, "owned_objects", payload))
-            self._workers[log] = bundle
+                lambda payload, session_id=session_id:
+                    self._route_ask(session_id, "owned_objects", payload))
+            self._workers[session_id] = bundle
         return bundle
 
     def _bind_document(self, bundle: _SessionWorker):
@@ -769,35 +739,35 @@ log path.
         Read here, not left to `build_registry`'s fallback: only at the
         Session's first Intent are "whichever is in focus" and "the Document
         this Session is about" guaranteed the same. Goes through
-        `core.freecad_apply.active_document`, never `FreeCAD.ActiveDocument`.
+        `core.document_tools.active_document`, never `FreeCAD.ActiveDocument`.
         """
         if bundle.worker.document is None:
             from sdk import active_document
             bundle.worker.document = active_document()
 
-    def _route_event(self, log: str, event):
-        """An event from *log*'s own worker: render it if that Session is on
+    def _route_event(self, session_id: str, event):
+        """An event from *session_id*'s own worker: render it if that Session is on
         screen, otherwise just remember it happened. The event reached its
         transcript on disk already (`LoopWorker.do_work` logs it directly),
         so `switch_session` resyncs from it next time this Session is shown.
         """
-        if log == self._current_log():
+        if session_id == self.chat_sessions.current_id():
             self.on_event(event)
             return
-        bundle = self._workers.get(log)
+        bundle = self._workers.get(session_id)
         if bundle:
             bundle.dirty = True
 
-    def _route_ask(self, log: str, kind: str, payload):
-        """A question from *log*'s own worker: put the card up if that Session
+    def _route_ask(self, session_id: str, kind: str, payload):
+        """A question from *session_id*'s own worker: put the card up if that Session
         is on screen, otherwise hold it until the user switches back to it.
         Recorded either way: the panel resets render state on every switch,
         so a card left open is gone the instant the user looks away.
         """
-        bundle = self._workers.get(log)
+        bundle = self._workers.get(session_id)
         if bundle:
             bundle.pending_question = (kind, payload)
-        if log == self._current_log():
+        if session_id == self.chat_sessions.current_id():
             self._dispatch_ask(kind, payload)
 
     def _dispatch_ask(self, kind: str, payload):
@@ -1021,31 +991,33 @@ dark theme.
             button.setIcon(UIHelpers.get_icon(icon, size=size, on=button))
 
     def _refresh_models(self, models=None):
-        """Recompute which model the button shows: the stored id once its
+        """Recompute which model the button shows: the stored pick once its
         provider confirms it, held bare mid-fetch, else `_retire_model`'s
         fallback once every provider answered and none offers it, else the
-        first model on offer. Nothing stored is only shown, never written --
-        a display refresh must not overwrite a choice the run's own fallback
-        would otherwise read honestly.
+        first model on offer, which is then stored, since the run reads the
+        stored pick and nothing else.
         """
+        from sdk import get_last_model
+
         if models is None:
             models = provider_manager.instance().get_available_models()
         self._models = models
-        last_id = self._orchestrator_row().get("model", "")
+        last_provider, last_id = get_last_model()
 
         if not models:
             self._set_current_model(None, "No models — add API key")
             return
 
-        entry = next((m for m in models if m["id"] == last_id), None) if last_id else None
+        entry = (next((m for m in models if (m["provider"], m["id"]) == (last_provider, last_id)), None)
+                 if last_id else None)
         if entry is None and last_id:
             if provider_manager.instance().awaiting_model_lists():
-                entry = {"id": last_id, "display": last_id, "provider": ""}
+                entry = {"id": last_id, "display": last_id, "provider": last_provider}
             else:
-                fallback_id = self._retire_model(last_id)
-                entry = next((m for m in models if m["id"] == fallback_id), None)
+                entry = self._retire_model(last_id)
         if entry is None:
             entry = models[0]
+            self._store_model(entry["provider"], entry["id"])
 
         self._set_current_model(entry["id"], entry["display"])
 
@@ -1086,108 +1058,47 @@ left over is what the name is elided to.
         self.model_button.setText(
             metrics.elidedText(self._model_display, QtCore.Qt.ElideRight, room))
 
-    def _retire_model(self, model_id: str) -> str:
-        """
-        Every provider has answered and none offers ``model_id``. Say so.
-
-        The fallback is the Preferences default, or the first model on offer,
-        because that default is only a preference and may never have been set.
-        """
-        from sdk import get_default_model
-
-        fallback = get_default_model() or self._models[0]["id"]
-        self._store_model(fallback)
+    def _retire_model(self, model_id: str) -> dict:
+        """Every provider has answered and none offers *model_id*. Say so, and switch to the first model on offer."""
+        fallback = self._models[0]
+        self._store_model(fallback["provider"], fallback["id"])
         self._queue_widget.now(
             "%s is no longer offered by its provider — switched to %s."
-            % (model_id, fallback))
+            % (model_id, fallback["id"]))
         return fallback
-
-    def _orchestrator_row(self) -> dict:
-        """
-        The orchestrator's row of the Preferences role table -- the one row
-        the composer's two pills edit; every other role is set in Preferences
-        alone.
-        """
-        from sdk import ORCHESTRATOR, get_role_model
-
-        return get_role_model(ORCHESTRATOR) or {}
-
-    def _store_on_the_orchestrator(self, **fields):
-        """
-        Write *fields* onto that row.
-
-        Through `set_role_table`, whose write the Preferences page hears while
-        it is open.
-        """
-        from sdk import ORCHESTRATOR, get_role_table, set_role_table
-
-        table = get_role_table()
-        for row in table:
-            if row.get("role") == ORCHESTRATOR:
-                row.update(fields)
-        set_role_table(table)
 
     def _open_model_selector(self):
         self.model_selector.open_at(self._models, self.model_button)
 
-    def _store_model(self, model_id: str):
-        """Where a chosen model is kept: the orchestrator's row of the role
-        table, and the shared last-used model any role-less caller falls
-        back to (`settings.get_llm_credentials`).
-        The row carries the provider too: a model resolves only through the
-        provider that offers it, and is read back with no model list to hand.
-        """
-        entry = next((m for m in self._models if m["id"] == model_id), None)
-        self._store_on_the_orchestrator(
-            model=model_id, provider=(entry or {}).get("provider", ""))
+    def _store_model(self, provider: str, model_id: str):
+        """The one place a chosen model is kept: the provider and the model together, which is all the run builds its client from."""
         from sdk import set_last_model
 
-        set_last_model(model_id)
+        set_last_model(provider, model_id)
 
-    def _on_model_selected(self, model_id: str):
-        """Drops the client so the next send rebuilds it from settings."""
-        self._store_model(model_id)
-        if getattr(self, "worker", None):
-            self.worker.client = None
-        entry = next((m for m in self._models if m["id"] == model_id), None)
+    def _on_model_selected(self, provider: str, model_id: str):
+        self._store_model(provider, model_id)
+        entry = next((m for m in self._models
+                      if (m["provider"], m["id"]) == (provider, model_id)), None)
         self._set_current_model(model_id, entry["display"] if entry else model_id)
 
     def _open_effort_selector(self):
-        """
-        Offers the levels the routes take, unless this model cannot reason at
-        all: a picker that changes nothing is a picker that lies, so the
-        trigger says so in its tooltip and does not open.
-        """
-        from sdk import EFFORTS, effort_is_honoured
+        from sdk import EFFORTS
 
-        if not effort_is_honoured(self._orchestrator_row().get("model", "")):
-            return
         self.effort_selector.open_at(list(EFFORTS), self.effort_button)
 
     def _on_effort_selected(self, level: str):
-        """Drops the client so the next send is asked to think the new way."""
-        self._store_on_the_orchestrator(effort=level)
-        if getattr(self, "worker", None):
-            self.worker.client = None
+        from sdk import set_effort
+
+        set_effort(level)
         self._show_effort()
 
     def _show_effort(self):
-        """The pill carries the level the orchestrator's row is set to, and
-        says when the model will ignore it.
-        An empty or outdated level falls back to the single stored dial,
-        same as `client_from_settings`. A model with no reasoning to spend
-        cannot honour it, so the pill says so (`core.llm.effort_is_honoured`).
-        """
-        from sdk import EFFORTS, effort_is_honoured, get_effort
+        """The pill carries the Effort the next run is asked for."""
+        from sdk import get_effort
 
-        row = self._orchestrator_row()
-        honoured = effort_is_honoured(row.get("model", ""))
-        level = row.get("effort", "")
-        self.effort_button.setText(level if level in EFFORTS else get_effort())
-        self.effort_button.setEnabled(honoured)
-        self.effort_button.setToolTip(
-            "How hard the model is asked to think" if honoured
-            else "This model does no reasoning of its own")
+        self.effort_button.setText(get_effort())
+        self.effort_button.setToolTip("How hard the model is asked to think")
         self.effort_button.setIcon(
             UIHelpers.get_icon("chevron_down", size=ICON_DENSE, on=self.effort_button))
 
@@ -1211,9 +1122,9 @@ left over is what the name is elided to.
             UIHelpers.get_icon("chevron_down", size=ICON_DENSE, on=self.domain_button))
 
     def toggle_history(self):
-        """The picker holds only indexed Sessions, each carrying its own
-        position: a Session enters on its first Intent (when it gets its
-        name), and the live empty Session is on screen, not in the history.
+        """The picker holds only indexed Sessions, each named by its id: a
+        Session enters on its first Intent (when it gets its name), and the
+        live empty Session is on screen, not in the history.
 
         It shows the Document in front of the user, not the archive: a chat
         belongs to the file it was about. Everything is still reachable -- a
@@ -1234,11 +1145,10 @@ left over is what the name is elided to.
             identity = str(getattr(active_document(), "Uid", "") or "")
         except Exception:
             identity = ""
-        rows = self.chat_sessions.indexed_sessions()
+        rows = self.sessions.indexed()
         if not identity:
             return rows
-        here = [(position, info) for position, info in rows
-                if info.get("document_id") == identity]
+        here = [info for info in rows if info.get("document_id") == identity]
         return here or rows
 
     def new_chat(self):
@@ -1246,9 +1156,9 @@ left over is what the name is elided to.
         Opens an empty Session. Its real name comes from its first Intent, so
         there is nothing to call it yet.
         """
-        idx, _ = self.chat_sessions.add_new_chat("New Chat")
+        session_id, _ = self.chat_sessions.add_new_chat("New Chat")
         self._became_the_live_session()
-        self.update_header_title(idx)
+        self.update_header_title(session_id)
         self._empty_state = self._build_empty_state()
         self.add_chat_widget(self._empty_state)
 
@@ -1261,8 +1171,6 @@ left over is what the name is elided to.
         screen.
         """
         self._live_rows = {}
-        self._subagent_rows = {}
-        self._current_step = 0
         self._question_card = None
         self._answers_to_enter = None
         self._total_usd = 0.0
@@ -1299,17 +1207,17 @@ left over is what the name is elided to.
         self._empty_state = None
 
     def rename_current_session(self):
-        index = self.chat_sessions.stack.currentIndex()
-        info = self.chat_sessions.get_session_info(index)
+        session_id = self.chat_sessions.current_id()
+        info = self.sessions.at(session_id)
         if info is None:
             return
         name, chosen = QtWidgets.QInputDialog.getText(
             self, "Rename session", "Name:", QtWidgets.QLineEdit.Normal, info["name"])
         if chosen and name.strip():
-            self.chat_sessions.rename_session(index, name)
-            self.update_header_title(index)
+            self.sessions.rename(session_id, name)
+            self.update_header_title(session_id)
 
-    def switch_session(self, index: int):
+    def switch_session(self, session_id: str):
         """Open a Session, resyncing what is shown to what actually happened.
 
         Each Session runs on its own `_SessionWorker`, so switching away from
@@ -1319,11 +1227,10 @@ left over is what the name is elided to.
         reopened historical Session uses, asked for again since a Session
         that kept running unseen has more transcript than last shown.
         """
-        self.chat_sessions.switch_to(index)
+        self.chat_sessions.switch_to(session_id)
         self._became_the_live_session()
-        info = self.chat_sessions.get_session_info(index)
-        bundle = self._workers.get(info["log"]) if info else None
-        self.restore_session(index, resync=bool(bundle and bundle.dirty))
+        bundle = self._workers.get(session_id)
+        self.restore_session(session_id, resync=bool(bundle and bundle.dirty))
         if bundle is None:
             self._set_running(False)
             return
@@ -1333,7 +1240,7 @@ left over is what the name is elided to.
             kind, payload = bundle.pending_question
             self._dispatch_ask(kind, payload)
 
-    def restore_session(self, index: int, resync: bool = False):
+    def restore_session(self, session_id: str, resync: bool = False):
         """
         Replay the Session's log through the switch that rendered it live.
 
@@ -1346,14 +1253,14 @@ left over is what the name is elided to.
         """
         from sdk import replay
 
-        info = self.chat_sessions.get_session_info(index)
+        info = self.sessions.at(session_id)
         if info is None:
             return
-        due = self.chat_sessions.mark_restored(index)
+        due = self.sessions.mark_restored(session_id)
         if not resync and not due:
             return
         if resync:
-            self.chat_sessions.clear_page(index)
+            self.chat_sessions.clear_page(session_id)
 
         events, truncated = replay(info["log"])
         if not events:
@@ -1361,16 +1268,16 @@ left over is what the name is elided to.
             self.add_chat_widget(self._empty_state)
             return
 
-        self._replay_chunk(index, events, 0, truncated)
+        self._replay_chunk(session_id, events, 0, truncated)
 
-    def _replay_chunk(self, index: int, events: list, start: int, truncated: bool):
+    def _replay_chunk(self, session_id: str, events: list, start: int, truncated: bool):
         """Replay a batch, then hand the event loop a turn before the next one:
 replaying hundreds of Steps in one pass on the GUI thread froze the panel
 for as long as it took, and the first batch is still synchronous, so a
 short Session is on screen by the time this returns. A Session already
 switched away from is abandoned rather than rendered.
 """
-        if self.chat_sessions.stack.currentIndex() != index:
+        if self.chat_sessions.current_id() != session_id:
             return
 
         for event in events[start:start + RESTORE_CHUNK]:
@@ -1379,7 +1286,7 @@ switched away from is abandoned rather than rendered.
         done = start + RESTORE_CHUNK
         if done < len(events):
             QtCore.QTimer.singleShot(
-                0, lambda: self._replay_chunk(index, events, done, truncated))
+                0, lambda: self._replay_chunk(session_id, events, done, truncated))
             return
 
         if truncated:
@@ -1398,10 +1305,10 @@ switched away from is abandoned rather than rendered.
         which is what it is recognised by — every unsaved Document in FreeCAD
         is called "Unnamed" (`slotActivateDocument`).
         """
-        self.chat_sessions.name_document(transcript, document, document_id)
+        self.sessions.name_document(log_id(transcript), document, document_id)
 
-    def delete_session(self, index: int):
-        info = self.chat_sessions.get_session_info(index)
+    def delete_session(self, session_id: str):
+        info = self.sessions.at(session_id)
         if info is None:
             return
         confirmed = QtWidgets.QMessageBox.question(
@@ -1411,11 +1318,14 @@ switched away from is abandoned rather than rendered.
             QtWidgets.QMessageBox.No)
         if confirmed != QtWidgets.QMessageBox.Yes:
             return
-        self.chat_sessions.remove_session(index)
-        bundle = self._workers.pop(info["log"], None)
+        self.sessions.remove(session_id)
+        self.chat_sessions.drop_page(session_id)
+        if not self.sessions.count():
+            self.chat_sessions.add_new_chat("New Chat")
+        bundle = self._workers.pop(session_id, None)
         if bundle is not None:
             bundle.shut_down(self.SHUTDOWN_GRACE_MS)
-        self.update_header_title(self.chat_sessions.stack.currentIndex())
+        self.update_header_title(self.chat_sessions.current_id())
 
     def _build_empty_state(self):
         """One muted line, so an empty panel still says where the user stands."""
@@ -1427,9 +1337,9 @@ switched away from is abandoned rather than rendered.
         label.setAlignment(QtCore.Qt.AlignCenter)
         return label
 
-    @QtCore.Slot(int)
-    def update_header_title(self, index: int):
-        info = self.chat_sessions.get_session_info(index)
+    @QtCore.Slot(str)
+    def update_header_title(self, session_id: str):
+        info = self.sessions.at(session_id)
         if info:
             self.title_label.setText(info["name"])
 
@@ -1441,16 +1351,13 @@ switched away from is abandoned rather than rendered.
         the model changed — and the same Intent sent again. A settings lookup
         that fails is not the user's problem here; the run reports it.
         """
-        from sdk import selected_model_name, unusable_attachments
+        from sdk import litellm_model_name, unusable_attachments
 
         attached = self.chip_bar.files()
-        if not attached:
+        entry = next((m for m in self._models if m["id"] == self._current_model_id), None)
+        if not attached or entry is None:
             return []
-        try:
-            model = selected_model_name(self._current_model_id)
-        except Exception:
-            return []
-        return unusable_attachments(attached, model)
+        return unusable_attachments(attached, litellm_model_name(entry["provider"], entry["id"]))
 
     def on_send(self):
         """
@@ -1468,8 +1375,7 @@ switched away from is abandoned rather than rendered.
         if not intent:
             return
 
-        index = self.chat_sessions.stack.currentIndex()
-        session = self.chat_sessions.get_session_info(index)
+        session = self.sessions.at(self.chat_sessions.current_id())
         if session is None:
             return
 
@@ -1480,8 +1386,7 @@ switched away from is abandoned rather than rendered.
                 + "\n".join("• " + reason for reason in unusable)))
             return
 
-        log = session["log"]
-        bundle = self._worker_for(log)
+        bundle = self._worker_for(session["id"])
         self._bind_document(bundle)
 
         if self._document_busy(bundle):
@@ -1490,7 +1395,7 @@ switched away from is abandoned rather than rendered.
                 "finish, or work from a different open Document."))
             return
 
-        self._name_session(index, session["session"], intent)
+        self._name_session(session["id"], intent)
 
         attachments = self.chip_bar.get_and_clear()
         bundle.sent_attachments = attachments
@@ -1506,7 +1411,7 @@ switched away from is abandoned rather than rendered.
         self.add_chat_widget(TextMessageWidget(intent))
         self._intent_on_screen = intent
         self._queue_widget.now("Routing\u2026")
-        bundle.request_work.emit(intent, attachments, log)
+        bundle.request_work.emit(intent, attachments, session["log"])
 
     def _document_busy(self, bundle: _SessionWorker) -> bool:
         """
@@ -1522,19 +1427,20 @@ switched away from is abandoned rather than rendered.
         return any(other is not bundle and other.running and other.worker.document is doc
                    for other in self._workers.values())
 
-    def _name_session(self, index: int, session_id, intent: str):
+    def _name_session(self, session_id: str, intent: str):
         """The Session takes its name from this Intent, and enters the picker.
         The truncated Intent shows immediately so nothing is ever "Untitled";
-        the generated title replaces it when it arrives. `session_id`, not
-        the log path, carries the title callback through, so a renamed or
-        moved log cannot orphan the title in flight.
+        the generated title replaces it when it arrives, found again by the
+        same id.
         """
         from sdk import fallback
 
-        if self.chat_sessions.begin(index, fallback(intent)):
-            index = self.chat_sessions.stack.currentIndex()
-            self.update_header_title(index)
-        if self.chat_sessions.wants_a_title(index):
+        started, dropped = self.sessions.begin(session_id, fallback(intent))
+        for gone in dropped:
+            self.chat_sessions.drop_page(gone)
+        if started:
+            self.update_header_title(session_id)
+        if self.sessions.wants_a_title(session_id):
             self._ask_for_a_title(session_id, intent)
 
     def _ask_for_a_title(self, session_id, intent: str):
@@ -1544,17 +1450,15 @@ switched away from is abandoned rather than rendered.
         Qt owns the thread, so it is kept in a list: without a reference it is
         collected mid-flight.
         """
-        from sdk import get_naming_model
-
-        thread = _TitleThread(intent, get_naming_model(), self)
+        thread = _TitleThread(intent, self)
         thread.titled.connect(lambda title: self._title_arrived(session_id, title))
         self._title_threads.append(thread)
         thread.finished.connect(lambda: self._title_threads.remove(thread))
         thread.start()
 
     def _title_arrived(self, session_id, title: str):
-        if self.chat_sessions.title_arrived(session_id, title):
-            self.update_header_title(self.chat_sessions.stack.currentIndex())
+        if self.sessions.title_arrived(session_id, title):
+            self.update_header_title(self.chat_sessions.current_id())
 
     def on_stop(self):
         """
@@ -1569,7 +1473,7 @@ switched away from is abandoned rather than rendered.
             self._question_card.setEnabled(False)
             self._question_card = None
             self._answers_to_enter = None
-        bundle = self._workers.get(self._current_log())
+        bundle = self._workers.get(self.chat_sessions.current_id())
         if bundle is not None:
             bundle.pending_question = None
             bundle.worker.stop()
@@ -1590,7 +1494,7 @@ switched away from is abandoned rather than rendered.
             self._question_card.setEnabled(False)
             self._question_card = None
             self._answers_to_enter = None
-        bundle = self._workers.get(self._current_log())
+        bundle = self._workers.get(self.chat_sessions.current_id())
         if bundle is not None:
             bundle.pending_question = None
             bundle.worker.abort()
@@ -1617,16 +1521,21 @@ switched away from is abandoned rather than rendered.
         """The whole panel is this method: what an event *says* is `core.narrate`'s,
 what is left here is where a line goes and what shape it takes, a
 code block, a picture, streaming reasoning, or the document path as a
-link, with no calls back into the loop. `_ON_EVENT_DISPATCH` maps every
-`core.events.KINDS` member to a `_oe_*` method, True ending here and False
-falling through, and an unmapped kind reaches `_report_unknown_kind` rather
-than being skipped. `INTENT` takes the user's bubble unless Send already put
+link, with no calls back into the loop. `_ON_EVENT_DISPATCH` lists only the
+kinds drawn differently from prose, True ending here and False falling
+through to `narrate`; a kind the stream does not register draws nothing and
+is logged once. `INTENT` takes the user's bubble unless Send already put
 it up, so a prompt shows once whether live or restored.
 """
+        from bridge.logger import logger
         from sdk import events as ev
         from sdk import narrate
 
         data = event.data
+
+        if event.kind not in ev.KINDS:
+            logger.warning("unrecognized event kind %r" % event.kind)
+            return
 
         if event.kind == ev.INTENT:
             self._total_usd, self._domain_usd = self._domain_usd, 0.0
@@ -1647,43 +1556,8 @@ it up, so a prompt shows once whether live or restored.
             ev.ATTACHED: DaedalusPanel._oe_attached,
             ev.TOOL_CALL: DaedalusPanel._oe_tool_call,
             ev.TOOL_RESULT: DaedalusPanel._oe_tool_result,
-            ev.PART: DaedalusPanel._oe_part,
-            ev.PLAN: DaedalusPanel._noop,
-            ev.ASSERTION: DaedalusPanel._noop,
-            ev.STEP_STARTED: DaedalusPanel._noop,
-            ev.STEP_DECLARED: DaedalusPanel._oe_step_declared,
-            ev.APPLIED: DaedalusPanel._noop,
-            ev.BLOCKED: DaedalusPanel._noop,
-            ev.STOPPED: DaedalusPanel._noop,
-            ev.ABORTED: DaedalusPanel._noop,
-            ev.BUDGET_EXHAUSTED: DaedalusPanel._noop,
-            ev.TURN_BUDGET_EXHAUSTED: DaedalusPanel._noop,
-            ev.FAILED: DaedalusPanel._noop,
-            ev.COMPLETED: DaedalusPanel._noop,
-            ev.DISPUTED: DaedalusPanel._noop,
-            ev.QUESTION: DaedalusPanel._noop,
-            ev.ANSWER: DaedalusPanel._noop,
-            ev.DESIGN: DaedalusPanel._noop,
-            ev.CHANGE_SET: DaedalusPanel._noop,
-            ev.ROUTED: DaedalusPanel._noop,
-            ev.DOMAIN: DaedalusPanel._noop,
-            ev.OUTSTANDING: DaedalusPanel._noop,
-            ev.REVIEW_SUSPECTED: DaedalusPanel._noop,
-            ev.GATE: DaedalusPanel._noop,
-            ev.UNBUILT: DaedalusPanel._noop,
-            ev.PREFLIGHT_FAILED: DaedalusPanel._noop,
-            ev.REVIEW_VERDICT: DaedalusPanel._noop,
-            ev.PLAN_REVISED: DaedalusPanel._noop,
-            ev.ERROR: DaedalusPanel._noop,
-            ev.WARNING: DaedalusPanel._noop,
-            ev.SUB_AGENT_SPAWNED: DaedalusPanel._oe_sub_agent_spawned,
-            ev.SUB_AGENT_ANSWERED: DaedalusPanel._oe_sub_agent_answered,
-            ev.SUB_AGENT_REFUSED: DaedalusPanel._oe_sub_agent_refused,
-            ev.INVOKE_MARKUP: DaedalusPanel._noop,
         }).get(event.kind)
-        if handler is None:
-            self._report_unknown_kind(event, "on_event")
-        elif handler(self, event, data):
+        if handler is not None and handler(self, event, data):
             return
 
         self._say(narrate(event))
@@ -1719,38 +1593,6 @@ it up, so a prompt shows once whether live or restored.
     def _oe_tool_result(self, event, data):
         self._time_the_tool_call(event.at)
         return False
-
-    def _oe_part(self, event, data):
-        from sdk import narrate
-
-        self._render_part(narrate(event).line, data["path"])
-        return True
-
-    def _oe_step_declared(self, event, data):
-        self._the_thinking_stops()
-        self._current_step = data["step"]
-        return False
-
-    def _oe_sub_agent_spawned(self, event, data):
-        self._render_sub_agent_spawned(data["phase"], data.get("prompt", ""))
-        return True
-
-    def _oe_sub_agent_answered(self, event, data):
-        self._render_sub_agent_answered(data["phase"], data.get("answer", ""),
-                                        data.get("transcript") or [])
-        return True
-
-    def _oe_sub_agent_refused(self, event, data):
-        self._render_sub_agent_refused(data["phase"], data.get("reason", ""))
-        return True
-
-    def _noop(self, event, data):
-        return False
-
-    def _report_unknown_kind(self, event, dispatcher):
-        """An `event.kind` the dispatch table does not name."""
-        self.add_chat_widget(AssistantMessageWidget(
-            "\u26a0 %s: unrecognized event kind %r" % (dispatcher, event.kind)))
 
     def _say(self, narration):
         """Put a narrated event where it belongs: a line in the transcript, a
@@ -1827,32 +1669,6 @@ letting the phase open a fresh row next.
         if text:
             row.append_text(text)
 
-    def _render_sub_agent_spawned(self, phase, prompt):
-        """A worker's own row, opened the moment it is spawned."""
-        row = self._subagent_rows[phase] = AccordionWidget("Sub-agent (%s)…" % phase)
-        row.opens_onto_nothing()
-        self.add_chat_widget(row)
-        row.start_pulsing()
-
-    def _render_sub_agent_answered(self, phase, answer, transcript):
-        """The row `_render_sub_agent_spawned` opened, filled with the worker's transcript."""
-        row = self._subagent_rows.pop(phase, None)
-        if row is None:
-            row = AccordionWidget("Sub-agent (%s)" % phase)
-            self.add_chat_widget(row)
-        else:
-            row.stop_pulsing()
-            row.toggle_button.setText("Sub-agent (%s)" % phase)
-        row.append_text("\n".join(
-            "%s: %s" % (message.get("role"), message.get("content"))
-            for message in transcript) or answer)
-
-    def _render_sub_agent_refused(self, phase, reason):
-        """A refused spawn (`SessionTreeSupervisor.spawn`)."""
-        row = AccordionWidget("Sub-agent refused (%s)" % phase)
-        self.add_chat_widget(row)
-        row.append_text(reason)
-
     def _render_attachments(self, files):
         """What the run was shown, in the chat beside the Intent: the picture itself,
 not a filename, since the chips come off the bar on Send. A restored
@@ -1874,13 +1690,6 @@ never a broken image or a raised exception.
             label.setToolTip(name)
             self.add_chat_widget(_beside_the_intent(label))
 
-    def _render_part(self, line, path):
-        """Above the Plan, on a card: the Gate is the Steps and the document they were built from."""
-        self._the_thinking_stops()
-        self.add_chat_widget(AssistantMessageWidget(
-            line.replace(path, "").strip().rstrip(":").strip()))
-        self.add_chat_widget(_at_the_left_margin(FileChip(path, removable=False)))
-
     def _render_tool_call(self, name, arguments, event_time):
         """A call takes one collapsible shape in the stream, not three, naming its
 Step: open, four Steps of code fill the whole panel and the run reads idle
@@ -1889,9 +1698,7 @@ code stays one click away. Duration is added at `TOOL_RESULT`, from
 `event.at` deltas.
 """
         self._the_thinking_stops()
-        title = ("Step %d — %s" % (self._current_step, name) if self._current_step
-                 else name)
-        row = AccordionWidget(title, code=True, boxed=True)
+        row = AccordionWidget(name, code=True, boxed=True)
         self.add_chat_widget(row)
         row.append_text(arguments["code"] if "code" in arguments else str(arguments))
 
@@ -1908,10 +1715,8 @@ code stays one click away. Duration is added at `TOOL_RESULT`, from
         """
         if not (self._last_tool_call_widget and self._last_tool_call_time):
             return
-        named = ("Step %d — %s" % (self._current_step, self._last_tool_call_name)
-                 if self._current_step else self._last_tool_call_name)
         self._last_tool_call_widget.toggle_button.setText(
-            "%s  (%.1fs)" % (named, at - self._last_tool_call_time))
+            "%s  (%.1fs)" % (self._last_tool_call_name, at - self._last_tool_call_time))
         self._last_tool_call_widget = None
         self._last_tool_call_time = None
         self._last_tool_call_name = None
@@ -2013,7 +1818,7 @@ palette.
             spent.setOpacity(0.45)
             card.setGraphicsEffect(spent)
         self._queue_widget.now("Working\u2026")
-        bundle = self._workers.get(self._current_log())
+        bundle = self._workers.get(self.chat_sessions.current_id())
         if bundle is not None:
             bundle.pending_question = None
         self.ask.answer(answer)
@@ -2040,13 +1845,14 @@ palette.
 running regardless, so only the widgets are guarded behind "is this the
 Session on screen".
 """
-        bundle = self._workers.get(log)
+        session_id = log_id(log)
+        bundle = self._workers.get(session_id)
         if bundle is None:
             return
         bundle.running = False
         self.upload_widget.discard(*bundle.sent_attachments)
         bundle.sent_attachments = []
-        if log != self._current_log():
+        if session_id != self.chat_sessions.current_id():
             bundle.dirty = True
             return
 
@@ -2109,8 +1915,7 @@ finish on its own before this panel stops tracking it.
         FreeCAD.removeDocumentObserver(self)
         for bundle in self._workers.values():
             bundle.worker.stop()
-            if bundle.worker.pipeline is not None:
-                bundle.worker.pipeline.shutdown()
+            bundle.worker.shutdown()
         for bundle in self._workers.values():
             if bundle.thread.isRunning():
                 bundle.thread.quit()
@@ -2133,10 +1938,10 @@ finish on its own before this panel stops tracking it.
         `delete_session` tears one down, keeping nothing running against a
         closed Document.
         """
-        for log, bundle in list(self._workers.items()):
+        for session_id, bundle in list(self._workers.items()):
             if bundle.worker.document is document:
                 bundle.shut_down(self.SHUTDOWN_GRACE_MS)
-                del self._workers[log]
+                del self._workers[session_id]
 
     def slotActivateDocument(self, document):
         """The MDI tab the user brought forward in FreeCAD moves the panel too: the
@@ -2150,11 +1955,10 @@ chat onto an older one.
         identity = str(getattr(document, "Uid", "") or "")
         if not identity:
             return
-        for index in range(self.chat_sessions.count() - 1, -1, -1):
-            info = self.chat_sessions.get_session_info(index)
-            if info and info.get("document_id") == identity:
-                if index != self.chat_sessions.stack.currentIndex():
-                    self.switch_session(index)
+        for session_id in reversed(self.sessions.ids()):
+            if self.sessions.at(session_id).get("document_id") == identity:
+                if session_id != self.chat_sessions.current_id():
+                    self.switch_session(session_id)
                 return
 
     def closeEvent(self, event):

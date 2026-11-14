@@ -8,7 +8,7 @@ modules to the front of sys.path.
 
 `FREECAD_USER_HOME` is set before that import: FreeCAD reads it once, at
 startup, to decide where `user.cfg` lives. Redirecting it to a throwaway
-directory here means the whole process, not just `SettingsManager`'s own
+directory here means the whole process, not just `Settings`' own
 group, never opens the user's real configuration -- the file a concurrent
 `pytest -n auto` run once truncated to nothing, taking the stored API keys
 and session list with it.
@@ -156,6 +156,25 @@ if HAVE_QT:
     QtCore.QThread.start = _tracked_start
 
 
+def drain_fetches(manager, turns=400):
+    """
+    Let every model-list fetch the manager has started finish, and its result land.
+
+    A worker posts its signal and then returns, so `isRunning()` goes false
+    before the posted event is dispatched; quiescence is trusted on the second look.
+    """
+    quiet = 0
+    for _ in range(turns):
+        QT_APP.processEvents()
+        if not any(thread.isRunning() for thread in manager.findChildren(QtCore.QThread)):
+            quiet += 1
+            if quiet >= 2:
+                return
+        else:
+            quiet = 0
+        QT_APP.thread().msleep(5)
+
+
 @pytest.fixture(autouse=True)
 def no_test_leaves_a_fetch_thread_running():
     """
@@ -267,13 +286,12 @@ def pytest_collection_modifyitems(config, items):
 _SHEET_TEST_FILES = {
     "test_sheet_reader.py",
     "test_modelmania_evidence.py",
-    "test_sketch_check_level2.py",
 }
 
 
 def pytest_xdist_make_scheduler(config, log):
     """
-    Puts the three files that share `tests/modelmania/*.pdf` on one worker
+    Puts the two files that share `tests/modelmania/*.pdf` on one worker
     under `--dist loadfile`.
 
     `@pytest.mark.xdist_group("sheets")` on those files, as the ticket asks
@@ -283,7 +301,7 @@ def pytest_xdist_make_scheduler(config, log):
     scopes every *other*, unmarked test to itself instead of its file —
     switching the whole suite's `--dist` would cost every other module the
     file-level batching it already relies on. This scheduler keeps
-    `loadfile`'s behaviour for every file except these three, which it
+    `loadfile`'s behaviour for every file except these two, which it
     merges into one scope so `sheet_cache`'s session fixture is the same
     dict for all of them.
     """
@@ -411,7 +429,7 @@ def collect(chunks) -> Reply:
 
 class ScratchParameters:
     """
-    The parameter group `SettingsManager` owns, held in memory for one session.
+    The parameter group `Settings` owns, held in memory for one session.
 
     `FreeCAD.ParamGet` is the user's own `user.cfg`, and the suite both reads
     and writes it: the read made 44 Plan Gate tests answer to whatever the
@@ -419,7 +437,7 @@ class ScratchParameters:
     workers at once, truncated that file to nothing on 2026-09-02, taking the
     stored API keys and session list with it.
 
-    Only the four accessors `SettingsManager` calls are implemented, so a
+    Only the four accessors `Settings` calls are implemented, so a
     fifth one added there fails loudly here rather than silently reaching the
     real file.
     """
@@ -443,7 +461,7 @@ class ScratchParameters:
 @pytest.fixture(scope="session", autouse=True)
 def the_settings_never_reach_the_user_s_freecad():
     """
-    Where `SettingsManager` stores everything, for the length of the session.
+    Where `Settings` stores everything, for the length of the session.
 
     The scope is the session because `test_vertical_slice_level2.py` drives
     its run from a module-scoped fixture, which is built before any

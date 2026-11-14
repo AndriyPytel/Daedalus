@@ -28,6 +28,7 @@ relying on Pad or Pocket to refuse it first.
 """
 import pytest
 
+from core.agent import part_rules
 from core.kernel import Kernel, find_freecadcmd
 
 pytestmark = pytest.mark.freecad
@@ -94,13 +95,15 @@ pad.Length = 10
 
 
 def test_a_body_with_an_invalid_shape_is_refused(worker):
-    result = worker.check(SELF_TOUCHING, None)
+    assert worker.seed(rules=part_rules).ok
+    result = worker.rehearse(SELF_TOUCHING)
 
     assert not result.ok, "a Body whose Shape.isValid() is False was passed to the Document"
 
 
 def test_the_invalid_shape_failure_names_the_body(worker):
-    result = worker.check(SELF_TOUCHING, None)
+    assert worker.seed(rules=part_rules).ok
+    result = worker.rehearse(SELF_TOUCHING)
 
     said = result.traceback
     assert "Body" in said, said
@@ -108,13 +111,15 @@ def test_the_invalid_shape_failure_names_the_body(worker):
 
 
 def test_a_body_with_an_inverted_solid_is_refused(worker):
-    result = worker.check(INVERTED_VOLUME, None)
+    assert worker.seed(rules=part_rules).ok
+    result = worker.rehearse(INVERTED_VOLUME)
 
     assert not result.ok, "a Body with negative signed volume was passed to the Document"
 
 
 def test_the_inverted_solid_failure_names_the_body(worker):
-    result = worker.check(INVERTED_VOLUME, None)
+    assert worker.seed(rules=part_rules).ok
+    result = worker.rehearse(INVERTED_VOLUME)
 
     said = result.traceback
     assert "Body" in said, said
@@ -123,6 +128,7 @@ def test_the_inverted_solid_failure_names_the_body(worker):
 
 
 def test_a_valid_upright_body_still_passes(worker):
-    result = worker.check(VALID_BOX, None)
+    assert worker.seed(rules=part_rules).ok
+    result = worker.rehearse(VALID_BOX)
 
     assert result.ok, result.traceback

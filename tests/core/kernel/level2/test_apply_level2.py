@@ -5,28 +5,14 @@ The two claims a fake cannot make: one undo takes a whole Step back, and code
 that crashes the C++ core leaves this process — standing in for the user's
 FreeCAD — alive.
 """
-import functools
 import os
 
 import pytest
 
-from core.freecad_apply import ApplyPipeline, build_registry, run_in_transaction
-from core.kernel import Kernel, copy_of, find_freecadcmd
+from core.document_tools import build_registry
+from core.freecad_apply import ApplyPipeline, run_in_transaction
+from core.kernel import Kernel, find_freecadcmd
 
-
-def _kernel_result(worker, doc, code, names=None):
-    """What `apply()` now expects a caller to already have from the kernel's
-    own run of *code*, rather than a rehearsal `apply()` runs itself
-    (DAE-A-53)."""
-    copy = copy_of(doc)
-    try:
-        result = worker.check(code, document=copy, names=names or {}, ephemeral=True)
-    finally:
-        os.remove(copy)
-    assert result.ok, result.traceback
-    return {"created": result.created, "deleted": result.deleted,
-            "modified": result.modified, "objects": result.objects,
-            "names": result.names, "signature": result.signature}
 
 pytestmark = pytest.mark.freecad
 
@@ -58,45 +44,29 @@ def doc():
 
 
 @pytest.fixture
-def pipeline(doc, worker, tmp_path):
+def pipeline(doc, worker):
     """
     An ApplyPipeline for testing. Already on the main thread here, so the
     dispatcher is a straight call.
     """
     pipeline = ApplyPipeline(document=doc, worker=worker,
-                             dispatch=lambda func, timeout=None: func(),
-                             render_dir=str(tmp_path))
-    pipeline.apply = functools.partial(pipeline.apply, design_model=False)
+                             dispatch=lambda func, timeout=None: func())
+    pipeline.start_run()
     return pipeline
 
 
-def test_a_step_brings_back_a_description_of_what_is_now_there(pipeline, doc, worker):
+def test_a_step_brings_back_a_description_of_what_is_now_there(pipeline):
     """
     An Apply now answers with the part rather than a picture of it:
     the feature with its parameters, and the geometry read off the Shape.
     """
-    result = pipeline.apply(BOX,
-                            kernel_result=_kernel_result(worker, doc, BOX))
+    result = pipeline.apply(BOX)
 
     assert result.ok, result.traceback
     described = {f["name"]: f for f in result.description["features"]}
     assert described["Box"]["parameters"]["Length"] == "10.0 mm"
     assert result.description["geometry"] == {"solids": 1, "volume_mm3": 1000.0,
                                               "surfaces": [{"kind": "Plane", "count": 6}]}
-
-
-def test_the_headless_fallback_still_draws_the_document_once(pipeline, doc, worker):
-    """
-    The Worker's rasteriser survives as the fallback, so the render's per-pixel
-    depth test and edges are not thrown away — called once at the end of a run
-    rather than once per Step.
-    """
-    pipeline.apply(BOX,
-                   kernel_result=_kernel_result(worker, doc, BOX))
-    views = pipeline.review_views()
-
-    assert len(views) == 1, "the headless fallback is one isometry, not four"
-    assert os.path.getsize(views[0]) > 1000
 
 
 def test_a_provider_that_answers_none_beats_freecads_active_document(doc, worker):
@@ -111,14 +81,13 @@ def test_a_provider_that_answers_none_beats_freecads_active_document(doc, worker
     pipeline = ApplyPipeline(document=lambda: None, worker=worker,
                              dispatch=lambda func, timeout=None: func())
 
-    result = pipeline.apply(BOX, design_model=False,
-                            kernel_result=_kernel_result(worker, doc, BOX))
+    result = pipeline.apply(BOX)
 
     assert not result.ok
     assert "no open Document" in result.traceback
 
 
-def test_a_step_can_assign_a_material_the_way_the_trap_describes(pipeline, doc, worker):
+def test_a_step_can_assign_a_material_the_way_the_trap_describes(pipeline, doc):
     """
     The Step that burned all three attempts of the CSWA-bracket model run. It
     has to survive Preflight — a separate process building its own namespace —
@@ -130,20 +99,16 @@ def test_a_step_can_assign_a_material_the_way_the_trap_describes(pipeline, doc, 
 
     code = ("body = doc.addObject('PartDesign::Body', 'Body')\n"
            "body.ShapeMaterial = Materials.MaterialManager().getMaterial(%r)\n" % aluminium["uuid"])
-    result = pipeline.apply(code, label="Assign aluminium",
-                            kernel_result=_kernel_result(worker, doc, code))
+    result = pipeline.apply(code)
 
     assert result.ok, result.traceback
     assert "alumin" in doc.getObject("Body").ShapeMaterial.Name.lower()
 
 
-def test_two_steps_undo_one_at_a_time(pipeline, doc, worker):
-    pipeline.apply(BOX, label="Add the box",
-                   kernel_result=_kernel_result(worker, doc, BOX))
+def test_two_steps_undo_one_at_a_time(pipeline, doc):
+    pipeline.apply(BOX)
     cylinder_code = "cyl = doc.addObject('Part::Cylinder', 'Cyl')"
-    pipeline.apply(cylinder_code, label="Add the cylinder",
-                   kernel_result=_kernel_result(worker, doc, cylinder_code,
-                                                names=pipeline._names))
+    pipeline.apply(cylinder_code)
     assert sorted(o.Name for o in doc.Objects) == ["Box", "Cyl"]
 
     doc.undo()
@@ -151,21 +116,14 @@ def test_two_steps_undo_one_at_a_time(pipeline, doc, worker):
     assert [o.Name for o in doc.Objects] == ["Box"]
 
 
-def test_the_undo_entry_is_named_after_the_step(pipeline, doc, worker):
-    pipeline.apply(BOX, label="Add the base box",
-                   kernel_result=_kernel_result(worker, doc, BOX))
-
-    assert "Add the base box" in doc.UndoNames
-
-
-def test_a_step_that_throws_leaves_the_document_untouched(doc, worker, tmp_path):
+def test_a_step_that_throws_leaves_the_document_untouched(doc, worker):
     """
     A Step that passes lint and Preflight but then fails for real (the object
     already exists) leaves the document untouched.
     """
     pipeline = ApplyPipeline(document=doc, worker=worker,
-                             dispatch=lambda func, timeout=None: func(),
-                             render_dir=str(tmp_path))
+                             dispatch=lambda func, timeout=None: func())
+    pipeline.start_run()
     pipeline.apply(BOX)
     before = [o.Name for o in doc.Objects]
 
@@ -194,7 +152,7 @@ def test_a_retried_step_after_an_abort_allocates_the_original_name(doc):
 
 def test_run_in_transactions_own_exec_frame_is_cut_from_the_traceback(doc):
     """The frame that actually failed is the Step's, not `run_in_transaction`'s."""
-    from core.kernel.kernel_worker import trimmed_traceback
+    from core.kernel.step_namespace import trimmed_traceback
 
     try:
         run_in_transaction(doc, "doc.addObject('Part::Box', 'B')\nraise RuntimeError('halfway')\n")
@@ -208,20 +166,17 @@ def test_run_in_transactions_own_exec_frame_is_cut_from_the_traceback(doc):
     assert "run_in_transaction" not in formatted
 
 
-def test_apply_step_is_a_tool_and_carries_the_kernels_own_result(doc, worker, tmp_path):
-    """
-    There is no rehearsal behind this Tool any more: the loop already ran the
-    Step through the kernel and hands its result straight through.
-    """
+def test_apply_step_is_a_tool_that_takes_the_code_alone(doc, worker):
     pipeline = ApplyPipeline(document=doc, worker=worker,
-                             dispatch=lambda func, timeout=None: func(),
-                             render_dir=str(tmp_path))
+                             dispatch=lambda func, timeout=None: func())
+    pipeline.start_run()
     tools = build_registry(doc, pipeline=pipeline)
 
     assert "apply_step" in tools
+    [spec] = [spec for spec in tools.describe() if spec["name"] == "apply_step"]
+    assert list(spec["parameters"]["properties"]) == ["code"]
 
-    result = tools.call("apply_step", {"code": BOX, "label": "Add the box", "design_model": False,
-                                       "kernel_result": _kernel_result(worker, doc, BOX)})
+    result = tools.call("apply_step", {"code": BOX})
 
     assert result["status"] == "applied"
     assert result["created"] == ["Box"]
@@ -237,7 +192,7 @@ def test_a_lint_rejected_step_never_reaches_the_kernels_checkpoint(pipeline, wor
     checkpoint -- it never reaches the kernel at all. Established against a
     real checkpoint file's mtime, not the kernel's own claim about itself.
     """
-    baseline = worker.check("doc.addObject('Part::Box', 'Baseline')")
+    baseline = worker.rehearse("doc.addObject('Part::Box', 'Baseline')")
     assert baseline.ok, baseline.traceback
     before = os.path.getmtime(baseline.checkpoint)
 
@@ -249,7 +204,8 @@ def test_a_lint_rejected_step_never_reaches_the_kernels_checkpoint(pipeline, wor
 
 
 def test_preflight_reports_what_the_step_actually_created(worker):
-    result = worker.check("doc.addObject('Part::Box', 'Box')", document=None)
+    assert worker.seed().ok
+    result = worker.rehearse("doc.addObject('Part::Box', 'Box')")
 
     assert result.ok, result.traceback
     assert result.created == ["Box"]
@@ -258,8 +214,8 @@ def test_preflight_reports_what_the_step_actually_created(worker):
 
 
 def test_preflight_reports_a_modified_object_the_step_did_not_create(worker, saved_document):
-    result = worker.check("doc.getObject('ExistingBox').Length = 99",
-                          document=saved_document)
+    assert worker.seed(saved_document).ok
+    result = worker.rehearse("doc.getObject('ExistingBox').Length = 99")
 
     assert result.ok, result.traceback
     assert result.modified == ["ExistingBox"]
@@ -267,7 +223,8 @@ def test_preflight_reports_a_modified_object_the_step_did_not_create(worker, sav
 
 
 def test_preflight_reports_a_deleted_object(worker, saved_document):
-    result = worker.check("doc.removeObject('ExistingBox')", document=saved_document)
+    assert worker.seed(saved_document).ok
+    result = worker.rehearse("doc.removeObject('ExistingBox')")
 
     assert result.ok, result.traceback
     assert result.deleted == ["ExistingBox"]
@@ -279,10 +236,8 @@ def test_a_dependent_recompute_is_not_reported_as_a_modification(worker, documen
     Only ExistingBox was modified; reporting Cut as well would make the Owned
     Object rule fire on almost every Step that touches anything upstream.
     """
-    result = worker.check(
-        "doc.getObject('ExistingBox').Length = 99\ndoc.recompute()",
-        document=document_with_a_cut,
-    )
+    assert worker.seed(document_with_a_cut).ok
+    result = worker.rehearse("doc.getObject('ExistingBox').Length = 99\ndoc.recompute()")
 
     assert result.ok, result.traceback
     assert result.modified == ["ExistingBox"], "a recompute cascade looked like a modification"
@@ -325,7 +280,7 @@ def document_with_a_cut(tmp_path):
         FreeCAD.closeDocument(document.Name)
 
 
-def test_the_users_own_object_is_protected_end_to_end(doc, worker, tmp_path):
+def test_the_users_own_object_is_protected_end_to_end(doc, worker):
     """The whole rule, against a real Document: refuse a deletion, then allow it."""
     users_box = doc.addObject("Part::Box", "UsersBox")
     users_box.Length = 12
@@ -334,25 +289,23 @@ def test_the_users_own_object_is_protected_end_to_end(doc, worker, tmp_path):
     answers = []
     pipeline = ApplyPipeline(document=doc, worker=worker,
                             dispatch=lambda func, timeout=None: func(),
-                            render_dir=str(tmp_path),
                             confirm=lambda kinds: answers.pop(0))
+    pipeline.start_run()
 
     delete_code = "doc.removeObject('UsersBox')"
     answers.append(False)
-    refused = pipeline.apply(delete_code,
-                             kernel_result=_kernel_result(worker, doc, delete_code))
+    refused = pipeline.apply(delete_code)
     assert not refused.ok
     assert "UsersBox" in refused.traceback
     assert doc.getObject("UsersBox") is not None, "removed it anyway"
 
     answers.append(True)
-    allowed = pipeline.apply(delete_code,
-                             kernel_result=_kernel_result(worker, doc, delete_code))
+    allowed = pipeline.apply(delete_code)
     assert allowed.ok, allowed.traceback
     assert doc.getObject("UsersBox") is None
 
 
-def test_each_applied_step_lands_as_exactly_one_undo_transaction(pipeline, doc, worker):
+def test_each_applied_step_lands_as_exactly_one_undo_transaction(pipeline, doc):
     """
     A revision that drops a Step undoes it by calling `doc.undo()` once per
     Step dropped, which is only correct if nothing besides `apply()`'s own
@@ -361,30 +314,14 @@ def test_each_applied_step_lands_as_exactly_one_undo_transaction(pipeline, doc, 
     """
     CYLINDER = "cyl = doc.addObject('Part::Cylinder', 'Cyl')\n"
 
-    first = pipeline.apply(BOX, label="Add the box",
-                           kernel_result=_kernel_result(worker, doc, BOX))
+    first = pipeline.apply(BOX)
     assert first.ok, first.traceback
-    second = pipeline.apply(CYLINDER, label="Add the cylinder",
-                            kernel_result=_kernel_result(worker, doc, CYLINDER))
+    second = pipeline.apply(CYLINDER)
     assert second.ok, second.traceback
 
     assert len(doc.UndoNames) == 2, (
         "two Steps landed but the undo stack holds %r -- something other "
         "than a Step's own transaction is on it" % list(doc.UndoNames))
-
-
-def test_undo_step_takes_back_exactly_the_last_steps_objects(pipeline, doc, worker):
-    CYLINDER = "cyl = doc.addObject('Part::Cylinder', 'Cyl')\n"
-
-    pipeline.apply(BOX, label="Add the box",
-                  kernel_result=_kernel_result(worker, doc, BOX))
-    pipeline.apply(CYLINDER, label="Add the cylinder",
-                  kernel_result=_kernel_result(worker, doc, CYLINDER))
-
-    pipeline.undo_step()
-
-    assert [o.Name for o in doc.Objects] == ["Box"]
-    assert len(doc.UndoNames) == 1
 
 
 _A_BLOCK_WITH_A_HOLE = """
@@ -425,9 +362,8 @@ def _outer_corner_edge_name(shape):
     raise RuntimeError("no outer corner edge found on the padded block")
 
 
-def test_a_fillets_base_set_to_the_body_is_refused_before_it_reaches_freecad(pipeline, doc, worker):
-    setup = pipeline.apply(_A_BLOCK_WITH_A_HOLE, label="Pad a block and pocket a hole",
-                           kernel_result=_kernel_result(worker, doc, _A_BLOCK_WITH_A_HOLE))
+def test_a_fillets_base_set_to_the_body_is_refused_before_it_reaches_freecad(pipeline, doc):
+    setup = pipeline.apply(_A_BLOCK_WITH_A_HOLE)
     assert setup.ok, setup.traceback
     before = sorted(o.Name for o in doc.Objects)
 
@@ -436,7 +372,7 @@ def test_a_fillets_base_set_to_the_body_is_refused_before_it_reaches_freecad(pip
            "body.addObject(fillet)\n"
            "fillet.Base = (body, ['Edge1'])\n")
 
-    result = pipeline.apply(code, label="Fillet the block", kernel_result={})
+    result = pipeline.apply(code)
 
     assert not result.ok
     assert result.gate == "lint"
@@ -445,9 +381,8 @@ def test_a_fillets_base_set_to_the_body_is_refused_before_it_reaches_freecad(pip
         "a Step lint refused still reached the real Document")
 
 
-def test_the_same_fillet_based_on_the_previous_tip_builds(pipeline, doc, worker):
-    setup = pipeline.apply(_A_BLOCK_WITH_A_HOLE, label="Pad a block and pocket a hole",
-                           kernel_result=_kernel_result(worker, doc, _A_BLOCK_WITH_A_HOLE))
+def test_the_same_fillet_based_on_the_previous_tip_builds(pipeline, doc):
+    setup = pipeline.apply(_A_BLOCK_WITH_A_HOLE)
     assert setup.ok, setup.traceback
     edge = _outer_corner_edge_name(doc.getObject("Pocket").Shape)
 
@@ -459,9 +394,38 @@ def test_the_same_fillet_based_on_the_previous_tip_builds(pipeline, doc, worker)
            "fillet.Radius = 1.0\n"
            "doc.recompute()\n" % edge)
 
-    result = pipeline.apply(code, label="Fillet the block",
-                            selection=[{"object": "Pocket", "elements": [edge]}],
-                            kernel_result=_kernel_result(worker, doc, code))
+    result = pipeline.apply(code, selection=[{"object": "Pocket", "elements": [edge]}])
 
     assert result.ok, result.traceback
     assert doc.getObject("Fillet").isValid()
+
+
+def test_a_step_that_changes_nothing_is_refused(pipeline, doc):
+    from core.prompts import read_prompt
+
+    pipeline.apply(BOX)
+    before = [o.Name for o in doc.Objects]
+    undone = list(doc.UndoNames)
+
+    result = pipeline.apply("print(doc.Objects)")
+
+    assert not result.ok
+    assert result.gate == "changed_nothing"
+    assert result.traceback == read_prompt("changed_nothing.md")
+    assert [o.Name for o in doc.Objects] == before
+    assert list(doc.UndoNames) == undone
+
+
+def test_a_step_the_document_refuses_is_resynced_so_the_next_step_runs_on_what_is_there(
+        pipeline, doc):
+    users_box = doc.addObject("Part::Box", "UsersBox")
+    doc.recompute()
+    pipeline.start_run()
+
+    refused = pipeline.apply("doc.removeObject('UsersBox')")
+    assert not refused.ok and refused.gate == "ownership"
+
+    after = pipeline.apply("doc.getObject('UsersBox').Length = 99")
+
+    assert after.ok, after.traceback
+    assert doc.getObject("UsersBox") is users_box

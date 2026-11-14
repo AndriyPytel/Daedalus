@@ -78,19 +78,6 @@ class _AProcessThatTakesTheRequest:
         return None
 
 
-def test_a_worker_that_cannot_come_back_answers_no_reading_instead_of_raising(
-        unstarted, monkeypatch):
-    """
-    Moving the reading check into the child means a segfaulting solver
-    costs the reading and not the run. A restart that cannot be made was the
-    hole in that: `start()` raised out of `reading()`, through
-    `_the_geometry_disagrees`, and ended the run at the second death.
-    """
-    monkeypatch.setattr(Kernel, "start", _never_comes_up)
-
-    assert unstarted.reading({"do": "reading"}, timeout=0.1) is None
-
-
 def test_a_restart_that_fails_after_a_death_is_a_result_and_not_an_exception(
         unstarted, monkeypatch):
     """
@@ -102,7 +89,7 @@ def test_a_restart_that_fails_after_a_death_is_a_result_and_not_an_exception(
     unstarted._lines.put(None)
     monkeypatch.setattr(Kernel, "start", _never_comes_up)
 
-    result = unstarted.check("pad()", timeout=0.1)
+    result = unstarted.rehearse("pad()", timeout=0.1)
 
     assert result.ok is False
     assert result.traceback
@@ -144,9 +131,9 @@ class _AProcessThatDiesMidResponse:
         return -11
 
 
-def test_a_truncated_stdout_line_comes_back_from_check_as_a_dead_worker(unstarted):
+def test_a_truncated_stdout_line_comes_back_from_rehearse_as_a_dead_worker(unstarted):
     """
-    The same crash as above, driven through the public `check()` rather than
+    The same crash as above, driven through the public `rehearse()` rather than
     `_await_response` directly — the entrypoint the "never raises" contract
     is actually made to. No `JSONDecodeError` escapes, and the
     dead process is killed rather than left running with a reader thread
@@ -156,7 +143,7 @@ def test_a_truncated_stdout_line_comes_back_from_check_as_a_dead_worker(unstarte
     unstarted._process = process
     unstarted._lines.put('{"ok": true, "featur')
 
-    result = unstarted.check("pad()", timeout=1)
+    result = unstarted.rehearse("pad()", timeout=1)
 
     assert result.ok is False
     assert result.traceback

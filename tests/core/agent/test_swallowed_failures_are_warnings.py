@@ -6,9 +6,11 @@ from types import SimpleNamespace
 
 from core.agent.reader import assert_part, parse_table, run_reader
 from core.events import WARNING, EventStream
+from core.kernel import KernelResult
 from core.llm import ScriptedLLMClient
 from core.sheets import sheet_reader
 from tests.event_helpers import events_of
+from tests.fake_kernel import FakeKernel
 
 
 def _said(events):
@@ -34,14 +36,8 @@ def test_a_usable_table_warns_of_nothing():
     assert not events_of(events, WARNING)
 
 
-class Kernel:
-    def __init__(self, drawn_ok):
-        self.drawn_ok = drawn_ok
-
-    def check(self, code, render_path=None, **_):
-        if render_path:
-            return SimpleNamespace(ok=self.drawn_ok, render=None, traceback="no")
-        return SimpleNamespace(ok=True, stdout="FACTS " + json.dumps({"solid": False}))
+def Kernel(drawn_ok):
+    return FakeKernel(drawing=KernelResult(ok=drawn_ok, traceback="no"), facts={"solid": False})
 
 
 def test_a_view_the_table_names_but_the_sheet_cannot_show_is_a_warning():
@@ -71,6 +67,6 @@ def test_a_sheet_that_cannot_be_read_is_a_warning(tmp_path, monkeypatch):
     events = EventStream()
 
     run_reader("go", llm=ScriptedLLMClient([json.dumps({"finish": "x"})] * 3), kernel=Kernel(True),
-               tools=None, events=events, attachments=[str(sheet)], cancelled=lambda: True)
+               tools=None, events=events, start=lambda rules: None, attachments=[str(sheet)], cancelled=lambda: True)
 
     assert "drawing.pdf" in _said(events)

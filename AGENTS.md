@@ -56,11 +56,10 @@ the engine and carries no Qt at all, not even a deferred import
 `core` directly.
 
 A module that must emit a Qt signal or marshal onto the Qt main thread over a
-`core/` concern -- `settings_manager.py`, `provider_manager.py`, `logger.py`,
-`main_thread.py` -- goes in `Mod/bridge/` instead, the one place `Mod/ui/`
-may import directly, and the only reason a concern ever has two files: one
-Qt-free in `src/core/`, one Qt-touching in `Mod/bridge/`, never two of
-either.
+`core/` concern -- `provider_manager.py`, `logger.py`, `main_thread.py` -- goes
+in `Mod/bridge/` instead, the one place `Mod/ui/` may import directly, and the
+only reason a concern ever has two files: one Qt-free in `src/core/`, one
+Qt-touching in `Mod/bridge/`, never two of either.
 
 ## Measurements
 

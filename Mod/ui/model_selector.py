@@ -256,7 +256,7 @@ class ModelSelectorPopup(_ListPopup):
     ``step`` names which list is on screen.
     """
 
-    model_chosen = QtCore.Signal(str)
+    model_chosen = QtCore.Signal(str, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -302,12 +302,12 @@ class ModelSelectorPopup(_ListPopup):
             if model["provider"] != provider:
                 continue
             row = _Row(model["display"], checked=model["display"] == self._current_display)
-            row.clicked.connect(lambda m=model["id"]: self._choose(m))
+            row.clicked.connect(lambda m=model["id"]: self._choose(provider, m))
             self._list_layout.addWidget(row)
         self._reflow()
 
-    def _choose(self, model_id: str):
-        self.model_chosen.emit(model_id)
+    def _choose(self, provider: str, model_id: str):
+        self.model_chosen.emit(provider, model_id)
         self.close()
 
 

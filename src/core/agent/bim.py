@@ -4,7 +4,7 @@ That is at least one Wall, Slab, Door, Window and Space, each Door and Window ho
 The facts are measured in the kernel and judged here.
 """
 from core import arch, furniture
-from core.agent.domain import BIM, Domain, measured as domain_measured, unfinished as domain_unfinished
+from core.agent.domain import BIM, Domain, unfinished as domain_unfinished
 from core.agent.solo import run_solo
 from core.loop.prompt import _attached
 from core.prompts import read_prompt
@@ -139,11 +139,6 @@ except Exception as exc:
 finally:
     os.remove(path)
 """ % {"types": (*KINDS.values(), FURNITURE)} + FACTS_TAIL
-
-
-def measured(kernel):
-    """The flat's facts as the kernel leaves them, or `None` where the measuring itself failed."""
-    return domain_measured(kernel, FACTS_CHECK)
 
 
 NATIVE_FACTS_CHECK = """
@@ -310,13 +305,6 @@ def refusals(facts, index=library_index, unchanged=None):
     return found
 
 
-def native_measured(kernel):
-    """The facts of the IFC the Document's nativeifc project holds, or `None` where the measuring itself failed.
-    It reads the IFC with ifcopenshell here because `harness/bim_freecad.py`, which reads the same relations to score, is outside `src` and may not be imported from it.
-    """
-    return domain_measured(kernel, NATIVE_FACTS_CHECK)
-
-
 def native_refusals(facts, unchanged=None, intent=""):
     """What fails of the Assertion over the saved IFC of an edit on native IFC, one line each; empty where nothing fails.
     *unchanged* is the signature of the IFC the edit was given and *intent* names what the edit removes; each Door and Window must fill an opening, each opening must have a filling, and each element must sit in a storey, whatever the given file held.
@@ -346,7 +334,9 @@ def native_refusals(facts, unchanged=None, intent=""):
 
 
 def native_unfinished(kernel, unchanged=None, intent=""):
-    """Why the nativeifc project is not a finished flat, one line per failing condition, or `None` where the Assertion holds."""
+    """Why the nativeifc project is not a finished flat, one line per failing condition, or `None` where the Assertion holds.
+    The IFC is read with ifcopenshell in the kernel because `harness/bim_freecad.py`, which reads the same relations to score, is outside `src` and may not be imported from it.
+    """
     return domain_unfinished(kernel, NATIVE_FACTS_CHECK, lambda facts: native_refusals(facts, unchanged, intent), "BIM",
                              "The IFC could not be measured: the project would not save or reopen.")
 
@@ -378,12 +368,16 @@ def opening(intent, attachments, held=None):
     return blocks + _attached(attachments)
 
 
-def run_bim(intent, *, llm, kernel, tools, events, attachments=(), cancelled=None, edit=False, native=False):
-    """Build the flat *intent* and the floor plan in *attachments* describe; *edit* says the Document already holds the flat to change, and *native* that it holds it as the nativeifc project of an IFC."""
+def run_bim(intent, *, llm, kernel, tools, events, start, attachments=(), cancelled=None, edit=False, native=False):
+    """
+    Build the flat *intent* and the floor plan in *attachments* describe; *edit* says the Document already holds the flat to change, and *native* that it holds it as the nativeifc project of an IFC.
+    *start* seeds the kernel, with no rules, before an edit measures the Document it was given.
+    """
+    start(None)
     system, held = read_prompt("bim.md"), None
     check = unfinished
     if edit and native:
-        base = native_measured(kernel)
+        base = kernel.measure(NATIVE_FACTS_CHECK)
         system += "\n\n" + read_prompt("bim_edit.md") + "\n\n" + read_prompt("bim_edit_native.md")
         if base:
             held = describe_native(base)
@@ -391,7 +385,7 @@ def run_bim(intent, *, llm, kernel, tools, events, attachments=(), cancelled=Non
         else:
             check = lambda running: "The IFC you were given could not be measured: the project would not save or reopen."
     elif edit:
-        base = measured(kernel)
+        base = kernel.measure(FACTS_CHECK)
         system += "\n\n" + read_prompt("bim_edit.md")
         if base:
             held = describe(base)

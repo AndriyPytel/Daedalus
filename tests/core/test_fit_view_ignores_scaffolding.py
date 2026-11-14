@@ -18,7 +18,8 @@ import types
 
 import pytest
 
-from core.freecad_apply import _SCAFFOLDING, fit_view
+from core.document_tools import _SCAFFOLDING
+from core.freecad_apply import fit_view
 
 
 class FakeBoundBox:
@@ -143,82 +144,3 @@ def test_a_part_at_the_scaffolding_threshold_itself_is_not_hidden(gui):
     fit_view(document)
 
     assert part.ViewObject.Visibility is True
-
-
-class FullView3D(View3D):
-    """`View3D` plus the calls `capture_review_views` makes around each fit."""
-
-    def __init__(self):
-        super().__init__()
-        self.camera = "camera"
-        self.saved = []
-        self.clipped = []
-
-    def getCameraOrientation(self):
-        return self
-
-    def setCameraOrientation(self, orientation):
-        pass
-
-    def multiply(self, rotation):
-        return self
-
-    def setCamera(self, camera):
-        self.camera = camera
-
-    def saveImage(self, path, width, height, background):
-        self.saved.append(path)
-
-    def toggleClippingPlane(self, toggle=-1, beforeEditing=False, noManip=True, pla=None):
-        self.clipped.append(toggle)
-
-    def viewIsometric(self):
-        pass
-
-    def viewTop(self):
-        pass
-
-    def viewFront(self):
-        pass
-
-
-def test_capture_review_views_hides_scaffolding_before_each_fit_and_restores_it(gui, monkeypatch, tmp_path):
-    from core.freecad_apply import REVIEW_VIEWS, capture_review_views
-
-    monkeypatch.setattr("core.freecad_apply._section_plane", lambda document: None)
-    view = FullView3D()
-    gui(view)
-    part = FakeObject(40.0)
-    origin_plane = FakeObject(1e100)
-    document = FakeDocument([part, origin_plane])
-    paths = [str(tmp_path / (name + ".png")) for name in REVIEW_VIEWS]
-
-    capture_review_views(paths, document)
-
-    assert view.fits == len(REVIEW_VIEWS) - 1, "the section view has no plane to fit"
-    assert origin_plane.ViewObject.Visibility is True
-    assert part.ViewObject.Visibility is True
-
-
-def test_the_origin_plane_stays_hidden_only_during_capture_review_views_own_fit(gui, monkeypatch, tmp_path):
-    from core.freecad_apply import REVIEW_VIEWS, capture_review_views
-
-    monkeypatch.setattr("core.freecad_apply._section_plane", lambda document: None)
-    seen_during_fit = []
-
-    class RecordingView(FullView3D):
-        def fitAll(self):
-            seen_during_fit.append(origin_plane.ViewObject.Visibility)
-            super().fitAll()
-
-    view = RecordingView()
-    gui(view)
-    part = FakeObject(40.0)
-    origin_plane = FakeObject(1e100)
-    document = FakeDocument([part, origin_plane])
-    paths = [str(tmp_path / (name + ".png")) for name in REVIEW_VIEWS]
-
-    capture_review_views(paths, document)
-
-    assert seen_during_fit == [False] * len(seen_during_fit)
-    assert seen_during_fit
