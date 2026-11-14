@@ -16,9 +16,9 @@ the worker said follows it.
 """
 import time
 
-from core.agent import part_rules
 import pytest
 
+from core.agent import part_rules
 from core.kernel import Kernel, copy_of, find_freecadcmd
 
 pytestmark = pytest.mark.freecad

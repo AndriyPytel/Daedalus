@@ -5,9 +5,9 @@ A pocket whose cylinder is exactly tangent to the plate's side face recomputes c
 OCC's `isValid()`, yet the official mesh gate rejects the STEP. The Step is refused with the two
 faces named, so the next Step can move the pocket.
 """
-from core.agent import part_rules
 import pytest
 
+from core.agent import part_rules
 from core.kernel import Kernel, find_freecadcmd
 
 pytestmark = pytest.mark.freecad

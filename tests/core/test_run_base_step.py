@@ -147,13 +147,12 @@ def test_the_step_a_run_starts_from_is_kept_as_it_came_when_it_is_valid(tmp_path
 
 
 def test_the_step_a_run_starts_from_is_kept_mended_when_it_was_invalid(tmp_path):
+    import FreeCAD
     import Part
     from tests.core.level2.test_base_repair_level2 import _cube_with_a_needle
 
     step, keep = str(tmp_path / "input.step"), str(tmp_path / "run.base.step")
     _cube_with_a_needle(0).exportStep(step)
-
-    import FreeCAD
 
     FreeCAD.closeDocument(FreeCAD.openDocument(task.seed_from_step(step, keep)).Name)
 

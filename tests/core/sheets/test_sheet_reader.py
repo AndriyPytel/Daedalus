@@ -17,7 +17,6 @@ lays its labels out differently: a note that mentions a view, and a section
 label printed below the section instead of inside it.
 """
 import os
-import re
 import threading
 
 import pytest
@@ -62,14 +61,6 @@ def _printed(sheet):
 def _shown_in(sheet, at):
     """Which crop the callout printed at these coordinates arrives in."""
     return [entry.seen_in for entry in _printed(sheet) if entry.at == at]
-
-
-def _costs(path):
-    """What a rendered picture costs the provider, by this module's own formula."""
-    from PIL import Image
-
-    width, height = Image.open(path).size
-    return sheet_reader._patches(sheet_reader.pymupdf.Rect(0, 0, width, height), 72)
 
 
 def _overlapping(sheet, box, page=1):

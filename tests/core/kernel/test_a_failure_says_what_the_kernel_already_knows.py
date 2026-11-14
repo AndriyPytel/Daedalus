@@ -18,9 +18,9 @@ No FreeCAD: every check here reads volumes and PropertiesList off objects,
 and a fake carries both.
 """
 from core.agent.agent import _feedback
+from core.agent.part_rules import _idle_feature_report, hints
 from core.kernel.kernel import KernelResult
 from core.kernel.kernel_worker import introspect, run_step
-from core.agent.part_rules import _idle_feature_report, hints
 from core.kernel.step_namespace import volume_moved
 
 

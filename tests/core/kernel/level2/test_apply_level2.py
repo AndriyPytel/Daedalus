@@ -11,7 +11,7 @@ import pytest
 
 from core.document_tools import build_registry
 from core.freecad_apply import ApplyPipeline, run_in_transaction
-from core.kernel import Kernel, copy_of, find_freecadcmd
+from core.kernel import Kernel, find_freecadcmd
 
 
 pytestmark = pytest.mark.freecad
@@ -55,7 +55,7 @@ def pipeline(doc, worker):
     return pipeline
 
 
-def test_a_step_brings_back_a_description_of_what_is_now_there(pipeline, doc, worker):
+def test_a_step_brings_back_a_description_of_what_is_now_there(pipeline):
     """
     An Apply now answers with the part rather than a picture of it:
     the feature with its parameters, and the geometry read off the Shape.
@@ -87,7 +87,7 @@ def test_a_provider_that_answers_none_beats_freecads_active_document(doc, worker
     assert "no open Document" in result.traceback
 
 
-def test_a_step_can_assign_a_material_the_way_the_trap_describes(pipeline, doc, worker):
+def test_a_step_can_assign_a_material_the_way_the_trap_describes(pipeline, doc):
     """
     The Step that burned all three attempts of the CSWA-bracket model run. It
     has to survive Preflight — a separate process building its own namespace —
@@ -105,7 +105,7 @@ def test_a_step_can_assign_a_material_the_way_the_trap_describes(pipeline, doc, 
     assert "alumin" in doc.getObject("Body").ShapeMaterial.Name.lower()
 
 
-def test_two_steps_undo_one_at_a_time(pipeline, doc, worker):
+def test_two_steps_undo_one_at_a_time(pipeline, doc):
     pipeline.apply(BOX)
     cylinder_code = "cyl = doc.addObject('Part::Cylinder', 'Cyl')"
     pipeline.apply(cylinder_code)
@@ -305,7 +305,7 @@ def test_the_users_own_object_is_protected_end_to_end(doc, worker):
     assert doc.getObject("UsersBox") is None
 
 
-def test_each_applied_step_lands_as_exactly_one_undo_transaction(pipeline, doc, worker):
+def test_each_applied_step_lands_as_exactly_one_undo_transaction(pipeline, doc):
     """
     A revision that drops a Step undoes it by calling `doc.undo()` once per
     Step dropped, which is only correct if nothing besides `apply()`'s own
@@ -362,7 +362,7 @@ def _outer_corner_edge_name(shape):
     raise RuntimeError("no outer corner edge found on the padded block")
 
 
-def test_a_fillets_base_set_to_the_body_is_refused_before_it_reaches_freecad(pipeline, doc, worker):
+def test_a_fillets_base_set_to_the_body_is_refused_before_it_reaches_freecad(pipeline, doc):
     setup = pipeline.apply(_A_BLOCK_WITH_A_HOLE)
     assert setup.ok, setup.traceback
     before = sorted(o.Name for o in doc.Objects)
@@ -381,7 +381,7 @@ def test_a_fillets_base_set_to_the_body_is_refused_before_it_reaches_freecad(pip
         "a Step lint refused still reached the real Document")
 
 
-def test_the_same_fillet_based_on_the_previous_tip_builds(pipeline, doc, worker):
+def test_the_same_fillet_based_on_the_previous_tip_builds(pipeline, doc):
     setup = pipeline.apply(_A_BLOCK_WITH_A_HOLE)
     assert setup.ok, setup.traceback
     edge = _outer_corner_edge_name(doc.getObject("Pocket").Shape)

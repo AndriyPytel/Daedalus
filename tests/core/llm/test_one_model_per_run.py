@@ -5,7 +5,7 @@ import pytest
 
 from core import settings
 from core.session_title import generate
-from chat_helpers import kernel, set_the_chat, say  # noqa: F401
+from chat_helpers import kernel, set_the_chat  # noqa: F401
 
 pytestmark = pytest.mark.freecad
 

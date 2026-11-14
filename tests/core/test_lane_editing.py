@@ -64,7 +64,7 @@ def test_the_lane_runs_an_edit_on_its_fixture_folder(tmp_path):
     assert spawned == [{"label": "101", "path": folder}]
 
 
-def test_a_volume_ratio_inside_the_range_ships_the_run_s_step(tmp_path):
+def test_a_volume_ratio_inside_the_range_ships_the_runs_step(tmp_path):
     run_one, _ = _fake_run("EDIT", IN_RANGE)
 
     output, run = _sweep(tmp_path, _fixture(tmp_path), run_one)

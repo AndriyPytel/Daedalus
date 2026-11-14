@@ -67,7 +67,7 @@ def test_a_forged_signature_aborts_before_it_commits(doc):
     assert doc.Objects == []
 
 
-def test_a_step_addresses_an_earlier_steps_object_through_the_pipelines_own_name_map(pipeline, doc, worker):
+def test_a_step_addresses_an_earlier_steps_object_through_the_pipelines_own_name_map(pipeline, doc):
     """
     AC4, through the full apply() pipeline rather than the kernel alone: a
     stray pre-existing object stands in for a hand-edit, Step 1's preferred

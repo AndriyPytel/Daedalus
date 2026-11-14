@@ -27,5 +27,3 @@ def test_llm_py_file_no_longer_exists():
     """core/llm.py should be replaced by the core/llm/ package."""
     assert not (SRC / "core" / "llm.py").exists(), "core/llm.py should not exist"
     assert (SRC / "core" / "llm" / "__init__.py").exists(), "core/llm/ package should exist"
-
-

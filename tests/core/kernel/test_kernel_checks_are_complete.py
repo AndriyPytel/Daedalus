@@ -31,6 +31,7 @@ def _defined(name):
     return next((getattr(module, name) for module in MODULES
                  if getattr(getattr(module, name, None), "__module__", None) == module.__name__), None)
 
+
 OLD_CHECKS = {
     "a recompute left an object Invalid": "_objects_left_in_error",
     "a feature moved no material": "_features_that_moved_no_material",

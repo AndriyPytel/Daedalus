@@ -50,4 +50,3 @@ def test_every_kind_a_module_emits_is_registered():
         name: sorted(paths) for name, paths in emitted.items() if name not in KINDS}
     assert set(KINDS) <= set(emitted), "registered and emitted by no module: %s" % \
         sorted(set(KINDS) - set(emitted))
-    print("kinds emitted under src: %d" % len(emitted))

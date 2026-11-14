@@ -9,9 +9,9 @@ Step 8's edges in one `PartDesign::Fillet`; as its own sequential Step it
 refuses the same way the recorded run found, and the kernel already names
 the conflicting feature and edge instead of the bare OCC exception.
 """
-from core.agent import part_rules
 import pytest
 
+from core.agent import part_rules
 from core.kernel import Kernel, find_freecadcmd
 
 pytestmark = pytest.mark.freecad

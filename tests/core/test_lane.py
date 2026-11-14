@@ -166,7 +166,7 @@ def test_a_run_saves_the_file_its_task_leaves(tmp_path):
     assert cmd[cmd.index("--task") + 1] == str(folder)
 
 
-def test_sweep_takes_run_one(tmp_path):
+def test_sweep_runs_every_task_for_every_model_through_the_run_one_it_is_given(tmp_path):
     ran = []
 
     class FakeProcess:
@@ -388,7 +388,6 @@ def test_smoke_cli_selects_mm2024_phase1(monkeypatch, tmp_path):
         called["tasks"] = tasks
         return None
 
-
     lane.main(sweep=fake_sweep)
 
     assert len(called["tasks"]) == 1
@@ -406,7 +405,7 @@ def test_pinned_needs_exactly_one_model(monkeypatch):
     assert "exactly one --model" in str(excinfo.value)
 
 
-def test_sweep_resumes_by_skipping_a_run_state_already_marks_done(tmp_path, monkeypatch):
+def test_sweep_resumes_by_skipping_a_run_state_already_marks_done(tmp_path):
     """The resume path, against a recorded state file -- no real run is spawned for it."""
     out = str(tmp_path)
     os.makedirs(os.path.join(out, "opus"))
@@ -428,7 +427,6 @@ def test_sweep_resumes_by_skipping_a_run_state_already_marks_done(tmp_path, monk
         open(log, "w").close()
         open(log[: -len(".jsonl")] + ".step", "w").write("ISO-10303-21;")
         return FakeProcess()
-
 
     tasks = [("mm2025-phase1-rep1", "sheet1.pdf"), ("mm2025-phase1-rep2", "sheet1.pdf")]
     lane.sweep(tasks, ["opus"], "medium", None, "Build it.", out, 1800, 3, True,
@@ -520,7 +518,7 @@ def _quota_log(path, resets_at=1791057600):
 
 
 def test_a_quota_refusal_is_not_retried_and_stops_the_sweep_with_its_reset_time(
-        tmp_path, monkeypatch, capsys):
+        tmp_path, capsys):
     out = str(tmp_path)
     spawned = []
 
@@ -531,7 +529,6 @@ def test_a_quota_refusal_is_not_retried_and_stops_the_sweep_with_its_reset_time(
         spawned.append(label)
         _quota_log(log)
         return FakeProcess()
-
 
     stopped = lane.sweep([("126", "a.pdf"), ("142", "b.pdf")], ["opus"], "medium", None,
                          "Build it.", out, 1800, 3, False, "Claude (subscription)", None, run_one=fake_run_one, watch=lambda *a, **k: "exited")
@@ -544,7 +541,7 @@ def test_a_quota_refusal_is_not_retried_and_stops_the_sweep_with_its_reset_time(
     assert run["status"] == "quota"
 
 
-def test_a_quota_stopped_run_is_run_again_by_resume(tmp_path, monkeypatch):
+def test_a_quota_stopped_run_is_run_again_by_resume(tmp_path):
     out = str(tmp_path)
     os.makedirs(os.path.join(out, "opus"))
     state = {"runs": {"126/opus": {"label": "126", "model": "opus", "log": "x.jsonl",
@@ -561,14 +558,13 @@ def test_a_quota_stopped_run_is_run_again_by_resume(tmp_path, monkeypatch):
         open(log, "w").close()
         return FakeProcess()
 
-
     lane.sweep([("126", "a.pdf")], ["opus"], "medium", None, "Build it.", out, 1800, 1, True,
                "Claude (subscription)", None, run_one=fake_run_one, watch=lambda *a, **k: "exited")
 
     assert spawned == ["126"]
 
 
-def test_an_ordinary_refusal_is_still_retried(tmp_path, monkeypatch):
+def test_an_ordinary_refusal_is_still_retried(tmp_path):
     out = str(tmp_path)
     spawned = []
 
@@ -581,13 +577,12 @@ def test_an_ordinary_refusal_is_still_retried(tmp_path, monkeypatch):
                                                         "being rate limited", "tried": []})])
         return FakeProcess()
 
-
     assert not lane.sweep([("126", "a.pdf")], ["opus"], "medium", None, "Build it.", out, 1800,
                           3, False, "Claude (subscription)", None, run_one=fake_run_one, watch=lambda *a, **k: "exited")
     assert spawned == ["126"] * 3
 
 
-def test_a_run_that_exits_0_without_a_step_is_recorded_failed(tmp_path, monkeypatch):
+def test_a_run_that_exits_0_without_a_step_is_recorded_failed(tmp_path):
     out = str(tmp_path)
 
     class FakeProcess:
@@ -596,7 +591,6 @@ def test_a_run_that_exits_0_without_a_step_is_recorded_failed(tmp_path, monkeypa
     def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider, native=False):
         open(log, "w").close()
         return FakeProcess()
-
 
     lane.sweep([("126", "a.pdf")], ["opus"], "medium", None, "Build it.", out, 1800, 1, False,
                "Claude (subscription)", None, run_one=fake_run_one, watch=lambda *a, **k: "exited")
