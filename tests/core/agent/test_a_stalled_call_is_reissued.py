@@ -85,7 +85,7 @@ def test_a_drawing_that_could_not_be_read_twice_ends_the_run_instead_of_building
     events = EventStream()
 
     result = reader.run_reader("Build it.", llm=llm, kernel=None, tools=None, events=events,
-                               attachments=["drawing.pdf"])
+                               start=lambda rules: None, attachments=["drawing.pdf"])
 
     assert not result.ok
     assert result.reason == "drawing not read"

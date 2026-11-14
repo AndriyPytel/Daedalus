@@ -24,6 +24,7 @@ a side effect, without the Step ever naming Fillet.
 """
 import pytest
 
+from core.agent import part_rules
 from core.kernel import Kernel, copy_of, find_freecadcmd
 
 pytestmark = pytest.mark.freecad
@@ -58,7 +59,7 @@ def a_box_with_a_fillet():
 
 
 def test_a_successful_check_carries_a_fingerprint_for_every_feature(worker, a_box_with_a_fillet):
-    result = worker.seed(a_box_with_a_fillet)
+    result = worker.seed(a_box_with_a_fillet, rules=part_rules)
 
     assert result.ok, result.traceback
     assert set(result.geometry) == {"Box", "Fillet"}
@@ -67,9 +68,9 @@ def test_a_successful_check_carries_a_fingerprint_for_every_feature(worker, a_bo
 
 
 def test_editing_the_box_moves_the_fillets_own_fingerprint_too(worker, a_box_with_a_fillet):
-    before = worker.seed(a_box_with_a_fillet).geometry["Fillet"]
+    before = worker.seed(a_box_with_a_fillet, rules=part_rules).geometry["Fillet"]
 
-    worker.seed(a_box_with_a_fillet)
+    worker.seed(a_box_with_a_fillet, rules=part_rules)
     after = worker.rehearse(
         "box = doc.getObject('Box')\n"
         "box.Length = 15\n"
@@ -82,7 +83,7 @@ def test_editing_the_box_moves_the_fillets_own_fingerprint_too(worker, a_box_wit
 
 
 def test_a_check_that_touches_nothing_reports_the_same_fingerprint_twice(worker, a_box_with_a_fillet):
-    first = worker.seed(a_box_with_a_fillet).geometry
-    second = worker.seed(a_box_with_a_fillet).geometry
+    first = worker.seed(a_box_with_a_fillet, rules=part_rules).geometry
+    second = worker.seed(a_box_with_a_fillet, rules=part_rules).geometry
 
     assert first == second, "an unedited copy fingerprinted differently across two calls"

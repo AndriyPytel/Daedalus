@@ -15,6 +15,7 @@ pins is the one the real crash-adjacent selection actually hits.
 """
 import pytest
 
+from core.agent import part_rules
 from core.kernel import Kernel, find_freecadcmd
 
 pytestmark = pytest.mark.freecad
@@ -74,7 +75,7 @@ def a_fillet_mixing_the_two_boss_junctions_at(radius):
 
 
 def test_the_worker_survives_a_mixed_concavity_selection_that_also_fails_occ(worker):
-    assert worker.seed().ok
+    assert worker.seed(rules=part_rules).ok
     result = worker.rehearse(a_fillet_mixing_the_two_boss_junctions_at(8.0))
 
     assert not result.ok, "a fillet mixing concave and convex Base edges was passed to the Document"
@@ -82,7 +83,7 @@ def test_the_worker_survives_a_mixed_concavity_selection_that_also_fails_occ(wor
 
 
 def test_the_failure_names_the_mixed_edges_not_the_bare_occ_refusal(worker):
-    assert worker.seed().ok
+    assert worker.seed(rules=part_rules).ok
     said = worker.rehearse(a_fillet_mixing_the_two_boss_junctions_at(8.0)).traceback
 
     assert "mixes concave and convex edges" in said, (

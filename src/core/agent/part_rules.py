@@ -1,7 +1,8 @@
 """
-The rules that make a Step wrong: objects left in error, an idle feature, an unwired feature, a Body in pieces, invalid, inverted or not manifold, a fillet over mixed concavity. `run_step` calls them after the Step's code ran; every Domain runs all of them.
+The Part Domain's rules for a Step: objects left in error, an idle feature, an unwired feature, a Body in pieces, invalid, inverted or not manifold, a fillet over mixed concavity.
+A Kernel seeded with this module calls `precheck` before the Step's recompute, `check` after it, and appends `hints` to the Step's failure; a Kernel seeded with no rules calls none.
 """
-from core.kernel.step_namespace import group_edges_by_sign, volume_of
+from core.kernel.step_namespace import group_edges_by_sign, volume_moved, volume_of
 
 
 def _features_not_wired_to_a_body(doc):
@@ -131,7 +132,7 @@ def _fillets_with_mixed_concavity(doc):
     return mixed
 
 
-def _raise_if_mixed_concavity(doc):
+def precheck(doc):
     """
     Refuse a mixed-concavity `Base` with its own sentence before OCC's
     `command not done` or `FrozenShape` can bury it under a generic
@@ -247,30 +248,7 @@ def _refusal(shape, made, size, edges):
     return ""
 
 
-_MOVES_MATERIAL = "PartDesign::Feature"
-
-
 _VOLUME_TOLERANCE = 1e-9
-
-
-def _volume_moved(doc, created):
-    """
-    How much material each feature this Step created actually moved.
-
-    Two volume reads the volume-neutral check below makes anyway, handed back
-    rather than left for the Step's own code to derive.
-    """
-    moved = {}
-    for name in sorted(created):
-        obj = doc.getObject(name)
-        if obj is None or not obj.isDerivedFrom(_MOVES_MATERIAL):
-            continue
-        base = getattr(obj, "BaseFeature", None)
-        before = volume_of(base) if base is not None else 0.0
-        now = volume_of(obj)
-        moved[name] = {"before": round(before, 6), "after": round(now, 6),
-                       "moved": round(now - before, 6)}
-    return moved
 
 
 def _features_that_moved_no_material(doc, created):
@@ -282,7 +260,7 @@ def _features_that_moved_no_material(doc, created):
     untouched. FreeCAD calls it 'Up-to-date' and 'Valid'.
     """
     idle = []
-    for name, volume in _volume_moved(doc, created).items():
+    for name, volume in volume_moved(doc, created).items():
         before, now = volume["before"], volume["after"]
         if abs(now - before) <= _VOLUME_TOLERANCE * max(1.0, abs(before)):
             idle.append((doc.getObject(name), before, now))
@@ -401,7 +379,7 @@ def _past_the_tip(doc, created):
     return "\n" + "\n".join(lines) if lines else ""
 
 
-def _raise_if_broken(doc, touched):
+def check(doc, touched):
     """
     Raise on whatever a Step left wrong in *doc*: objects in error, idle features, unwired features, a Body in pieces, invalid, inverted or not manifold.
     A Step that changed nothing in a Document it did not open cannot have left any of it, and these scans cost seconds on a big part.
@@ -410,7 +388,7 @@ def _raise_if_broken(doc, touched):
     if failures:
         raise RuntimeError("recompute left these objects in error:\n" + "\n".join(failures))
 
-    _raise_if_mixed_concavity(doc)
+    precheck(doc)
 
     if _features_that_moved_no_material(doc, touched.created):
         raise RuntimeError(_IDLE_HEADLINE)
@@ -428,3 +406,8 @@ def _raise_if_broken(doc, touched):
     refusal = _body_defects(doc)
     if refusal:
         raise RuntimeError(refusal)
+
+
+def hints(doc, created):
+    """What this Step's features did that its failure should carry: the idle ones, and those added past a Body's Tip."""
+    return _idle_feature_report(doc, created) + _past_the_tip(doc, created)

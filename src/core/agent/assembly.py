@@ -156,12 +156,14 @@ def part_call(build_part):
     return call
 
 
-def run_assembly(intent, *, llm, kernel, tools, events, attachments=(), cancelled=None,
+def run_assembly(intent, *, llm, kernel, tools, events, start, attachments=(), cancelled=None,
                  build_part=None, edit=False):
-    """Build the Assembly *intent* asks for from the parts in the Document and *attachments*, under the Assembly Domain; *build_part* makes a part the Document lacks in a Session of its own, and *edit* says the Document already holds the Assembly the intent changes."""
+    """Build the Assembly *intent* asks for from the parts in the Document and *attachments*, under the Assembly Domain; *build_part* makes a part the Document lacks in a Session of its own, and *edit* says the Document already holds the Assembly the intent changes.
+    *start* seeds the kernel under the Domain's rules once the Domain is built."""
     system = read_prompt("assembly.md") + ("\n\n" + read_prompt("assembly_edit.md") if edit else "")
     domain = Domain(ASSEMBLY, system, opening(intent, list(attachments)),
                     lambda: None, unfinished,
                     {"build_part": part_call(build_part)} if build_part else {})
+    start(domain.rules)
     return run_solo(intent, domain=domain, llm=llm, kernel=kernel, tools=tools, events=events,
                     attachments=attachments, cancelled=cancelled, max_turns=MAX_TURNS)

@@ -4,6 +4,7 @@ into the Body, whatever its own Shape says.
 """
 import pytest
 
+from core.agent import part_rules
 from core.kernel import Kernel, find_freecadcmd
 
 pytestmark = pytest.mark.freecad
@@ -49,7 +50,7 @@ def kernel():
 
 def test_a_pattern_the_tip_never_reaches_fails_and_names_the_tip(kernel):
     """FreeCAD's Body.addObject moves the Tip onto a Pad but not onto a PolarPattern; a recorded run probed the uncut Body for nine minutes."""
-    assert kernel.seed().ok
+    assert kernel.seed(rules=part_rules).ok
     assert kernel.rehearse(PADDED_WITH_A_HOLE).ok
 
     result = kernel.rehearse(PATTERNED)
@@ -59,7 +60,7 @@ def test_a_pattern_the_tip_never_reaches_fails_and_names_the_tip(kernel):
 
 
 def test_a_pattern_made_the_tip_lands(kernel):
-    assert kernel.seed().ok
+    assert kernel.seed(rules=part_rules).ok
     assert kernel.rehearse(PADDED_WITH_A_HOLE).ok
 
     result = kernel.rehearse(PATTERNED + "body.Tip = pattern\ndoc.recompute()\n")

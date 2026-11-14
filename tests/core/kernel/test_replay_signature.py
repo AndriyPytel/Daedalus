@@ -43,7 +43,7 @@ class FakeWorker:
     def rehearse(self, code, timeout=None):
         return self.result
 
-    def seed(self, path=None):
+    def seed(self, path=None, rules=None):
         return self.result
 
 

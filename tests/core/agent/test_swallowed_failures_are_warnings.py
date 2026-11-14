@@ -67,6 +67,6 @@ def test_a_sheet_that_cannot_be_read_is_a_warning(tmp_path, monkeypatch):
     events = EventStream()
 
     run_reader("go", llm=ScriptedLLMClient([json.dumps({"finish": "x"})] * 3), kernel=Kernel(True),
-               tools=None, events=events, attachments=[str(sheet)], cancelled=lambda: True)
+               tools=None, events=events, start=lambda rules: None, attachments=[str(sheet)], cancelled=lambda: True)
 
     assert "drawing.pdf" in _said(events)

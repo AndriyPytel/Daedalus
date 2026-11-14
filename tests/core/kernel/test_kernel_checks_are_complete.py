@@ -21,9 +21,10 @@ GUI report-view message FreeCAD never writes when there is no GUI, per a
 comment dated 2026-08-02. There is no console message this kernel could
 capture, so there is nothing here for a sixth check to run.
 """
-from core.kernel import kernel_worker, step_namespace, step_rules
+from core.agent import part_rules
+from core.kernel import kernel_worker, step_namespace
 
-MODULES = (kernel_worker, step_namespace, step_rules)
+MODULES = (kernel_worker, step_namespace, part_rules)
 
 
 def _defined(name):
@@ -49,6 +50,6 @@ def test_every_old_preflight_check_still_runs_after_a_step():
         reached = set(function.__code__.co_names) - called
         called |= reached
         pending += list(reached)
-    called |= {defect.__name__ for defect, _, _ in step_rules._BODY_CHECKS}
+    called |= {defect.__name__ for defect, _, _ in part_rules._BODY_CHECKS}
     dropped = {label: name for label, name in OLD_CHECKS.items() if name not in called}
     assert not dropped, "check(s) no longer reached from _run_step_body: %s" % dropped

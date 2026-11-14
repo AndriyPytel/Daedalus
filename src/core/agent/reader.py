@@ -7,6 +7,7 @@ import json
 import os
 import tempfile
 
+from core.agent import part_rules
 from core.agent.agent import _say
 from core.agent.domain import PART, Domain, unfinished as domain_unfinished
 from core.agent.solo import run_solo
@@ -266,10 +267,11 @@ def assert_part(kernel, sheet, table, renders, events):
     return [{"type": "text", "text": listed + COMPARE}] + blocks, sorted(view for view, picture in drawn_views.items() if picture)
 
 
-def run_reader(intent, *, llm, kernel, tools, events, attachments=(), cancelled=None, base=False):
+def run_reader(intent, *, llm, kernel, tools, events, start, attachments=(), cancelled=None, base=False):
     """
     Read the drawing once, then build with `run_solo` under the table and the Assertion; an edit (*base*) has no drawing to read and is asserted on changing the part.
     A drawing that two reads could not turn into a table ends the run, since a build without it has nothing to be measured against.
+    *start* seeds the kernel under the Domain's rules once the Domain is built.
     """
     sheet = None
     for path in () if base else attachments:
@@ -285,6 +287,8 @@ def run_reader(intent, *, llm, kernel, tools, events, attachments=(), cancelled=
         return LoopResult(ok=False, reason=NOT_READ)
     with tempfile.TemporaryDirectory(prefix="fcc-assertion-") as renders:
         domain = Domain(PART, read_prompt("reader.md"), opening(intent, sheet, table, attachments, base),
-                        lambda: assert_part(kernel, sheet, table, renders, events), unfinished_part)
+                        lambda: assert_part(kernel, sheet, table, renders, events), unfinished_part,
+                        rules=part_rules)
+        start(domain.rules)
         return run_solo(intent, domain=domain, llm=llm, kernel=kernel, tools=tools, events=events,
                         attachments=attachments, cancelled=cancelled, max_turns=MAX_TURNS)

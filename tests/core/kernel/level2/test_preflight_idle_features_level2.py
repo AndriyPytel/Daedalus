@@ -8,6 +8,7 @@ FreeCAD calls it Up-to-date and Valid.
 """
 import pytest
 
+from core.agent import part_rules
 from core.kernel import Kernel, find_freecadcmd
 
 pytestmark = pytest.mark.freecad
@@ -62,14 +63,14 @@ CUTS_NOTHING_WHEN_REVERSED = BLOCK + BORE_FLIPPED % "pocket.Reversed = True"
 
 
 def test_a_pocket_that_cut_nothing_fails_preflight(worker):
-    assert worker.seed().ok
+    assert worker.seed(rules=part_rules).ok
     result = worker.rehearse(CUTS_NOTHING)
 
     assert not result.ok, "a Pocket that removed no material was passed to the Document"
 
 
 def test_the_failure_says_what_happened_and_what_to_do(worker):
-    assert worker.seed().ok
+    assert worker.seed(rules=part_rules).ok
     said = worker.rehearse(CUTS_NOTHING).traceback
 
     assert "neither removed nor added any material" in said, said
@@ -80,7 +81,7 @@ def test_the_failure_says_what_happened_and_what_to_do(worker):
 
 
 def test_reversed_false_that_cut_nothing_names_reversed_true(worker):
-    assert worker.seed().ok
+    assert worker.seed(rules=part_rules).ok
     said = worker.rehearse(CUTS_NOTHING).traceback
 
     assert "Reversed=True" in said, said
@@ -88,7 +89,7 @@ def test_reversed_false_that_cut_nothing_names_reversed_true(worker):
 
 
 def test_reversed_true_that_cut_nothing_names_reversed_false(worker):
-    assert worker.seed().ok
+    assert worker.seed(rules=part_rules).ok
     said = worker.rehearse(CUTS_NOTHING_WHEN_REVERSED).traceback
 
     assert "Reversed=False" in said, said
@@ -96,21 +97,21 @@ def test_reversed_true_that_cut_nothing_names_reversed_false(worker):
 
 
 def test_the_same_pocket_the_right_way_round_passes(worker):
-    assert worker.seed().ok
+    assert worker.seed(rules=part_rules).ok
     result = worker.rehearse(CUTS)
 
     assert result.ok, result.traceback
 
 
 def test_the_first_pad_in_an_empty_body_passes(worker):
-    assert worker.seed().ok
+    assert worker.seed(rules=part_rules).ok
     result = worker.rehearse(BLOCK)
 
     assert result.ok, result.traceback
 
 
 def test_a_step_that_only_draws_a_sketch_is_not_judged_by_volume(worker):
-    assert worker.seed().ok
+    assert worker.seed(rules=part_rules).ok
     result = worker.rehearse(
         BLOCK + "\nsk = doc.addObject('Sketcher::SketchObject', 'Later')\n"
                 "body.addObject(sk)\n"

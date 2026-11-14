@@ -368,8 +368,12 @@ def opening(intent, attachments, held=None):
     return blocks + _attached(attachments)
 
 
-def run_bim(intent, *, llm, kernel, tools, events, attachments=(), cancelled=None, edit=False, native=False):
-    """Build the flat *intent* and the floor plan in *attachments* describe; *edit* says the Document already holds the flat to change, and *native* that it holds it as the nativeifc project of an IFC."""
+def run_bim(intent, *, llm, kernel, tools, events, start, attachments=(), cancelled=None, edit=False, native=False):
+    """
+    Build the flat *intent* and the floor plan in *attachments* describe; *edit* says the Document already holds the flat to change, and *native* that it holds it as the nativeifc project of an IFC.
+    *start* seeds the kernel, with no rules, before an edit measures the Document it was given.
+    """
+    start(None)
     system, held = read_prompt("bim.md"), None
     check = unfinished
     if edit and native:

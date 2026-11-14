@@ -94,6 +94,7 @@ def test_a_dependency_cycle_does_not_loop_forever():
     assert {o.Name for o in _recompute_scope(doc, touched)} == {"A", "B"}
 
 
+from core.agent import part_rules
 import pytest
 
 from core.kernel import Kernel, copy_of, find_freecadcmd
@@ -132,7 +133,7 @@ def a_box_with_a_fillet_that_no_longer_fits_once_shrunk():
 def test_a_feature_left_stale_by_a_scoped_recompute_still_fails_preflight(
     worker, a_box_with_a_fillet_that_no_longer_fits_once_shrunk
 ):
-    assert worker.seed(a_box_with_a_fillet_that_no_longer_fits_once_shrunk).ok
+    assert worker.seed(a_box_with_a_fillet_that_no_longer_fits_once_shrunk, rules=part_rules).ok
     result = worker.rehearse(
         "box = doc.getObject('Box')\n"
         "box.Length = 5\n"

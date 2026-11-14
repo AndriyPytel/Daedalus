@@ -17,7 +17,7 @@ def label(domain):
 
 @dataclass(frozen=True)
 class Domain:
-    """*assertion* answers with the content to send back and the names of the views it draws, or `None`; *done_check* answers with why the Document is not finished, or `None`; *calls* maps a reply's key to the handler that answers it with a dict."""
+    """*assertion* answers with the content to send back and the names of the views it draws, or `None`; *done_check* answers with why the Document is not finished, or `None`; *calls* maps a reply's key to the handler that answers it with a dict; *rules* is the module the Kernel holds every Step to from the seed on, or `None`."""
 
     name: str
     system: str
@@ -25,6 +25,7 @@ class Domain:
     assertion: Callable
     done_check: Callable
     calls: dict = field(default_factory=dict)
+    rules: object = None
 
 
 def unfinished(kernel, check, refusals, name, unmeasurable, timeout=None):
