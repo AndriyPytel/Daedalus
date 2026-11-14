@@ -2,15 +2,13 @@
 The child half of the kernel: a headless FreeCAD child process started by
 `core/kernel/kernel.py`, one JSON request per stdin line and one tagged
 response per stdout line. `SENTINEL` must import without starting the
-server, so `freecadcmd`'s renamed `__name__` is checked before serving starts, and a crash here is a normal outcome the
-parent restarts from, with no shutdown message, because the parent kills
-rather than asks; the kernel holds one live Document across many Steps, a
-failed Step reopens the last checkpoint rather than continuing on a
-Document a following Step should never have seen. Measured: 45 of 152
-kernel calls failed across one review's sessions -- 15 on the Step's own
-volume assert, 10 on a None deref -- so a failing Step is handed `volume`,
-the idle-feature diagnosis and the Document's own objects, not only the
-traceback.
+server, so `freecadcmd`'s renamed `__name__` is checked before serving
+starts, and a crash here is a normal outcome the parent restarts from, with
+no shutdown message, because the parent kills rather than asks; the kernel
+holds one live Document across many Steps, a failed Step reopens the last
+checkpoint rather than continuing on a Document a following Step should
+never have seen. A failing Step is handed `volume`, the idle-feature
+diagnosis and the Document's own objects, not only the traceback.
 """
 import contextlib
 import difflib
@@ -451,7 +449,7 @@ def run_step(request):
     Step declared, so a pass that touched the Document is reopened the
     same as a failed one, and the response names what was rolled back.
     """
-    from core.kernel.step_namespace import _NamedDoc, step_namespace, trimmed_traceback, volume_moved
+    from core.kernel.step_namespace import NamedDoc, step_namespace, trimmed_traceback, volume_moved
 
     exploring = request.get("exploring", False)
     if "document" in request or _SESSION["doc"] is None:
@@ -462,7 +460,7 @@ def run_step(request):
 
     doc = _SESSION["doc"]
     names = dict(_SESSION["names"])
-    namespace = step_namespace(_NamedDoc(doc, names))
+    namespace = step_namespace(NamedDoc(doc, names))
     namespace["names"] = names
 
     touched = _Touched(doc)
@@ -504,9 +502,6 @@ def run_step(request):
     return response
 
 
-_ASKED_FOR = {"step": run_step}
-
-
 def _parent_is_gone(parent):
     """
     Whether *parent* has exited, given a second to be reparented away from.
@@ -520,12 +515,10 @@ def _parent_is_gone(parent):
 
 def serve(stdin=None, respond=respond):
     """
-    Read requests off stdin until it closes, and answer each one.
+    Read requests off stdin until it closes, and answer each one as a Step.
 
-    What the process will do is the `do` of the request; a request that does
-    not say is a Step. Anything Python can still catch comes back as a
-    correction, and anything it cannot takes this process down instead of
-    FreeCAD.
+    Anything Python can still catch comes back as a correction, and anything
+    it cannot takes this process down instead of FreeCAD.
     """
     _ensure_on_path()
     from core.kernel.step_namespace import trimmed_traceback
@@ -547,7 +540,7 @@ def serve(stdin=None, respond=respond):
                 respond({"ok": False, "traceback": "malformed request: " + str(exc)})
                 continue
             try:
-                respond(_ASKED_FOR[request.get("do") or "step"](request))
+                respond(run_step(request))
             except BaseException as exc:
                 respond({"ok": False, "traceback": trimmed_traceback(exc) + introspect(exc)})
     finally:

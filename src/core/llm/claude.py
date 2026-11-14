@@ -66,21 +66,14 @@ class Run:
 
 def kill(client):
     """
-    End every live `claude` process reachable from *client*'s own tree.
+    End every live `claude` process *client* has spawned.
 
-    A client that wraps others names no process of its own: the process belongs
-    to the `ClaudeCodeClient` underneath. *client* is `None` where a run has
-    not built one yet, which is a no-op rather than an error.
+    *client* is `None` where a run has not built one yet, and a client that
+    bills a key spawns no process of its own, so both are a no-op rather than
+    an error.
     """
-    if client is None:
-        return
     if isinstance(client, ClaudeCodeClient):
         client.run.end()
-        return
-    for profile in ("thinking", "doing"):
-        nested = getattr(client, profile, None)
-        if nested is not None:
-            kill(nested)
 
 
 _CLAUDE_CANDIDATES = (

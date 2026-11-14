@@ -556,24 +556,15 @@ def _stuck(client):
     return next(iter(client.run._live))
 
 
-def test_kill_reaches_a_claude_client_behind_a_profile():
+def test_kill_ends_the_live_claude_process():
     from core.llm.claude import kill
 
-    class _Profiled:
-        def __init__(self, thinking, doing):
-            self.thinking = thinking
-            self.doing = doing
+    client, spawn = client_over(_ProcessThatNeverAnswers())
+    process = _stuck(client)
 
-    thinking, thinking_spawn = client_over(_ProcessThatNeverAnswers())
-    doing, doing_spawn = client_over(_ProcessThatNeverAnswers())
-    thinking_process = _stuck(thinking)
-    doing_process = _stuck(doing)
-    profiled = _Profiled(thinking, doing)
+    kill(client)
 
-    kill(profiled)
-
-    assert thinking_process.killed.is_set()
-    assert doing_process.killed.is_set()
+    assert process.killed.is_set()
 
 
 def test_kill_of_no_client_is_a_no_op():

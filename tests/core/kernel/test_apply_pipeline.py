@@ -4,7 +4,7 @@ Level 1 — the order the apply pipeline does things in, and what the caller see
 Everything is injected: no Qt, no FreeCAD, no worker. What matters here is that
 lint runs before the kernel's rehearsal, the transaction never opens on a Step
 that changed nothing, and none of that is visible from outside — the caller
-gets "applied" or "failed". `FakeWorker` is the kernel: it answers the
+gets "applied" or "failed". `FakeKernel` is the kernel: it answers the
 rehearsal and the seed with whatever result the test sets.
 """
 import pytest
@@ -12,6 +12,7 @@ import pytest
 from core.agent import part_rules
 from core.freecad_apply import CHAT_DOCK, ApplyPipeline, Closing, SignatureMismatch
 from core.kernel import KernelResult
+from tests.fake_kernel import FakeKernel
 
 
 class FakeDocument:
@@ -32,26 +33,6 @@ class FakeObject:
         self.TypeId = "Part::Box"
 
 
-class FakeWorker:
-    """Answers the rehearsal and the seed call however the test says."""
-
-    def __init__(self, result=None):
-        self.result = result or KernelResult(ok=True, render="/tmp/step.png",
-                                                created=["Box"])
-        self.rehearsed = []
-        self.seeded = []
-        self.rules = []
-
-    def rehearse(self, code, timeout=None):
-        self.rehearsed.append(code)
-        return self.result
-
-    def seed(self, path=None, rules=None):
-        self.seeded.append(path)
-        self.rules.append(rules)
-        return self.result
-
-
 def _kernel_result(created=("Box",), modified=(), deleted=(), names=None, signature=None):
     made = list(created)
     return KernelResult(ok=True, created=made, deleted=list(deleted), modified=list(modified),
@@ -60,9 +41,8 @@ def _kernel_result(created=("Box",), modified=(), deleted=(), names=None, signat
 
 
 def applying(pipeline, code, rehearsal=None, **kwargs):
-    """Apply *code* with the kernel answering the rehearsal as *rehearsal*."""
     if rehearsal is not None:
-        pipeline.worker.result = rehearsal
+        pipeline.worker.rehearsal = rehearsal
     return pipeline.apply(code, **kwargs)
 
 
@@ -74,7 +54,7 @@ def trace():
 @pytest.fixture
 def pipeline(trace):
     doc = FakeDocument()
-    worker = FakeWorker()
+    worker = FakeKernel()
 
     def transaction(document, code, label, **_):
         trace.append(("transaction", label))
@@ -187,9 +167,9 @@ def test_lint_runs_once_with_the_selection(pipeline, monkeypatch):
     linted = []
     real = module.lint
 
-    def counting(code, selection=None, design_model=True):
+    def counting(code, selection=None):
         linted.append(selection)
-        return real(code, selection, design_model)
+        return real(code, selection)
 
     monkeypatch.setattr(module, "lint", counting)
     selection = [{"object": "Box", "elements": ["Edge3"]}]
@@ -233,7 +213,7 @@ def test_a_refusal_resyncs_the_kernel(trace):
     def transaction(document, code, label, **_):
         raise RuntimeError("the live Document disagreed")
 
-    worker = FakeWorker()
+    worker = FakeKernel()
     pipeline = ApplyPipeline(document=FakeDocument(), worker=worker,
                              dispatch=lambda f, timeout=None: f(), transaction=transaction)
 
@@ -248,7 +228,7 @@ def test_a_resync_keeps_the_rules_the_run_started_under(trace):
     def transaction(document, code, label, **_):
         raise RuntimeError("the live Document disagreed")
 
-    worker = FakeWorker()
+    worker = FakeKernel()
     pipeline = ApplyPipeline(document=FakeDocument(), worker=worker,
                              dispatch=lambda f, timeout=None: f(), transaction=transaction)
     pipeline.start_run(part_rules)
@@ -268,7 +248,7 @@ def test_a_step_that_the_kernel_ran_but_fails_for_real_is_reported_as_such(trace
     def transaction(document, code, label, **_):
         raise RuntimeError("the live Document disagreed")
 
-    pipeline = ApplyPipeline(document=FakeDocument(), worker=FakeWorker(),
+    pipeline = ApplyPipeline(document=FakeDocument(), worker=FakeKernel(),
                              dispatch=lambda f, timeout=None: f(), transaction=transaction)
 
     result = applying(pipeline, "doc.recompute()", rehearsal=_kernel_result())
@@ -283,7 +263,7 @@ def test_a_replay_that_drifts_names_drift_as_its_cause(trace):
     def transaction(document, code, label, **_):
         raise SignatureMismatch({"volume": 2.0}, {"volume": 1.0})
 
-    pipeline = ApplyPipeline(document=FakeDocument(), worker=FakeWorker(),
+    pipeline = ApplyPipeline(document=FakeDocument(), worker=FakeKernel(),
                              dispatch=lambda f, timeout=None: f(), transaction=transaction)
 
     result = applying(pipeline, "doc.recompute()", rehearsal=_kernel_result())
@@ -296,7 +276,7 @@ def test_closing_during_the_transaction_is_a_clean_stop_not_a_failed_step(trace)
     def transaction(document, code, label, **_):
         raise Closing("shutting down")
 
-    pipeline = ApplyPipeline(document=FakeDocument(), worker=FakeWorker(),
+    pipeline = ApplyPipeline(document=FakeDocument(), worker=FakeKernel(),
                              dispatch=lambda f, timeout=None: f(), transaction=transaction)
 
     with pytest.raises(Closing):
@@ -304,7 +284,7 @@ def test_closing_during_the_transaction_is_a_clean_stop_not_a_failed_step(trace)
 
 
 def test_no_open_document_is_a_reason_not_a_crash():
-    pipeline = ApplyPipeline(document=lambda: None, worker=FakeWorker(),
+    pipeline = ApplyPipeline(document=lambda: None, worker=FakeKernel(),
                              dispatch=lambda f, timeout=None: f())
 
     result = applying(pipeline, "doc.recompute()", rehearsal=_kernel_result())
@@ -315,7 +295,9 @@ def test_no_open_document_is_a_reason_not_a_crash():
 
 
 def test_an_element_the_user_selected_survives_the_lint(pipeline):
-    result = applying(pipeline, "fillet.Base = (box, ['Edge3'])", selection=[{"object": "Box", "elements": ["Edge3"]}], rehearsal=_kernel_result(created=["Fillet"]))
+    result = applying(pipeline, "fillet.Base = (box, ['Edge3'])",
+                      selection=[{"object": "Box", "elements": ["Edge3"]}],
+                      rehearsal=_kernel_result(created=["Fillet"]))
 
     assert result.ok, result.traceback
 
@@ -354,7 +336,7 @@ def test_every_document_touch_goes_through_the_dispatcher():
         return func()
 
     doc = FakeDocument()
-    pipeline = ApplyPipeline(document=doc, worker=FakeWorker(), dispatch=dispatch,
+    pipeline = ApplyPipeline(document=doc, worker=FakeKernel(), dispatch=dispatch,
                              transaction=lambda *a, **kw: None)
 
     applying(pipeline, "doc.recompute()", rehearsal=_kernel_result())
@@ -409,7 +391,7 @@ def test_start_run_snapshots_the_document_into_the_kernel(pipeline):
     AC1: the kernel-side object count matches the GUI Document at run start.
     """
     pipeline.document.Objects = [FakeObject("Box"), FakeObject("Cylinder")]
-    pipeline.fake_worker.result = KernelResult(ok=True, objects=[{"name": "Box"},
+    pipeline.fake_worker.rehearsal = KernelResult(ok=True, objects=[{"name": "Box"},
                                                                    {"name": "Cylinder"}])
     seeded = pipeline.start_run()
 

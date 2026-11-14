@@ -86,8 +86,3 @@ def test_part_finish_makes_one_measure_call():
     assert [script for script, _ in refused.measured] == [FACTS_CHECK]
     assert [script for script, _ in asserted.measured] == [FACTS_CHECK]
 
-
-def test_the_part_domain_speaks_no_second_protocol():
-    source = open(reader.__file__).read()
-
-    assert '"TREE ' not in source and '"MESH ' not in source

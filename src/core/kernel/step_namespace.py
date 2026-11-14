@@ -278,7 +278,7 @@ def step_namespace(doc):
     return namespace
 
 
-class _NamedDoc:
+class NamedDoc:
     """
     The live Document, wrapped so `doc.addObject` records the name
     FreeCAD actually allocated.

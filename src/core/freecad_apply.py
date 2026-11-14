@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from core.document_tools import _SCAFFOLDING, _direct, _measurable, description
 from core.events import ANSWER, QUESTION, WARNING
 from core.kernel import Kernel, KernelResult, copy_of
-from core.kernel.step_namespace import (_NamedDoc, register_step_source, signature_of,
+from core.kernel.step_namespace import (NamedDoc, register_step_source, signature_of,
                                         signatures_match, step_namespace, trimmed_traceback)
 from core.lint import lint
 from core.prompts import read_prompt
@@ -93,7 +93,7 @@ STEP_LIMIT = 120
 STEP_LABEL = "Daedalus Step"
 
 
-def run_in_transaction(doc, code, label="Daedalus Step", names=None, expected_signature=None):
+def run_in_transaction(doc, code, label=STEP_LABEL, names=None, expected_signature=None):
     """
     Execute *code* against *doc* as one undoable unit, main thread only; the
     recompute runs inside the transaction, so one undo takes the whole Step
@@ -106,7 +106,7 @@ def run_in_transaction(doc, code, label="Daedalus Step", names=None, expected_si
     doc.openTransaction(label)
     try:
         register_step_source(code)
-        namespace = step_namespace(_NamedDoc(doc, names))
+        namespace = step_namespace(NamedDoc(doc, names))
         namespace["names"] = names
         exec(compile(code, "<step>", "exec"), namespace)  # noqa: S102
         doc.recompute()
@@ -274,7 +274,7 @@ class ApplyPipeline:
         The whole `code` call: lint with *selection*, rehearse in the kernel, refuse a Step that changes nothing, then land it on the live Document as one transaction.
         A Step the Document refuses after the kernel took it leaves the kernel ahead of the Document, so the kernel is seeded from the Document again.
         """
-        checked = lint(code, selection, design_model=False)
+        checked = lint(code, selection)
         if not checked.ok:
             return ApplyResult(ok=False, traceback=checked.report(), gate="lint")
 
@@ -525,4 +525,3 @@ def fit_view(document=None):
     finally:
         for view_object in hidden:
             view_object.Visibility = True
-

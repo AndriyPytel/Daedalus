@@ -101,10 +101,6 @@ class _ProviderManager(QObject):
         self._lists.keys_changed()
         self.models_changed.emit(self.get_available_models())
 
-    def forget_model_lists(self):
-        """Drop every landed list, so the next ask fetches them again."""
-        self._lists.forget()
-
     def get_available_models(self) -> list:
         """
         Return a list of model dicts for every provider that is configured —

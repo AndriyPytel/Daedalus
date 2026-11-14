@@ -25,31 +25,31 @@ def _read(name):
 
 
 def test_the_step_the_grader_cannot_mesh_is_refused():
-    from core.manifold import unmeshable_fc
+    from core.manifold import mesh_facts_fc
 
-    assert unmeshable_fc(_read("149"), limit=10) is not None
+    assert mesh_facts_fc(_read("149"), limit=10)["unmeshable"] is not None
 
 
 def test_the_refusal_names_the_sub_millimetre_features():
-    from core.manifold import unmeshable_fc
+    from core.manifold import mesh_facts_fc
 
-    message = unmeshable_fc(_read("149"), limit=10)
+    message = mesh_facts_fc(_read("149"), limit=10)["unmeshable"]
 
     assert "sub-millimetre fillets and chamfers" in message
     assert "mm wide at (" in message
 
 
 def test_the_step_the_grader_cannot_read_back_after_its_own_export_is_refused():
-    from core.manifold import unmeshable_fc
+    from core.manifold import mesh_facts_fc
 
-    assert unmeshable_fc(_read("00013697"), limit=10) is not None
+    assert mesh_facts_fc(_read("00013697"), limit=10)["unmeshable"] is not None
 
 
 @pytest.mark.parametrize("name", SCORED_WELL)
 def test_a_step_that_scored_well_is_not_refused(name):
-    from core.manifold import unmeshable_fc
+    from core.manifold import mesh_facts_fc
 
-    assert unmeshable_fc(_read(name)) is None
+    assert mesh_facts_fc(_read(name))["unmeshable"] is None
 
 
 @pytest.fixture

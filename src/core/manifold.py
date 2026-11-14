@@ -455,11 +455,6 @@ def mesh_facts_fc(fc_shape, limit=MESH_LIMIT):
     return {"unmeshable": None, "step_readback": read_back}
 
 
-def unmeshable_fc(fc_shape, limit=MESH_LIMIT):
-    """The sentence of `mesh_facts_fc` naming why the grader's mesher would not finish *fc_shape*, or None."""
-    return mesh_facts_fc(fc_shape, limit)["unmeshable"] if fc_shape.Solids else None
-
-
 def _read(path):
     reader = STEPControl_Reader()
     if reader.ReadFile(path) != IFSelect_RetDone:

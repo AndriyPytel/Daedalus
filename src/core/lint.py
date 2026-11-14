@@ -9,12 +9,7 @@ attaches nothing without raising; no guard comparing a BoundBox attribute,
 since a BoundBox lands inside the true extreme it claims to report. A
 computed selection must assert its own length, no bare except/pass swallows a
 Step's failure, and no literal-name lookup of an object this Step just
-allocated, since a collision would rename it silently -- `dimensional_literal`
-and `dimensional_default` are wired into `lint()`'s refusal list now that
-`design` is in a Step's own namespace: a bare numeral in a dimensional
-position is refused, and so is a Design reference resolved with
-`.get(key, default)` instead of a plain index, since a field Design left
-`not_defined` must raise rather than resolve quietly.
+allocated, since a collision would rename it silently.
 """
 import ast
 import re
@@ -26,8 +21,6 @@ from core.prompts import read_prompt
 ELEMENT = re.compile(r"^(Edge|Face|Vertex)\d+$")
 
 GUI_NAMES = ("Gui", "FreeCADGui")
-
-_PRIMITIVE_SHAPES = ("Box", "Cylinder", "Sphere", "Cone", "Ellipsoid", "Torus", "Prism", "Wedge")
 
 ACTIVATION_NAMES = (
     "ActiveObject", "setActiveObject", "getActiveObject", "activeView", "ActiveView",
@@ -78,15 +71,6 @@ _ALLOCATED_NAME_REASON = read_prompt("lint_allocated_name.md")
 _ATTACHMENT_SUPPORT_REASON = read_prompt("lint_attachment_support_empty_list.md")
 _ATTACHMENT_OFFSET_REASON = read_prompt("lint_attachment_offset_normal.md")
 _BOUNDBOX_GUARD_REASON = read_prompt("lint_boundbox_guard.md")
-_DIMENSIONAL_LITERAL_REASON = read_prompt("lint_dimensional_literal.md")
-_DIMENSIONAL_DEFAULT_REASON = read_prompt("lint_dimensional_default.md")
-
-DIMENSION_ATTRS = frozenset((
-    "Length", "Length2", "Radius", "Diameter", "HoleCutDiameter",
-    "HoleCutDepth", "Angle", "TaperAngle", "Growth", "Size", "Pitch",
-))
-
-_NOT_A_DIMENSION = frozenset((0, 1, 90, 360))
 
 _BOUNDBOX_ATTRS = frozenset((
     "XMin", "XMax", "YMin", "YMax", "ZMin", "ZMax",
@@ -124,11 +108,11 @@ def selected_elements(selection) -> set:
     return allowed
 
 
-def lint(code: str, selection=None, design_model=True) -> LintResult:
+def lint(code: str, selection=None) -> LintResult:
     """
-    Check *code* before it is replayed onto the Document. `selection` is the
-    Snapshot's selection; element names in it are allowed; *design_model* false
-    leaves out the two rules that presume a `design` in scope.
+    Check *code* before it is replayed onto the Document.
+
+    `selection` is the Snapshot's selection; element names in it are allowed.
     """
     try:
         tree = ast.parse(code)
@@ -141,7 +125,6 @@ def lint(code: str, selection=None, design_model=True) -> LintResult:
     counted = _counted_selections(tree)
     allocated = _names_allocated_here(tree)
     boundbox_names = _boundbox_names(tree)
-    bindings = literal_bindings(tree)
     problems = []
     seen = set()
 
@@ -193,12 +176,6 @@ def lint(code: str, selection=None, design_model=True) -> LintResult:
         offset_along_normal = _attachment_offset_along_normal(node)
         if offset_along_normal:
             complain(_ATTACHMENT_OFFSET_REASON % offset_along_normal)
-        literal = dimensional_literal(node, bindings) if design_model else None
-        if literal:
-            complain(_DIMENSIONAL_LITERAL_REASON % literal)
-        defaulted = dimensional_default(node) if design_model else None
-        if defaulted:
-            complain(_DIMENSIONAL_DEFAULT_REASON % defaulted)
 
     def _on_call(node):
         disguised = _added_property(node, features)
@@ -531,88 +508,6 @@ def _attachment_offset_along_normal(node: ast.Assign):
 def _call_name(call: ast.Call):
     func = call.func
     return func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
-
-
-def _dimensional_target(node: ast.Assign):
-    """The unparsed `feature.Attr` target of a dimensional assignment, or
-    None -- `DIMENSION_ATTRS` is the closed set of PartDesign property names
-    a drawing's own measurement fills, read off the recorded Steps this
-    project has already applied."""
-    for target in node.targets:
-        if isinstance(target, ast.Attribute) and target.attr in DIMENSION_ATTRS:
-            return target
-    return None
-
-
-def _numeric_literal(node):
-    """The number a bare numeral or its unary-negated form spells, or None."""
-    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
-        node = node.operand
-        sign = -1
-    else:
-        sign = 1
-    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) \
-            and not isinstance(node.value, bool):
-        return sign * node.value
-    return None
-
-
-def literal_bindings(tree) -> dict:
-    """`name -> number` for every `name = <numeral>` in this Step, including
-    a tuple unpacked from numerals one for one -- `L, D = 80.0, 30.0` -- so a
-    bare numeral is still read as one whichever of the two spellings names
-    it, not a reference the naming defeats."""
-    bindings = {}
-    for node in ast.walk(tree):
-        if not (isinstance(node, ast.Assign) and len(node.targets) == 1):
-            continue
-        target = node.targets[0]
-        if isinstance(target, ast.Name):
-            value = _numeric_literal(node.value)
-            if value is not None:
-                bindings[target.id] = value
-        elif (isinstance(target, ast.Tuple)
-              and isinstance(node.value, ast.Tuple)
-              and len(target.elts) == len(node.value.elts)):
-            for name_node, value_node in zip(target.elts, node.value.elts):
-                if not isinstance(name_node, ast.Name):
-                    continue
-                value = _numeric_literal(value_node)
-                if value is not None:
-                    bindings[name_node.id] = value
-    return bindings
-
-
-def dimensional_literal(node: ast.Assign, bindings: dict):
-    """
-    The `(target, value)` of a dimensional assignment given a bare numeral,
-    directly or through a name this Step bound one to, or None. A count, an
-    index, a boolean and the handful of literals a construction genuinely
-    needs -- 0, 1, a right angle, a full turn -- are not dimensions and are
-    left alone.
-    """
-    target = _dimensional_target(node)
-    if target is None:
-        return None
-    value = _numeric_literal(node.value)
-    if value is None and isinstance(node.value, ast.Name):
-        value = bindings.get(node.value.id)
-    if value is None or value in _NOT_A_DIMENSION:
-        return None
-    return ast.unparse(target), value
-
-
-def dimensional_default(node: ast.Assign):
-    """The unparsed target of a dimensional assignment resolved with
-    `.get(key, default)`, where a missing Design field silently becomes the
-    default instead of failing, or None."""
-    target = _dimensional_target(node)
-    value = node.value
-    if target is None or not isinstance(value, ast.Call):
-        return None
-    if isinstance(value.func, ast.Attribute) and value.func.attr == "get" and len(value.args) >= 2:
-        return ast.unparse(target)
-    return None
 
 
 def _shape_assignment(node: ast.Assign, features: set):
