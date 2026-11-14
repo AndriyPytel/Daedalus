@@ -118,7 +118,8 @@ def test_a_step_the_kernel_says_changed_nothing_leaves_the_camera_alone(pipeline
     fitted = []
     monkeypatch.setattr("core.freecad_apply.fit_view", lambda doc: fitted.append(doc))
 
-    result = applying(pipeline, "def build(doc):\n    doc.addObject('Part::Box', 'Box')\n", rehearsal=_kernel_result(created=[]))
+    result = applying(pipeline, "def build(doc):\n    doc.addObject('Part::Box', 'Box')\n",
+                      rehearsal=_kernel_result(created=[]))
 
     assert not result.ok
     assert "changed nothing" in result.traceback
@@ -135,7 +136,8 @@ def test_a_step_that_only_rewrites_a_sketchs_geometry_still_lands(pipeline):
     real. The kernel's own `modified` is enough on its own -- it is not
     second-guessed against a signature that cannot see this kind of change.
     """
-    result = applying(pipeline, "sk = doc.getObject('Sketch')\n", rehearsal=_kernel_result(created=[], modified=["Sketch"]))
+    result = applying(pipeline, "sk = doc.getObject('Sketch')\n",
+                      rehearsal=_kernel_result(created=[], modified=["Sketch"]))
 
     assert result.ok, result.traceback
 
