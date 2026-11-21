@@ -276,7 +276,11 @@ def pytest_collection_modifyitems(config, items):
     skip_freecad = pytest.mark.skip(reason="FreeCAD not importable; set FREECAD_LIB to its lib dir")
     skip_cadgenbench = pytest.mark.skip(
         reason="vendored CADGenBench scorer not found; set CADGENBENCH_VENV")
+    skip_remote = pytest.mark.skip(reason="no gateway; set DAE_REMOTE_URL and DAE_REMOTE_TOKEN")
+    have_remote = bool(os.environ.get("DAE_REMOTE_URL") and os.environ.get("DAE_REMOTE_TOKEN"))
     for item in items:
+        if not have_remote and "remote" in item.keywords:
+            item.add_marker(skip_remote)
         if not HAVE_FREECAD and "freecad" in item.keywords:
             item.add_marker(skip_freecad)
         if not HAVE_CADGENBENCH and "cadgenbench" in item.keywords:
