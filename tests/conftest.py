@@ -379,7 +379,8 @@ def the_suite_does_not_talk_to_the_network():
     a QThread that outlived the test, and the next test's `processEvents()`
     dispatched its signal into a lock the thread still held — the whole run
     stopped there. The local-endpoint and model-catalog tests speak to HTTP
-    servers they stand up themselves on 127.0.0.1, so loopback stays open.
+    servers they stand up themselves on 127.0.0.1, so loopback stays open, and so
+    does the host of `DAE_REMOTE_URL`, the gateway the `remote` tests are pointed at.
 
     A per-test `monkeypatch` guard leaves a gap between tests, while pytest is
     tearing one test's fixtures down and setting the next one's up, where the
@@ -391,10 +392,13 @@ def the_suite_does_not_talk_to_the_network():
     guard is never off while any test could still be running.
     """
     import socket
+    from urllib.parse import urlparse
+
+    allowed = {"", "localhost", "127.0.0.1", "::1", urlparse(os.environ.get("DAE_REMOTE_URL", "")).hostname}
 
     def refuse(address):
         host = address[0] if isinstance(address, tuple) else ""
-        if host in ("", "localhost", "127.0.0.1", "::1"):
+        if host in allowed:
             return
         raise RuntimeError("the suite does not talk to the network: %r" % (address,))
 
