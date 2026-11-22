@@ -19,7 +19,7 @@ from test_service_events import frames
 from test_service_runs import FINAL
 from test_service_worker_channel import until
 
-pytestmark = pytest.mark.remote
+pytestmark = [pytest.mark.remote, pytest.mark.timeout(2400)]
 
 ROOT = Path(__file__).parent.parent
 SHEET = "model-mania-2024.pdf"
