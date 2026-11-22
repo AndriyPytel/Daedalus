@@ -21,7 +21,6 @@ import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
-from urllib.parse import urlparse
 
 import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -99,7 +98,6 @@ def _harness_python():
 
 HARNESS_PYTHON = _harness_python()
 HAVE_CADGENBENCH = os.path.exists(HARNESS_PYTHON)
-HAVE_REMOTE = bool(os.environ.get("DAE_REMOTE_URL") and os.environ.get("DAE_REMOTE_TOKEN"))
 
 for entry in (ROOT, SRC, MOD):
     if entry in sys.path:
@@ -283,10 +281,7 @@ def pytest_collection_modifyitems(config, items):
     skip_freecad = pytest.mark.skip(reason="FreeCAD not importable; set FREECAD_LIB to its lib dir")
     skip_cadgenbench = pytest.mark.skip(
         reason="vendored CADGenBench scorer not found; set CADGENBENCH_VENV")
-    skip_remote = pytest.mark.skip(reason="no gateway; set DAE_REMOTE_URL and DAE_REMOTE_TOKEN")
     for item in items:
-        if not HAVE_REMOTE and "remote" in item.keywords:
-            item.add_marker(skip_remote)
         if not HAVE_FREECAD and "freecad" in item.keywords:
             item.add_marker(skip_freecad)
         if not HAVE_CADGENBENCH and "cadgenbench" in item.keywords:
@@ -374,22 +369,6 @@ def modelmania_sheets(sheet_cache):
     return modelmania_harness.read_sheets(sheet_cache)
 
 
-LOOPBACK = {"", "localhost", "127.0.0.1", "::1"}
-GATEWAY_HOST = urlparse(os.environ.get("DAE_REMOTE_URL", "")).hostname
-_REACHABLE_GATEWAY = set()
-
-
-@pytest.fixture(autouse=True)
-def only_a_remote_test_reaches_the_gateway(request):
-    """Opens `DAE_REMOTE_URL`'s host while one `remote` test runs, so exporting the variable does not lift the network ban for every other test."""
-    if not (GATEWAY_HOST and request.node.get_closest_marker("remote")):
-        yield
-        return
-    _REACHABLE_GATEWAY.add(GATEWAY_HOST)
-    yield
-    _REACHABLE_GATEWAY.discard(GATEWAY_HOST)
-
-
 @pytest.fixture(scope="session", autouse=True)
 def the_suite_does_not_talk_to_the_network():
     """
@@ -401,9 +380,7 @@ def the_suite_does_not_talk_to_the_network():
     a QThread that outlived the test, and the next test's `processEvents()`
     dispatched its signal into a lock the thread still held — the whole run
     stopped there. The local-endpoint and model-catalog tests speak to HTTP
-    servers they stand up themselves on 127.0.0.1, so loopback stays open; the
-    gateway named by `DAE_REMOTE_URL` is opened for the length of one `remote`
-    test by `only_a_remote_test_reaches_the_gateway`, never for the whole run.
+    servers they stand up themselves on 127.0.0.1, so loopback stays open.
 
     A per-test `monkeypatch` guard leaves a gap between tests, while pytest is
     tearing one test's fixtures down and setting the next one's up, where the
@@ -418,7 +395,7 @@ def the_suite_does_not_talk_to_the_network():
 
     def refuse(address):
         host = address[0] if isinstance(address, tuple) else ""
-        if host in LOOPBACK or host in _REACHABLE_GATEWAY:
+        if host in ("", "localhost", "127.0.0.1", "::1"):
             return
         raise RuntimeError("the suite does not talk to the network: %r" % (address,))
 
