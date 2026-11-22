@@ -36,13 +36,13 @@ def alive(pid):
         return True
 
 
-def until(check, seconds=15):
+def until(check, seconds=15, every=0.05):
     deadline = time.time() + seconds
     while time.time() < deadline:
         value = check()
         if value:
             return value
-        time.sleep(0.05)
+        time.sleep(every)
     raise AssertionError("not true within %ss" % seconds)
 
 

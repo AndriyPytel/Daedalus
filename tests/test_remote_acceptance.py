@@ -15,6 +15,7 @@ import httpx
 import pytest
 
 import modelmania_harness
+from conftest import HARNESS_PYTHON
 from test_service_events import frames
 from test_service_runs import FINAL
 from test_service_worker_channel import until
@@ -25,6 +26,7 @@ ROOT = Path(__file__).parent.parent
 SHEET = "model-mania-2024.pdf"
 INTENT = "Build the model from the attached drawing."
 RUN_SECONDS = 1800
+POLL_SECONDS = 5
 IDLE_TTL = float(os.environ.get("DAE_REMOTE_IDLE_TTL", "900"))
 OUT = Path(os.environ.get("DAE_REMOTE_OUT") or Path(tempfile.gettempdir()) / "dae-remote")
 
@@ -42,18 +44,19 @@ def record(name, numbers):
 
 
 def finished(api, run_id, seconds=RUN_SECONDS):
-    return until(lambda: (lambda run: run if run["state"] in FINAL else None)(api.get("/runs/%s" % run_id).json()), seconds)
+    return until(lambda: (lambda run: run if run["state"] in FINAL else None)(api.get("/runs/%s" % run_id).json()),
+                 seconds, every=POLL_SECONDS)
 
 
 def validity(step):
-    python = os.environ.get("CADGENBENCH_VENV") or str(ROOT / "harness" / ".venv" / "bin" / "python")
-    if not os.path.exists(python):
-        pytest.skip("vendored CADGenBench scorer not found; set CADGENBENCH_VENV")
-    done = subprocess.run([python, str(Path(__file__).with_name("remote_validity.py")), str(step)],
+    done = subprocess.run([HARNESS_PYTHON, str(ROOT / "harness" / "validity.py"), str(step)],
                           capture_output=True, text=True, check=True)
     return json.loads(done.stdout)
 
 
+@pytest.mark.cadgenbench
+@pytest.mark.freecad
+@pytest.mark.timeout(2 * RUN_SECONDS + 600)
 def test_ac1_the_remote_step_is_as_valid_and_manifold_as_the_local_one(api, tmp_path):
     sheet = modelmania_harness.SHEETS[SHEET]
     if not sheet.exists():
@@ -72,8 +75,9 @@ def test_ac1_the_remote_step_is_as_valid_and_manifold_as_the_local_one(api, tmp_
 
     local_step = tmp_path / "local.step"
     subprocess.run([sys.executable, str(ROOT / "src" / "tools" / "run.py"), "--task", str(sheet), "--intent", INTENT,
-                    "--provider", choice["provider"], "--model", choice["model"], "--budget-usd", "20",
-                    "--log", str(tmp_path / "local.jsonl"), "--save", str(local_step)], check=False, timeout=RUN_SECONDS)
+                    "--provider", choice["provider"], "--model", choice["model"],
+                    "--budget-usd", str(choice["budget_usd"]),
+                    "--log", str(tmp_path / "local.jsonl"), "--save", str(local_step)], check=True, timeout=RUN_SECONDS)
     local = json.loads(local_step.with_suffix(".json").read_text(encoding="utf-8"))
 
     remote = validity(remote_step)
@@ -86,7 +90,8 @@ def test_ac1_the_remote_step_is_as_valid_and_manifold_as_the_local_one(api, tmp_
 def test_ac2_an_edit_run_after_the_idle_ttl_stop_continues_the_same_session(api):
     first = api.post("/runs", json={"prompt": "Add a 10mm cube", "overrides": {"budget_usd": 1}}).json()
     assert finished(api, first["id"], 600)["state"] == "completed"
-    until(lambda: api.get("/sessions/%s" % first["session_id"]).json()["state"] == "idle", IDLE_TTL + 300)
+    until(lambda: api.get("/sessions/%s" % first["session_id"]).json()["state"] == "idle", IDLE_TTL + 300,
+          every=POLL_SECONDS)
 
     second = api.post("/runs", json={"prompt": "Make the cube 20mm", "session_id": first["session_id"],
                                      "overrides": {"budget_usd": 1}}).json()
